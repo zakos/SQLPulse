@@ -65,8 +65,9 @@ handling and the JDBC layer are compiled and unit-tested but not yet exercised e
 
 ## CI
 
-`.github/workflows/build.yml` runs on every push and pull request: unit tests, `assembleDebug`
-and Android Lint, on a runner that has the Android SDK. The debug APK and the test and lint
+`.github/workflows/build.yml` runs unit tests, `assembleDebug` and Android Lint on a runner that
+has the Android SDK. It starts by itself only for pushes to `main`; on any other branch, start it
+from the Actions tab with "Run workflow". The debug APK and the test and lint
 reports are uploaded as artifacts, the reports even when the build is red.
 
 ## Security notes

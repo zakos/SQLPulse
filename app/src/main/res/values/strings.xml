@@ -168,6 +168,10 @@
     <string name="lock_body">The app locked itself after a period of inactivity. The tunnel was closed and the loaded results were discarded.</string>
     <string name="lock_unlock">Unlock</string>
 
+    <string name="key_delete_title">Delete key?</string>
+    <string name="key_delete_body">"%1$s" is removed from the key store. The copy on the bastion is not touched; revoke it there separately.</string>
+    <string name="error_key_delete_failed">The key could not be deleted.</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

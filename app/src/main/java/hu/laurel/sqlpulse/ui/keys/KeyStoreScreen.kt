@@ -30,10 +30,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +73,17 @@ fun KeyStoreScreen(
 
     var importOpen by remember { mutableStateOf(false) }
     var keyText by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<SshKeyEntity?>(null) }
+    val snackbarHost = remember { SnackbarHostState() }
+
+    // A failure outside the import form (a delete, typically) needs somewhere to be seen.
+    LaunchedEffect(importState.error, importOpen) {
+        val message = importState.error
+        if (message != null && !importOpen) {
+            snackbarHost.showSnackbar(message)
+            viewModel.clearError()
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -83,6 +97,7 @@ fun KeyStoreScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.keys_title)) },
@@ -112,7 +127,7 @@ fun KeyStoreScreen(
                         KeyCard(
                             key = key,
                             onCopyPublicKey = { context.copyToClipboard(it.publicKey) },
-                            onDelete = { viewModel.delete(key) },
+                            onDelete = { deleteTarget = key },
                         )
                     }
                     item {
@@ -150,6 +165,30 @@ fun KeyStoreScreen(
                 importOpen = false
                 keyText = ""
                 viewModel.dismissImportState()
+            },
+        )
+    }
+
+    deleteTarget?.let { key ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(stringResource(R.string.key_delete_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    Text(stringResource(R.string.key_delete_body, key.name))
+                    Text(key.fingerprint, style = MonoStyles.fingerprint)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.delete(key)
+                        deleteTarget = null
+                    },
+                ) { Text(stringResource(R.string.key_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

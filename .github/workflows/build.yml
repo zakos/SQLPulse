@@ -1,9 +1,10 @@
 name: Build
 
+# Automatic only once work lands on main. On a branch, start it by hand from the Actions tab
+# (Run workflow -> pick the branch).
 on:
   push:
-    branches: ['**']
-  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -5,6 +5,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
+import hu.laurel.sqlpulse.data.crypto.CryptoProviders
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.export.ExportManager
@@ -44,6 +45,8 @@ class SqlPulseApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before anything else: the SSH layer needs the full Bouncy Castle, not Android's stub.
+        CryptoProviders.install()
         keystoreCrypto.ensureKeys()
         // §7.7, §9: an export from a previous session must not outlive it.
         exports.clearExports()

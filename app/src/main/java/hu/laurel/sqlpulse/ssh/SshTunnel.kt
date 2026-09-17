@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ssh
 
+import hu.laurel.sqlpulse.data.crypto.CryptoProviders
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -49,6 +50,8 @@ class SshTunnel(
 
     /** Connects and authenticates. Blocking — call it on an IO dispatcher. */
     fun connect() {
+        // Idempotent, and the one place that must never run against Android's stripped provider.
+        CryptoProviders.install()
         val ssh = SSHClient(AndroidConfig())
         ssh.addHostKeyVerifier(verifier)
         ssh.connectTimeout = config.connectTimeoutMs

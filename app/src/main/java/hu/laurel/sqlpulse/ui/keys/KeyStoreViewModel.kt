@@ -117,13 +117,21 @@ class KeyStoreViewModel @Inject constructor(
             try {
                 repository.delete(key.id)
             } catch (e: Exception) {
-                _importState.value = _importState.value.copy(error = message(e))
+                // Most often KeyInUseException: a connection still points at this key.
+                _importState.value = _importState.value.copy(
+                    error = message(e) ?: context.getString(R.string.error_key_delete_failed),
+                )
             }
         }
     }
 
     fun dismissImportState() {
         _importState.value = KeyImportState()
+    }
+
+    /** Clears only the message, so a failure shown outside the import form can be dismissed. */
+    fun clearError() {
+        _importState.value = _importState.value.copy(error = null)
     }
 
     /** §11: after five wrong passphrases the field is locked for thirty seconds. */
