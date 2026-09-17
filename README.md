@@ -56,13 +56,12 @@ app/src/main/java/hu/laurel/sqlpulse/
 
 Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSdk 35, minSdk 28).
 
-> **Not yet compiled as an app.** The environment this was written in has no Android SDK and no
-> network access to `dl.google.com`, so the Android build has never run. Expect to fix dependency
-> versions and small API mismatches on the first real build.
->
-> The parts that do not depend on Android — `SqlGuards`, `SqlHighlighter`, `RowSqlBuilder`,
-> `ResultSerializer`, `ResultTable`, `Sealed` — were compiled with a standalone Kotlin compiler
-> and their 59 unit tests pass. `ConnectionFormTest` needs the Android toolchain and has not run.
+The build is green in CI: unit tests, `assembleDebug` and Android Lint all pass, and the debug
+APK is produced as an artifact. This development environment has no Android SDK and no network
+access to `dl.google.com`, so CI is where the app is actually compiled.
+
+Nothing has been run on a device or against a real MySQL server yet, so the tunnel, the key
+handling and the JDBC layer are compiled and unit-tested but not yet exercised end to end.
 
 ## CI
 
