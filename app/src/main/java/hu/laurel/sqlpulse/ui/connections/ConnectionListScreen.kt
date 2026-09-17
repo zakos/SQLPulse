@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -64,6 +65,7 @@ fun ConnectionListScreen(
     onEdit: (Long) -> Unit,
     onOpenKeyStore: () -> Unit,
     onOpenSchema: () -> Unit,
+    onOpenQuery: () -> Unit,
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,6 +75,11 @@ fun ConnectionListScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.connections_title)) },
                 actions = {
+                    if (state.tunnel is TunnelState.Active) {
+                        IconButton(onClick = onOpenQuery) {
+                            Icon(Icons.Default.Code, contentDescription = stringResource(R.string.query_title))
+                        }
+                    }
                     IconButton(onClick = onOpenKeyStore) {
                         Icon(Icons.Default.Key, contentDescription = stringResource(R.string.keys_title))
                     }

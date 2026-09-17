@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import hu.laurel.sqlpulse.ui.connections.ConnectionEditorScreen
 import hu.laurel.sqlpulse.ui.connections.ConnectionListScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
+import hu.laurel.sqlpulse.ui.query.QueryEditorScreen
 import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
 import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
 
@@ -18,6 +19,7 @@ object Routes {
     const val KEYS = "keys"
     const val EDITOR = "editor/{connectionId}"
     const val SCHEMA = "schema"
+    const val QUERY = "query"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -37,6 +39,7 @@ fun SqlPulseApp() {
                 onEdit = { id -> navController.navigate(Routes.editor(id)) },
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
                 onOpenSchema = { navController.navigate(Routes.SCHEMA) },
+                onOpenQuery = { navController.navigate(Routes.QUERY) },
             )
         }
 
@@ -54,9 +57,14 @@ fun SqlPulseApp() {
             KeyStoreScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Routes.QUERY) {
+            QueryEditorScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.SCHEMA) {
             SchemaBrowserScreen(
                 onBack = { navController.popBackStack() },
+                onOpenQuery = { navController.navigate(Routes.QUERY) },
                 onOpenTable = { database, table ->
                     navController.navigate(Routes.table(database, table))
                 },

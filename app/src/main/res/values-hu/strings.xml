@@ -109,6 +109,26 @@
     <string name="grid_limit_added">Automatikusan hozzáadott LIMIT 500.</string>
     <string name="grid_truncated">Az első %1$d sor látszik.</string>
 
+    <!-- Query editor -->
+    <string name="query_title">Lekérdezés</string>
+    <string name="query_run">Futtatás</string>
+    <string name="query_cancel">Megszakítás</string>
+    <string name="query_row_limit">legfeljebb %1$d sor</string>
+    <string name="query_panel_result">Eredmény</string>
+    <string name="query_panel_history">Előzmények</string>
+    <string name="query_panel_favourites">Kedvencek</string>
+    <string name="query_favourite_add">Mentés kedvencként</string>
+    <string name="query_favourite_name">Név</string>
+    <string name="query_parameters_title">Paraméterek</string>
+    <string name="query_result_summary">%1$d sor · %2$d ms</string>
+    <string name="query_rows_changed">A művelet lefutott.</string>
+    <string name="query_no_result_yet">Futtass egy lekérdezést, az eredménye itt jelenik meg.</string>
+    <string name="query_history_empty">A lefuttatott lekérdezések itt jelennek meg, futásidővel és sorszámmal.</string>
+    <string name="query_favourites_empty">Ments el egy lekérdezést kedvencként, akár :paraméterekkel.</string>
+    <string name="query_no_session_title">Nincs élő kapcsolat</string>
+    <string name="error_read_only">Ez a kapcsolat csak olvasható. Állítsd át a kapcsolatszerkesztőben, vagy használj írásjogú felhasználót.</string>
+    <string name="error_unsupported_statement">Csak lekérdezések és sorszintű módosítások támogatottak, sémaváltoztatás nem.</string>
+
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>

@@ -9,7 +9,7 @@ section references in the code (`§5`, `§8`, …) point at it.
 
 ## What is implemented
 
-Phases 0–4 of the roadmap in §12, plus the part of phase 6 the schema browser needs:
+Phases 0–5 of the roadmap in §12, plus the part of phase 6 the results need:
 
 | Area | State |
 | --- | --- |
@@ -24,7 +24,8 @@ Phases 0–4 of the roadmap in §12, plus the part of phase 6 the schema browser
 | JDBC over the tunnel (MariaDB Connector/J, pool of 3, read-only enforcement) | done |
 | Schema browser: databases, tables, columns, indexes, foreign keys, DDL | done |
 | Result grid: two-way scroll, sticky header, type colouring, BLOB sizes | partial |
-| Query editor, writes, export | not started (phases 5, 7, 8) |
+| Query editor: highlighting, key row, completion, history, favourites, :parameters | done |
+| Writes, export | not started (phases 7, 8) |
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.
@@ -40,7 +41,8 @@ app/src/main/java/hu/laurel/sqlpulse/
   data/db/         Room entities and DAOs (§9)
   data/keys/       Key parsing, validation, fingerprints, key store repository
   data/connection/ Connection profiles and MySQL credentials
-  data/sql/        JDBC pool over the tunnel, statement guards, result model
+  data/sql/        JDBC pool over the tunnel, statement guards, highlighter, execution
+  data/query/      Query history and favourites
   data/schema/     information_schema reads for the browser
   security/        BiometricPrompt around keystore ciphers
   ssh/             Tunnel state machine, host key pinning, port forward, foreground service
@@ -55,9 +57,9 @@ Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSd
 > network access to `dl.google.com`, so the Android build has never run. Expect to fix dependency
 > versions and small API mismatches on the first real build.
 >
-> The parts that do not depend on Android — `SqlGuards`, `ResultTable`, `Sealed` — were compiled
-> with a standalone Kotlin compiler and their 23 unit tests pass. `ConnectionFormTest` needs the
-> Android toolchain and has not run.
+> The parts that do not depend on Android — `SqlGuards`, `SqlHighlighter`, `ResultTable`,
+> `Sealed` — were compiled with a standalone Kotlin compiler and their 41 unit tests pass.
+> `ConnectionFormTest` needs the Android toolchain and has not run.
 
 ## Security notes
 
@@ -69,5 +71,6 @@ Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSd
 - The tunnel lives in a foreground service and drops after five minutes in the background.
 - JDBC connects with `allowLocalInfile=false`, so a hostile server cannot ask the client for
   local files, and with `autoReconnect=false`, so a dropped connection is never retried silently.
+- Named `:parameters` are rewritten into JDBC placeholders and bound, never pasted into the SQL.
 - MySQL passwords use a separate keystore key with a 30-second authentication window, so opening
   a connection prompts once rather than twice. Private keys stay bound per use.

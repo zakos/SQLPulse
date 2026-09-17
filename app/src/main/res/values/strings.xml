@@ -117,6 +117,26 @@
     <string name="grid_limit_added">LIMIT 500 added automatically.</string>
     <string name="grid_truncated">First %1$d rows shown.</string>
 
+    <!-- Query editor -->
+    <string name="query_title">Query</string>
+    <string name="query_run">Run</string>
+    <string name="query_cancel">Cancel query</string>
+    <string name="query_row_limit">max %1$d rows</string>
+    <string name="query_panel_result">Result</string>
+    <string name="query_panel_history">History</string>
+    <string name="query_panel_favourites">Favourites</string>
+    <string name="query_favourite_add">Save as favourite</string>
+    <string name="query_favourite_name">Name</string>
+    <string name="query_parameters_title">Parameters</string>
+    <string name="query_result_summary">%1$d rows · %2$d ms</string>
+    <string name="query_rows_changed">Statement executed.</string>
+    <string name="query_no_result_yet">Run a query to see its result here.</string>
+    <string name="query_history_empty">Queries you run show up here, with their duration and row count.</string>
+    <string name="query_favourites_empty">Save a query as a favourite to keep it, with :parameters if it needs them.</string>
+    <string name="query_no_session_title">No live connection</string>
+    <string name="error_read_only">This connection is read-only. Change it in the connection editor, or use a user that may write.</string>
+    <string name="error_unsupported_statement">Only queries and row edits are supported; schema changes are not.</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

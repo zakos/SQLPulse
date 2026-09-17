@@ -67,6 +67,85 @@ object SqlGuards {
             .distinct()
             .toList()
 
+    /**
+     * Rewrites `:name` placeholders into JDBC `?` markers and reports the binding order (§7.4).
+     *
+     * Placeholders inside string literals, quoted identifiers and comments are left alone, so a
+     * query containing `'12:30'` or `time::text` is not mangled. A name may appear several times;
+     * it is then bound several times, which is what a prepared statement needs.
+     */
+    fun bindParameters(sql: String): BoundStatement {
+        val out = StringBuilder(sql.length)
+        val order = mutableListOf<String>()
+        var index = 0
+        while (index < sql.length) {
+            val c = sql[index]
+            when {
+                c == '\'' || c == '"' || c == '`' -> {
+                    val end = endOfLiteral(sql, index)
+                    out.append(sql, index, end)
+                    index = end
+                }
+
+                sql.startsWith("--", index) || c == '#' -> {
+                    val end = sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
+                    out.append(sql, index, end)
+                    index = end
+                }
+
+                sql.startsWith("/*", index) -> {
+                    val end = (sql.indexOf("*/", index + 2).takeIf { it >= 0 }?.plus(2)) ?: sql.length
+                    out.append(sql, index, end)
+                    index = end
+                }
+
+                // "::" is a cast, not a placeholder.
+                c == ':' && sql.getOrNull(index + 1) == ':' -> {
+                    out.append("::")
+                    index += 2
+                }
+
+                c == ':' && sql.getOrNull(index + 1)?.isValidParameterStart() == true -> {
+                    var end = index + 1
+                    while (end < sql.length && sql[end].isValidParameterChar()) end++
+                    order += sql.substring(index + 1, end)
+                    out.append('?')
+                    index = end
+                }
+
+                else -> {
+                    out.append(c)
+                    index++
+                }
+            }
+        }
+        return BoundStatement(out.toString(), order)
+    }
+
+    data class BoundStatement(val sql: String, val parameterOrder: List<String>)
+
+    private fun Char.isValidParameterStart() = isLetter() || this == '_'
+
+    private fun Char.isValidParameterChar() = isLetterOrDigit() || this == '_'
+
+    /** @return the index just past the closing quote of the literal starting at [start]. */
+    private fun endOfLiteral(sql: String, start: Int): Int {
+        val closing = sql[start]
+        var index = start + 1
+        while (index < sql.length) {
+            val current = sql[index]
+            if (current == '\\' && closing != '`') {
+                index += 2
+                continue
+            }
+            index++
+            if (current == closing) {
+                if (index < sql.length && sql[index] == closing) index++ else return index
+            }
+        }
+        return index
+    }
+
     private fun firstKeyword(strippedSql: String): String? =
         strippedSql.trimStart('(', ' ', '\t', '\n', '\r')
             .takeWhile { !it.isWhitespace() && it != '(' }
