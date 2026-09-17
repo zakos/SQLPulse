@@ -64,6 +64,12 @@ Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSd
 > `ResultSerializer`, `ResultTable`, `Sealed` — were compiled with a standalone Kotlin compiler
 > and their 59 unit tests pass. `ConnectionFormTest` needs the Android toolchain and has not run.
 
+## CI
+
+`.github/workflows/build.yml` runs on every push and pull request: unit tests, `assembleDebug`
+and Android Lint, on a runner that has the Android SDK. The debug APK and the test and lint
+reports are uploaded as artifacts, the reports even when the build is red.
+
 ## Security notes
 
 - Private keys are sealed with an Android Keystore key that requires user authentication for
