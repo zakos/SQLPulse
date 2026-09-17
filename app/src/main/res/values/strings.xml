@@ -172,6 +172,12 @@
     <string name="key_delete_body">"%1$s" is removed from the key store. The copy on the bastion is not touched; revoke it there separately.</string>
     <string name="error_key_delete_failed">The key could not be deleted.</string>
 
+    <string name="key_generated_title">Key pair generated</string>
+    <string name="key_imported_title">Key imported</string>
+    <string name="key_imported_body">The public key below belongs to the private key you imported — it was derived from it, nothing new was generated. Compare it with the entry in the bastion\'s authorized_keys file.</string>
+
+    <string name="query_switched_database">Now running against "%1$s".</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

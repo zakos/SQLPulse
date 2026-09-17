@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.sql
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -101,5 +102,25 @@ class SqlGuardsTest {
 
         assertTrue(stripped.contains("FROM t"))
         assertFalse(stripped.contains("fine"))
+    }
+
+    @Test
+    fun `a bare USE names the database it switches to`() {
+        assertEquals("shop", SqlGuards.useTarget("USE shop"))
+        assertEquals("shop", SqlGuards.useTarget("  use   shop ;  "))
+        assertEquals("my db", SqlGuards.useTarget("USE `my db`"))
+    }
+
+    @Test
+    fun `anything that is not a bare USE is not a switch`() {
+        assertNull(SqlGuards.useTarget("SELECT * FROM used_cars"))
+        assertNull(SqlGuards.useTarget("USE shop; DROP TABLE t"))
+        assertNull(SqlGuards.useTarget("USE"))
+        assertNull(SqlGuards.useTarget(""))
+    }
+
+    @Test
+    fun `USE is not classified as a runnable statement`() {
+        assertEquals(StatementKind.OTHER, SqlGuards.classify("USE shop"))
     }
 }

@@ -196,6 +196,7 @@ fun KeyStoreScreen(
     importState.addedPublicKey?.let { publicKey ->
         PublicKeyDialog(
             publicKey = publicKey,
+            generated = importState.addedKeyGenerated,
             onCopy = { context.copyToClipboard(publicKey) },
             onDismiss = {
                 importOpen = false
@@ -315,12 +316,44 @@ private fun ImportDialog(
     )
 }
 
+/**
+ * Shown after a key lands in the store.
+ *
+ * Importing a private key does not create a new pair: the public half is derived from the private
+ * one, which is why it can be shown here. The wording says so, because "here is your public key"
+ * right after an import reads as if something had been generated.
+ */
 @Composable
-private fun PublicKeyDialog(publicKey: String, onCopy: () -> Unit, onDismiss: () -> Unit) {
+private fun PublicKeyDialog(
+    publicKey: String,
+    generated: Boolean,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.key_add_to_authorized_keys)) },
-        text = { Text(publicKey, style = MonoStyles.cell) },
+        title = {
+            Text(
+                stringResource(
+                    if (generated) R.string.key_generated_title else R.string.key_imported_title,
+                ),
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                Text(
+                    stringResource(
+                        if (generated) {
+                            R.string.key_add_to_authorized_keys
+                        } else {
+                            R.string.key_imported_body
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(publicKey, style = MonoStyles.cell)
+            }
+        },
         confirmButton = {
             Button(onClick = { onCopy(); onDismiss() }) {
                 Text(stringResource(R.string.key_public_copy))

@@ -48,8 +48,13 @@ data class QueryEditorUiState(
     /** Parameter names waiting for values before the query can run (§7.4). */
     val pendingParameters: List<String> = emptyList(),
     val suggestions: List<String> = emptyList(),
+    val databases: List<String> = emptyList(),
+    /** The database statements run against; movable here, in the schema browser, or with USE. */
+    val database: String? = null,
     val readOnly: Boolean = true,
     val connectionName: String? = null,
+    /** Set right after a USE, so the editor can say where it moved to. */
+    val switchedTo: String? = null,
     val database: String? = null,
     val shareIntent: Intent? = null,
 )
@@ -91,9 +96,8 @@ class QueryEditorViewModel @Inject constructor(
                         _uiState.value = _uiState.value.copy(
                             readOnly = state.connection.readOnly,
                             connectionName = state.connection.name,
-                            database = state.connection.database,
                         )
-                        loadCompletions(state.connection.database)
+                        loadDatabases()
                     }
 
                     else -> {
@@ -104,7 +108,18 @@ class QueryEditorViewModel @Inject constructor(
                 }
             }
             .launchIn(viewModelScope)
+
+        // The current database is owned by the session, so the picker follows a USE or a change
+        // made in the schema browser.
+        sessions.database
+            .onEach { database ->
+                _uiState.value = _uiState.value.copy(database = database)
+                database?.let { loadCompletions(it) }
+            }
+            .launchIn(viewModelScope)
     }
+
+    fun selectDatabase(database: String) = sessions.selectDatabase(database)
 
     fun setSql(sql: String) {
         _uiState.value = _uiState.value.copy(sql = sql, error = null)
@@ -157,6 +172,7 @@ class QueryEditorViewModel @Inject constructor(
                 running = true,
                 error = null,
                 errorDetail = null,
+                switchedTo = null,
                 pendingParameters = emptyList(),
                 panel = QueryPanel.RESULT,
             )
@@ -170,8 +186,14 @@ class QueryEditorViewModel @Inject constructor(
                 )
                 _uiState.value = _uiState.value.copy(
                     running = false,
-                    result = outcome.table,
+                    // A USE changes nothing on screen except where the next query will run.
+                    result = if (outcome.switchedDatabase != null) {
+                        _uiState.value.result
+                    } else {
+                        outcome.table
+                    },
                     updateCount = outcome.updateCount,
+                    switchedTo = outcome.switchedDatabase,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -226,6 +248,13 @@ class QueryEditorViewModel @Inject constructor(
     /** One tap from history or favourites puts the SQL back in the editor (§7.4). */
     fun load(sql: String) {
         _uiState.value = _uiState.value.copy(sql = sql, panel = QueryPanel.RESULT, error = null)
+    }
+
+    private fun loadDatabases() {
+        viewModelScope.launch {
+            val databases = runCatching { schema.databases() }.getOrDefault(emptyList())
+            _uiState.value = _uiState.value.copy(databases = databases)
+        }
     }
 
     private fun loadCompletions(database: String) {

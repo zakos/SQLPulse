@@ -33,8 +33,10 @@ data class KeyImportState(
     /** Set when the chosen key is passphrase-protected, so the form asks for one. */
     val needsPassphrase: Boolean = false,
     val error: String? = null,
-    /** Public key of the key that was just added, shown so it can go into authorized_keys. */
+    /** Public key of the key that was just added. */
     val addedPublicKey: String? = null,
+    /** True when that key was generated here, false when it was imported. */
+    val addedKeyGenerated: Boolean = false,
     /** Seconds the passphrase field stays locked after repeated failures (§11). */
     val lockedForSeconds: Int = 0,
 )
@@ -105,7 +107,10 @@ class KeyStoreViewModel @Inject constructor(
             _importState.value = _importState.value.copy(busy = true, error = null)
             try {
                 val key = repository.generate(name.ifBlank { defaultName() })
-                _importState.value = KeyImportState(addedPublicKey = key.publicKey)
+                _importState.value = KeyImportState(
+                    addedPublicKey = key.publicKey,
+                    addedKeyGenerated = true,
+                )
             } catch (e: Exception) {
                 _importState.value = KeyImportState(error = message(e))
             }

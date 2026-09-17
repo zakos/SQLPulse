@@ -164,6 +164,12 @@
     <string name="key_delete_body">A(z) "%1$s" kikerül a kulcstárból. A bastionon lévő példányt ez nem érinti, azt külön kell visszavonni.</string>
     <string name="error_key_delete_failed">A kulcsot nem sikerült törölni.</string>
 
+    <string name="key_generated_title">Kulcspár generálva</string>
+    <string name="key_imported_title">Kulcs importálva</string>
+    <string name="key_imported_body">Az alábbi publikus kulcs az importált privát kulcshoz tartozik — abból származtattuk, új kulcs nem készült. Ezt vesd össze a bastion authorized_keys fájljában lévő bejegyzéssel.</string>
+
+    <string name="query_switched_database">A lekérdezések mostantól a(z) "%1$s" adatbázison futnak.</string>
+
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>

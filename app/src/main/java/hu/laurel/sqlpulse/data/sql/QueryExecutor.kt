@@ -20,6 +20,8 @@ data class QueryOutcome(
     /** Rows changed, for statements that return no result set. */
     val updateCount: Int? = null,
     val sqlRun: String,
+    /** Set when the statement was a `USE`, which moves the session rather than running. */
+    val switchedDatabase: String? = null,
 )
 
 /**
@@ -46,6 +48,17 @@ class QueryExecutor @Inject constructor(
         rowLimit: Int = SqlGuards.DEFAULT_ROW_LIMIT,
         readOnly: Boolean,
     ): QueryOutcome {
+        // `USE` is answered by moving the session's database, not by sending it to one pooled
+        // connection and leaving the others behind (§7.4).
+        SqlGuards.useTarget(sql)?.let { database ->
+            sessions.selectDatabase(database)
+            return QueryOutcome(
+                table = ResultTable.EMPTY,
+                sqlRun = sql.trim(),
+                switchedDatabase = database,
+            )
+        }
+
         val kind = SqlGuards.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()

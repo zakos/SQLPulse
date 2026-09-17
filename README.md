@@ -70,6 +70,19 @@ has the Android SDK. It starts by itself only for pushes to `main`; on any other
 from the Actions tab with "Run workflow". The debug APK and the test and lint
 reports are uploaded as artifacts, the reports even when the build is red.
 
+## Notes on two design decisions
+
+**Why a bastion.** The specification's premise (§4) is that the MySQL port is never reachable from
+the internet — only from a jump host. The app therefore always opens an SSH connection to that
+host and forwards a local port through it; the JDBC driver talks to `127.0.0.1`. If there is no
+separate jump host, point the SSH fields at any machine that can reach the database and runs
+sshd — the database server itself, for instance. What the app will not do is connect to MySQL
+directly (§2).
+
+**Importing a private key shows a public key.** Nothing is generated: the public half is
+mathematically contained in the private key, so the app derives it and shows it for comparison
+with the entry in `authorized_keys`. Only "Generate on device" creates a new pair.
+
 ## Security notes
 
 - Private keys are sealed with an Android Keystore key that requires user authentication for

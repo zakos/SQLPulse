@@ -68,6 +68,32 @@ object SqlGuards {
             .toList()
 
     /**
+     * The database named by a bare `USE somedb` statement, or null for anything else.
+     *
+     * `USE` cannot simply be executed: the app hands out connections from a pool, so it would
+     * switch one connection and leave the others where they were. It is treated as a request to
+     * change the session's current database instead, which then applies to every connection.
+     */
+    fun useTarget(sql: String): String? {
+        // Matched on the raw statement: stripping would throw away a backticked database name.
+        val trimmed = sql.trim().trimEnd(';').trim()
+        // A backticked or quoted database name may contain spaces, so it is matched as one token.
+        val match = Regex("(?i)^use\\s+(`[^`]*(?:``[^`]*)*`|\"[^\"]*\"|\\S+)$").find(trimmed)
+            ?: return null
+        return unquoteIdentifier(match.groupValues[1]).takeIf { it.isNotEmpty() }
+    }
+
+    /** Strips backticks or quotes from an identifier, undoubling any escaped quote inside. */
+    fun unquoteIdentifier(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.length < 2) return trimmed
+        val first = trimmed.first()
+        if (first != '`' && first != '"' && first != '\'') return trimmed
+        if (trimmed.last() != first) return trimmed
+        return trimmed.substring(1, trimmed.length - 1).replace("$first$first", first.toString())
+    }
+
+    /**
      * Rewrites `:name` placeholders into JDBC `?` markers and reports the binding order (§7.4).
      *
      * Placeholders inside string literals, quoted identifiers and comments are left alone, so a

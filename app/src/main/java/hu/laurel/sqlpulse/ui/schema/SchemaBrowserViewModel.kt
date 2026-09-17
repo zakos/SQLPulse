@@ -38,7 +38,7 @@ data class SchemaBrowserUiState(
 @HiltViewModel
 class SchemaBrowserViewModel @Inject constructor(
     private val schema: SchemaRepository,
-    sessions: SqlSessionManager,
+    private val sessions: SqlSessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SchemaBrowserUiState())
@@ -51,7 +51,7 @@ class SchemaBrowserViewModel @Inject constructor(
                 when (state) {
                     is SqlSessionState.Ready -> {
                         // Start on the database the connection points at.
-                        loadDatabases(preferred = state.connection.database)
+                        loadDatabases(preferred = sessions.database.value ?: state.connection.database)
                     }
 
                     else -> {
@@ -69,6 +69,8 @@ class SchemaBrowserViewModel @Inject constructor(
 
     fun selectDatabase(database: String) {
         _uiState.value = _uiState.value.copy(selectedDatabase = database, tables = emptyList())
+        // The query editor runs against the same database, so picking one here moves both.
+        sessions.selectDatabase(database)
         loadTables(database)
     }
 
@@ -93,7 +95,10 @@ class SchemaBrowserViewModel @Inject constructor(
                     selectedDatabase = selected,
                     loading = false,
                 )
-                selected?.let { loadTables(it) }
+                selected?.let {
+                    sessions.selectDatabase(it)
+                    loadTables(it)
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(loading = false, error = describe(e))
             }

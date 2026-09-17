@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -155,6 +156,22 @@ fun QueryEditorScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // §7.3 lets you browse any database, so the editor has to be able to follow it.
+            if (state.databases.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                ) {
+                    items(state.databases) { database ->
+                        FilterChip(
+                            selected = database == state.database,
+                            onClick = { viewModel.selectDatabase(database) },
+                            label = { Text(database, style = MonoStyles.cell) },
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = state.sql,
                 onValueChange = { text ->
@@ -259,6 +276,15 @@ fun QueryEditorScreen(
                         },
                     )
                 }
+            }
+
+            state.switchedTo?.let { database ->
+                Text(
+                    text = stringResource(R.string.query_switched_database, database),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                    modifier = Modifier.padding(horizontal = Spacing.l),
+                )
             }
 
             state.error?.let { message ->
