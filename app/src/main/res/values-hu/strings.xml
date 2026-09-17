@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connections_title">Kapcsolatok</string>
+    <string name="connections_empty_title">Még nincs kapcsolat</string>
+    <string name="connections_empty_body">Egy kapcsolathoz bastion host és SSH kulcs kell. Közvetlen MySQL mód nincs.</string>
+    <string name="connections_empty_action">Első kapcsolat létrehozása</string>
+    <string name="connection_new">Új kapcsolat</string>
+    <string name="connection_edit">Szerkesztés</string>
+    <string name="connection_duplicate">Duplikálás</string>
+    <string name="connection_delete">Törlés</string>
+    <string name="connection_test">Kapcsolat tesztelése</string>
+    <string name="connection_save">Mentés</string>
+    <string name="connection_name">Név</string>
+    <string name="connection_colour">Szín</string>
+    <string name="connection_production">Éles adatbázis</string>
+    <string name="section_ssh">SSH</string>
+    <string name="section_mysql">MySQL</string>
+    <string name="bastion_host">Bastion host</string>
+    <string name="bastion_port">Port</string>
+    <string name="ssh_user">SSH felhasználó</string>
+    <string name="ssh_key">SSH kulcs</string>
+    <string name="ssh_key_required">Kulcs nélkül nem menthető — jelszavas hitelesítés nincs.</string>
+    <string name="db_host">DB host a bastion felől nézve</string>
+    <string name="db_port">Port</string>
+    <string name="db_name">Adatbázis</string>
+    <string name="db_user">MySQL felhasználó</string>
+    <string name="db_password">MySQL jelszó</string>
+    <string name="db_read_only">Csak olvasás</string>
+    <string name="last_used">Utoljára: %1$s</string>
+    <string name="never_used">Még nem használt</string>
+
+    <string name="state_disconnected">Bontva</string>
+    <string name="state_unlocking">Feloldás</string>
+    <string name="state_connecting">Csatlakozik</string>
+    <string name="state_active">Aktív</string>
+    <string name="state_paused">Szünetel</string>
+    <string name="state_error">Hiba</string>
+    <string name="step_key">Kulcs</string>
+    <string name="step_ssh">SSH</string>
+    <string name="step_mysql">MySQL</string>
+    <string name="step_schema">Séma</string>
+
+    <string name="keys_title">Kulcstár</string>
+    <string name="keys_empty_title">Nincs tárolt kulcs</string>
+    <string name="keys_empty_body">Importálj egy OpenSSH privát kulcsot, vagy generálj Ed25519 kulcspárt az eszközön.</string>
+    <string name="keys_empty_action">Kulcs importálása</string>
+    <string name="key_import_file">Importálás fájlból</string>
+    <string name="key_import_paste">Kulcs beillesztése</string>
+    <string name="key_generate">Generálás az eszközön</string>
+    <string name="key_name">Kulcs neve</string>
+    <string name="key_passphrase">Passphrase</string>
+    <string name="key_fingerprint">Fingerprint</string>
+    <string name="key_public_copy">Publikus kulcs másolása</string>
+    <string name="key_delete">Kulcs törlése</string>
+    <string name="key_clipboard_cleared">Kulcs beillesztve, a vágólap törölve.</string>
+    <string name="key_add_to_authorized_keys">Vedd fel ezt a publikus kulcsot a bastion authorized_keys fájljába.</string>
+
+    <string name="host_key_new_title">Ismeretlen host key</string>
+    <string name="host_key_new_body">Első csatlakozás ide: %1$s. Ellenőrizd a fingerprintet megbízható csatornán, mielőtt elfogadod.</string>
+    <string name="host_key_accept">Elfogadás és mentés</string>
+    <string name="host_key_reject">Mégse</string>
+    <string name="host_key_changed_title">A host key megváltozott — a kapcsolat blokkolva</string>
+    <string name="host_key_changed_body">Tárolt: %1$s\nKapott: %2$s\n\nEz jelentheti azt, hogy a bastiont újratelepítették, de azt is, hogy valaki belehallgat. Csak akkor oldd fel a kapcsolatszerkesztőben, ha tudod, miért változott.</string>
+
+    <string name="error_auth_rejected">SSH hitelesítés elutasítva. Ellenőrizd, hogy a kulcs benne van-e a bastion authorized_keys fájljában.</string>
+    <string name="error_bastion_unreachable">A bastion host nem válaszol.</string>
+    <string name="error_passphrase">Hibás passphrase.</string>
+    <string name="error_passphrase_backoff">Túl sok sikertelen kísérlet. Próbáld újra %1$d másodperc múlva.</string>
+    <string name="error_key_ppk">A PuTTY .ppk kulcs nem támogatott. Előbb konvertáld: puttygen key.ppk -O private-openssh-new -o key</string>
+    <string name="error_key_dsa">A DSA kulcsokat elutasítjuk, az algoritmus elavult. Használj Ed25519-et vagy legalább 2048 bites RSA-t.</string>
+    <string name="error_key_rsa_short">Ez az RSA kulcs %1$d bites. Legalább 2048 bit kell.</string>
+    <string name="error_key_unreadable">Ez nem tűnik támogatott formátumú privát kulcsnak.</string>
+    <string name="error_no_device_credential">A SQLPulse-nak képernyőzár (biometria vagy PIN) kell a kulcsok tárolásához. Állítsd be a rendszerbeállításokban, és indítsd újra az appot.</string>
+    <string name="error_details">Részletek</string>
+    <string name="retry">Újrapróbálás</string>
+    <string name="cancel">Mégse</string>
+
+    <string name="tunnel_notification_channel">SSH tunnel</string>
+    <string name="tunnel_notification_title">Tunnel aktív — %1$s</string>
+    <string name="tunnel_notification_body">127.0.0.1:%1$d → %2$s:%3$d</string>
+    <string name="tunnel_notification_stop">Bontás</string>
+    <string name="unlock_title">SSH kulcs feloldása</string>
+    <string name="unlock_subtitle">%1$s</string>
+    <string name="unlock_cancel">Mégse</string>
+    <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
+    <plurals name="key_in_use">
+        <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>
+        <item quantity="other">%d kapcsolat használja — előbb azokat töröld.</item>
+    </plurals>
+</resources>

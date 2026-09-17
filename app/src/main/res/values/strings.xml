@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SQLPulse</string>
+
+    <!-- Connections -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_empty_title">No connections yet</string>
+    <string name="connections_empty_body">A connection needs a bastion host and an SSH key. There is no direct MySQL mode.</string>
+    <string name="connections_empty_action">Create first connection</string>
+    <string name="connection_new">New connection</string>
+    <string name="connection_edit">Edit</string>
+    <string name="connection_duplicate">Duplicate</string>
+    <string name="connection_delete">Delete</string>
+    <string name="connection_test">Test connection</string>
+    <string name="connection_save">Save</string>
+    <string name="connection_name">Name</string>
+    <string name="connection_colour">Colour</string>
+    <string name="connection_production">Production database</string>
+    <string name="section_ssh">SSH</string>
+    <string name="section_mysql">MySQL</string>
+    <string name="bastion_host">Bastion host</string>
+    <string name="bastion_port">Port</string>
+    <string name="ssh_user">SSH user</string>
+    <string name="ssh_key">SSH key</string>
+    <string name="ssh_key_required">A key is required — password authentication is not supported.</string>
+    <string name="db_host">DB host (as seen from the bastion)</string>
+    <string name="db_port">Port</string>
+    <string name="db_name">Database</string>
+    <string name="db_user">MySQL user</string>
+    <string name="db_password">MySQL password</string>
+    <string name="db_read_only">Read-only</string>
+    <string name="last_used">Last used %1$s</string>
+    <string name="never_used">Never used</string>
+
+    <!-- Tunnel states -->
+    <string name="state_disconnected">Disconnected</string>
+    <string name="state_unlocking">Unlocking</string>
+    <string name="state_connecting">Connecting</string>
+    <string name="state_active">Active</string>
+    <string name="state_paused">Paused</string>
+    <string name="state_error">Error</string>
+    <string name="step_key">Key</string>
+    <string name="step_ssh">SSH</string>
+    <string name="step_mysql">MySQL</string>
+    <string name="step_schema">Schema</string>
+
+    <!-- Key store -->
+    <string name="keys_title">Key store</string>
+    <string name="keys_empty_title">No keys stored</string>
+    <string name="keys_empty_body">Import an OpenSSH private key, or generate an Ed25519 pair on this device.</string>
+    <string name="keys_empty_action">Import key</string>
+    <string name="key_import_file">Import from file</string>
+    <string name="key_import_paste">Paste key</string>
+    <string name="key_generate">Generate on device</string>
+    <string name="key_name">Key name</string>
+    <string name="key_passphrase">Passphrase</string>
+    <string name="key_fingerprint">Fingerprint</string>
+    <string name="key_public_copy">Copy public key</string>
+    <string name="key_delete">Delete key</string>
+    <string name="key_clipboard_cleared">Key pasted, clipboard cleared.</string>
+    <string name="key_add_to_authorized_keys">Add this public key to the bastion\'s authorized_keys file.</string>
+
+    <!-- Host key -->
+    <string name="host_key_new_title">Unknown host key</string>
+    <string name="host_key_new_body">First connection to %1$s. Verify the fingerprint through a trusted channel before accepting it.</string>
+    <string name="host_key_accept">Accept and save</string>
+    <string name="host_key_reject">Cancel</string>
+    <string name="host_key_changed_title">Host key changed — connection blocked</string>
+    <string name="host_key_changed_body">Stored: %1$s\nOffered: %2$s\n\nThis can mean the bastion was rebuilt, or that the connection is being intercepted. Unblock it in the connection editor only if you know why it changed.</string>
+
+    <!-- Errors -->
+    <string name="error_auth_rejected">SSH authentication rejected. Check that the key is present in the bastion\'s authorized_keys file.</string>
+    <string name="error_bastion_unreachable">The bastion host is not responding.</string>
+    <string name="error_passphrase">Wrong passphrase.</string>
+    <string name="error_passphrase_backoff">Too many attempts. Try again in %1$d seconds.</string>
+    <string name="error_key_ppk">PuTTY .ppk keys are not supported. Convert it first: puttygen key.ppk -O private-openssh-new -o key</string>
+    <string name="error_key_dsa">DSA keys are rejected — the algorithm is obsolete. Use Ed25519 or RSA of at least 2048 bits.</string>
+    <string name="error_key_rsa_short">This RSA key is %1$d bits. At least 2048 bits are required.</string>
+    <string name="error_key_unreadable">This does not look like a private key in a supported format.</string>
+    <string name="error_no_device_credential">SQLPulse needs a screen lock (biometrics or PIN) to store keys. Set one up in system settings and start the app again.</string>
+    <string name="error_details">Details</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Tunnel service / biometrics -->
+    <string name="tunnel_notification_channel">SSH tunnel</string>
+    <string name="tunnel_notification_title">Tunnel active — %1$s</string>
+    <string name="tunnel_notification_body">127.0.0.1:%1$d → %2$s:%3$d</string>
+    <string name="tunnel_notification_stop">Disconnect</string>
+    <string name="unlock_title">Unlock SSH key</string>
+    <string name="unlock_subtitle">%1$s</string>
+    <string name="unlock_cancel">Cancel</string>
+    <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
+    <plurals name="key_in_use">
+        <item quantity="one">Used by one connection — delete that first.</item>
+        <item quantity="other">Used by %d connections — delete those first.</item>
+    </plurals>
+</resources>

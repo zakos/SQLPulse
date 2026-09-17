@@ -1,0 +1,144 @@
+package hu.laurel.sqlpulse.data.db
+
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+/**
+ * The local data model of §9. Every table lives inside the SQLCipher database; the columns marked
+ * "sealed" hold keystore-wrapped ciphertext on top of that.
+ */
+
+/**
+ * How the decrypted private key bytes should be interpreted once unwrapped.
+ *
+ * Imported keys are canonicalised at import time: whatever container they arrived in, and whatever
+ * passphrase protected that container, what gets sealed is the bare key. The keystore is the only
+ * thing guarding it afterwards, so a passphrase is asked for exactly once — at import.
+ */
+enum class KeyMaterialFormat {
+    /** Raw 32-byte Ed25519 seed. */
+    ED25519_SEED,
+
+    /** PKCS#8 DER encoding of an RSA or EC private key. */
+    PKCS8_DER,
+}
+
+enum class SshKeyAlgorithm { ED25519, ECDSA, RSA }
+
+@Entity(tableName = "ssh_key")
+data class SshKeyEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val algorithm: SshKeyAlgorithm,
+    /** Bit length for RSA, curve size for ECDSA, 256 for Ed25519. */
+    val bits: Int,
+    /** SHA256:... form, as printed by ssh-keygen -l. */
+    val fingerprint: String,
+    val materialFormat: KeyMaterialFormat,
+    /** Sealed by the keystore user key: opening it requires biometrics or device PIN. */
+    val sealedPrivateKey: ByteArray,
+    /** Public key in authorized_keys form. Not secret. */
+    val publicKey: String,
+    val createdAt: Long,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is SshKeyEntity && other.id == id && other.fingerprint == fingerprint
+
+    override fun hashCode(): Int = 31 * id.hashCode() + fingerprint.hashCode()
+}
+
+@Entity(
+    tableName = "connection",
+    foreignKeys = [
+        ForeignKey(
+            entity = SshKeyEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sshKeyId"],
+            onDelete = ForeignKey.RESTRICT,
+        ),
+    ],
+    indices = [Index("sshKeyId")],
+)
+data class ConnectionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** Name of a ui.theme.ConnectionColor entry. */
+    val color: String,
+    val bastionHost: String,
+    val bastionPort: Int = 22,
+    val sshUser: String,
+    /** Not nullable on purpose: no key, no connection (§5). */
+    val sshKeyId: Long,
+    val dbHost: String,
+    val dbPort: Int = 3306,
+    val database: String,
+    val dbUser: String,
+    val readOnly: Boolean = true,
+    val lastUsedAt: Long? = null,
+)
+
+@Entity(tableName = "db_credential")
+data class DbCredentialEntity(
+    @PrimaryKey val connectionId: Long,
+    /** Sealed by the keystore user key. */
+    val sealedPassword: ByteArray,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is DbCredentialEntity && other.connectionId == connectionId
+
+    override fun hashCode(): Int = connectionId.hashCode()
+}
+
+@Entity(tableName = "known_host", primaryKeys = ["host", "port"])
+data class KnownHostEntity(
+    val host: String,
+    val port: Int,
+    /** ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa, ... */
+    val keyType: String,
+    val fingerprint: String,
+    val acceptedAt: Long,
+)
+
+@Entity(
+    tableName = "query_history",
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class QueryHistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val connectionId: Long,
+    val sql: String,
+    val executedAt: Long,
+    val durationMs: Long,
+    val rowCount: Int,
+)
+
+@Entity(
+    tableName = "saved_query",
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class SavedQueryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val connectionId: Long,
+    val name: String,
+    val sql: String,
+    /** Comma-separated :parameter names picked out of the SQL. */
+    val parameters: String,
+)
