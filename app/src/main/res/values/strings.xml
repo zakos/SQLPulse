@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">SQLPulse</string>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="app_name" translatable="false">SQLPulse</string>
 
     <!-- Connections -->
     <string name="connections_title">Connections</string>
