@@ -55,7 +55,6 @@ data class QueryEditorUiState(
     val connectionName: String? = null,
     /** Set right after a USE, so the editor can say where it moved to. */
     val switchedTo: String? = null,
-    val database: String? = null,
     val shareIntent: Intent? = null,
 )
 
