@@ -78,7 +78,7 @@ fun StepIndicator(
     completed: Set<ConnectStep>,
     current: ConnectStep?,
     failed: ConnectStep?,
-    labels: (ConnectStep) -> String,
+    labels: @Composable (ConnectStep) -> String,
     modifier: Modifier = Modifier,
 ) {
     val semantic = LocalSemanticColors.current

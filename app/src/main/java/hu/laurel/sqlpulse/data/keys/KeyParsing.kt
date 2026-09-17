@@ -13,9 +13,8 @@ import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.userauth.keyprovider.FileKeyProvider
 import net.schmizz.sshj.userauth.keyprovider.KeyFormat
 import net.schmizz.sshj.userauth.keyprovider.KeyProviderUtil
+import com.hierynomus.sshj.userauth.keyprovider.OpenSSHKeyV1KeyFile
 import net.schmizz.sshj.userauth.keyprovider.OpenSSHKeyFile
-import net.schmizz.sshj.userauth.keyprovider.OpenSSHKeyV1KeyFile
-import net.schmizz.sshj.userauth.keyprovider.PKCS5KeyFile
 import net.schmizz.sshj.userauth.keyprovider.PKCS8KeyFile
 import net.schmizz.sshj.userauth.password.PasswordFinder
 import net.schmizz.sshj.userauth.password.Resource
@@ -202,8 +201,9 @@ object SshKeyParser {
         val provider: FileKeyProvider = when (format) {
             KeyFormat.OpenSSHv1 -> OpenSSHKeyV1KeyFile()
             KeyFormat.OpenSSH -> OpenSSHKeyFile()
+            // Legacy PEM ("BEGIN RSA PRIVATE KEY") lands here too: PKCS8KeyFile reads it through
+            // Bouncy Castle's PEM parser, and sshj has no separate PKCS#5 format any more.
             KeyFormat.PKCS8 -> PKCS8KeyFile()
-            KeyFormat.PKCS5 -> PKCS5KeyFile()
             KeyFormat.PuTTY -> throw KeyRejectedException(KeyRejection.PuttyFormat)
             else -> throw KeyRejectedException(KeyRejection.Unreadable(null))
         }

@@ -102,9 +102,9 @@ data class ResultTable(
             Types.FLOAT, Types.REAL, Types.DOUBLE, Types.NUMERIC, Types.DECIMAL,
             -> CellType.NUMBER
 
-            Types.DATE, Types.TIME, Types.TIMESTAMP,
-            Types.TIME_WITH_TIMEZONE, Types.TIMESTAMP_WITH_TIMEZONE,
-            -> CellType.DATE
+            // Android's java.sql.Types stops at JDBC 4.1, so the two zoned constants are
+            // spelled out: 2013 is TIME_WITH_TIMEZONE and 2014 is TIMESTAMP_WITH_TIMEZONE.
+            Types.DATE, Types.TIME, Types.TIMESTAMP, 2013, 2014 -> CellType.DATE
 
             Types.BIT, Types.BOOLEAN -> CellType.BOOLEAN
 

@@ -11,6 +11,7 @@ import net.schmizz.sshj.AndroidConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.connection.channel.direct.LocalPortForwarder
+import net.schmizz.sshj.connection.channel.direct.Parameters
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
 
 /** Everything the tunnel needs; deliberately free of persistence types. */
@@ -70,7 +71,7 @@ class SshTunnel(
         serverSocket = socket
         localPort = socket.localPort
 
-        val parameters = LocalPortForwarder.Parameters(
+        val parameters = Parameters(
             LOOPBACK,
             localPort,
             config.dbHost,
