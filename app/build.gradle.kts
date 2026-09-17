@@ -103,6 +103,13 @@ dependencies {
         // Android ships its own (stripped) Bouncy Castle; we pull a full one explicitly.
         exclude(group = "org.bouncycastle")
     }
+    // Smaller and more permissively licensed than MySQL Connector/J (§4).
+    implementation(libs.mariadb.client) {
+        // Pulls in a JDK-only waffle/JNA stack for Windows auth that Android has no use for.
+        exclude(group = "com.github.waffle")
+        exclude(group = "net.java.dev.jna")
+        exclude(group = "org.slf4j")
+    }
     implementation(libs.bouncycastle.prov)
     implementation(libs.bouncycastle.pkix)
     implementation(libs.eddsa)

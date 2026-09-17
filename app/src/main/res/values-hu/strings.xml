@@ -82,6 +82,33 @@
     <string name="unlock_title">SSH kulcs feloldása</string>
     <string name="unlock_subtitle">%1$s</string>
     <string name="unlock_cancel">Mégse</string>
+    <!-- Séma-böngésző -->
+    <string name="schema_title">Séma</string>
+    <string name="schema_search">Tábla keresése</string>
+    <string name="schema_view">nézet</string>
+    <string name="schema_rows_approx">~%1$d sor</string>
+    <string name="schema_no_tables_title">Nincs megjeleníthető tábla</string>
+    <string name="schema_no_tables_body">Ebben az adatbázisban egy tábla sem felel meg a szűrőnek.</string>
+    <string name="schema_clear_filter">Szűrő törlése</string>
+    <string name="schema_no_session_title">Nincs élő kapcsolat</string>
+    <string name="schema_no_session_body">Nyiss meg egy kapcsolatot a kezdőképernyőn; a séma csak élő tunnelen olvasható.</string>
+    <string name="refresh">Frissítés</string>
+    <string name="connection_disconnect">Bontás</string>
+
+    <!-- Tábla lap -->
+    <string name="tab_data">Adatok</string>
+    <string name="tab_structure">Szerkezet</string>
+    <string name="tab_ddl">DDL</string>
+    <string name="structure_indexes">Indexek</string>
+    <string name="structure_foreign_keys">Idegen kulcsok</string>
+    <string name="structure_primary_key">PK</string>
+    <string name="structure_no_primary_key">Ennek a táblának nincs elsődleges kulcsa, ezért a sorok nem szerkeszthetők.</string>
+    <string name="ddl_copy">DDL másolása</string>
+
+    <!-- Eredményrács -->
+    <string name="grid_limit_added">Automatikusan hozzáadott LIMIT 500.</string>
+    <string name="grid_truncated">Az első %1$d sor látszik.</string>
+
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>

@@ -12,6 +12,13 @@
 # EdDSA provider.
 -keep class net.i2p.crypto.eddsa.** { *; }
 
+# MariaDB Connector/J loads its driver and plugins by service lookup.
+-keep class org.mariadb.jdbc.** { *; }
+-keepnames class org.mariadb.jdbc.Driver
+-dontwarn org.mariadb.jdbc.**
+-dontwarn com.github.waffle.**
+-dontwarn javax.naming.**
+
 # SQLCipher native bindings.
 -keep class net.zetetic.database.** { *; }
 

@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
+import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import java.util.concurrent.TimeUnit
@@ -25,6 +26,13 @@ class SqlPulseApplication : Application() {
 
     @Inject
     lateinit var queryHistory: QueryHistoryDao
+
+    /**
+     * Injected so it exists from process start: it watches the tunnel and opens the JDBC session
+     * the moment the tunnel is up, while the unlock that built the tunnel is still valid.
+     */
+    @Inject
+    lateinit var sqlSessions: SqlSessionManager
 
     @Inject
     @ApplicationScope

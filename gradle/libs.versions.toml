@@ -15,6 +15,7 @@ sqlite = "2.4.0"
 biometric = "1.2.0-alpha05"
 datastore = "1.1.1"
 sshj = "0.38.0"
+mariadb = "3.4.1"
 bouncycastle = "1.78.1"
 eddsa = "0.3.0"
 slf4j = "2.0.16"
@@ -50,6 +51,7 @@ hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigation" }
 sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
+mariadb-client = { group = "org.mariadb.jdbc", name = "mariadb-java-client", version.ref = "mariadb" }
 bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 bouncycastle-pkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", version.ref = "bouncycastle" }
 eddsa = { group = "net.i2p.crypto", name = "eddsa", version.ref = "eddsa" }

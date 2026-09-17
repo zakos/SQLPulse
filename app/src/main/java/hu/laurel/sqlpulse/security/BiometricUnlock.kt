@@ -75,20 +75,31 @@ class BiometricUnlock @Inject constructor(
         BiometricManager.from(context).canAuthenticate(authenticators) ==
             BiometricManager.BIOMETRIC_SUCCESS
 
+    /**
+     * Authentication without a cipher, for keys that authorise on a time window rather than per
+     * use. Succeeding here refreshes the device-wide authentication timestamp those keys check.
+     */
+    suspend fun authenticateUser(title: String, subtitle: String) {
+        prompt(title, subtitle, crypto = null)
+    }
+
     suspend fun authenticate(cipher: Cipher, title: String, subtitle: String): Cipher =
+        requireNotNull(prompt(title, subtitle, cipher)) { "prompt returned no cipher" }
+
+    private suspend fun prompt(title: String, subtitle: String, crypto: Cipher?): Cipher? =
         withContext(Dispatchers.Main) {
             val activity = activityHolder.current()
                 ?: throw UnlockCancelledException()
             if (!canAuthenticate()) throw NoDeviceCredentialException()
 
-            suspendCancellableCoroutine { continuation ->
+            suspendCancellableCoroutine<Cipher?> { continuation ->
                 val prompt = BiometricPrompt(
                     activity,
                     ContextCompat.getMainExecutor(context),
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                             val authenticated = result.cryptoObject?.cipher
-                            if (authenticated == null) {
+                            if (crypto != null && authenticated == null) {
                                 continuation.resumeWithException(
                                     UnlockFailedException(-1, "prompt returned no cipher"),
                                 )
@@ -132,7 +143,11 @@ class BiometricUnlock @Inject constructor(
                     .build()
 
                 continuation.invokeOnCancellation { prompt.cancelAuthentication() }
-                prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+                if (crypto == null) {
+                    prompt.authenticate(info)
+                } else {
+                    prompt.authenticate(info, BiometricPrompt.CryptoObject(crypto))
+                }
             }
         }
 }

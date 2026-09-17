@@ -90,6 +90,33 @@
     <string name="unlock_title">Unlock SSH key</string>
     <string name="unlock_subtitle">%1$s</string>
     <string name="unlock_cancel">Cancel</string>
+    <!-- Schema browser -->
+    <string name="schema_title">Schema</string>
+    <string name="schema_search">Search tables</string>
+    <string name="schema_view">view</string>
+    <string name="schema_rows_approx">~%1$d rows</string>
+    <string name="schema_no_tables_title">Nothing to show</string>
+    <string name="schema_no_tables_body">No table in this database matches the filter.</string>
+    <string name="schema_clear_filter">Clear filter</string>
+    <string name="schema_no_session_title">No live connection</string>
+    <string name="schema_no_session_body">Open a connection on the start screen; the schema is only readable over a live tunnel.</string>
+    <string name="refresh">Refresh</string>
+    <string name="connection_disconnect">Disconnect</string>
+
+    <!-- Table page -->
+    <string name="tab_data">Data</string>
+    <string name="tab_structure">Structure</string>
+    <string name="tab_ddl">DDL</string>
+    <string name="structure_indexes">Indexes</string>
+    <string name="structure_foreign_keys">Foreign keys</string>
+    <string name="structure_primary_key">PK</string>
+    <string name="structure_no_primary_key">This table has no primary key, so rows cannot be edited.</string>
+    <string name="ddl_copy">Copy DDL</string>
+
+    <!-- Result grid -->
+    <string name="grid_limit_added">LIMIT 500 added automatically.</string>
+    <string name="grid_truncated">First %1$d rows shown.</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

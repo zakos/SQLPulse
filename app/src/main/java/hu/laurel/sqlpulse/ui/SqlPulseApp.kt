@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -9,13 +10,20 @@ import androidx.navigation.navArgument
 import hu.laurel.sqlpulse.ui.connections.ConnectionEditorScreen
 import hu.laurel.sqlpulse.ui.connections.ConnectionListScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
+import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
+import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
 
 object Routes {
     const val CONNECTIONS = "connections"
     const val KEYS = "keys"
     const val EDITOR = "editor/{connectionId}"
+    const val SCHEMA = "schema"
+    const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
+
+    fun table(database: String, table: String) =
+        "table/${Uri.encode(database)}/${Uri.encode(table)}"
 }
 
 @Composable
@@ -28,6 +36,7 @@ fun SqlPulseApp() {
                 onCreate = { navController.navigate(Routes.editor(0)) },
                 onEdit = { id -> navController.navigate(Routes.editor(id)) },
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
+                onOpenSchema = { navController.navigate(Routes.SCHEMA) },
             )
         }
 
@@ -43,6 +52,30 @@ fun SqlPulseApp() {
 
         composable(Routes.KEYS) {
             KeyStoreScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.SCHEMA) {
+            SchemaBrowserScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTable = { database, table ->
+                    navController.navigate(Routes.table(database, table))
+                },
+            )
+        }
+
+        composable(
+            route = Routes.TABLE,
+            arguments = listOf(
+                navArgument("database") { type = NavType.StringType },
+                navArgument("table") { type = NavType.StringType },
+            ),
+        ) {
+            TableDetailScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTable = { database, table ->
+                    navController.navigate(Routes.table(database, table))
+                },
+            )
         }
     }
 }

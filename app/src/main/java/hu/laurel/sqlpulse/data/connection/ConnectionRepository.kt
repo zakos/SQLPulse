@@ -5,6 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.crypto.Sealed
+import hu.laurel.sqlpulse.data.crypto.isAuthenticationRequired
 import hu.laurel.sqlpulse.data.crypto.wipe
 import hu.laurel.sqlpulse.data.db.ConnectionDao
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
@@ -20,8 +21,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 /**
- * Connection profiles (§9). The MySQL password is the only secret here and is sealed by the
- * keystore user key, exactly like private keys — saving or reading one raises a prompt.
+ * Connection profiles (§9). The MySQL password is the only secret here; it is sealed by the
+ * keystore password key, which authorises on a short window so that opening a connection does not
+ * ask for biometrics a second time right after the key unlock.
  */
 @Singleton
 class ConnectionRepository @Inject constructor(
@@ -78,17 +80,25 @@ class ConnectionRepository @Inject constructor(
     suspend fun hasPassword(connectionId: Long): Boolean =
         withContext(io) { credentials.byConnection(connectionId) != null }
 
-    /** Unwraps the MySQL password for one connection attempt; raises the unlock prompt. */
+    /**
+     * Unwraps the MySQL password for one connection attempt.
+     *
+     * The password key authorises on a short window, so right after the key unlock this needs no
+     * prompt of its own; if the window has passed the keystore says so and we ask once.
+     */
     suspend fun password(connectionId: Long, connectionName: String): CharArray? {
         val stored = withContext(io) { credentials.byConnection(connectionId) } ?: return null
         val sealed = Sealed.decode(stored.sealedPassword)
-        val cipher = crypto.decryptCipher(KeystoreCrypto.USER_KEY_ALIAS, sealed.iv)
-        val authenticated = unlock.authenticate(
-            cipher = cipher,
-            title = context.getString(R.string.unlock_title),
-            subtitle = context.getString(R.string.unlock_subtitle, connectionName),
-        )
-        val bytes = withContext(io) { crypto.open(authenticated, sealed) }
+        val bytes = try {
+            open(sealed)
+        } catch (e: Exception) {
+            if (!e.isAuthenticationRequired()) throw e
+            unlock.authenticateUser(
+                title = context.getString(R.string.unlock_title),
+                subtitle = context.getString(R.string.unlock_subtitle, connectionName),
+            )
+            open(sealed)
+        }
         return try {
             String(bytes, Charsets.UTF_8).toCharArray()
         } finally {
@@ -96,20 +106,28 @@ class ConnectionRepository @Inject constructor(
         }
     }
 
+    private suspend fun open(sealed: Sealed): ByteArray = withContext(io) {
+        crypto.open(crypto.decryptCipher(KeystoreCrypto.PASSWORD_KEY_ALIAS, sealed.iv), sealed)
+    }
+
     private suspend fun storePassword(connectionId: Long, password: CharArray) {
         if (password.isEmpty()) {
             withContext(io) { credentials.delete(connectionId) }
             return
         }
-        val cipher = crypto.encryptCipher(KeystoreCrypto.USER_KEY_ALIAS)
-        val authenticated = unlock.authenticate(
-            cipher = cipher,
-            title = context.getString(R.string.unlock_title),
-            subtitle = context.getString(R.string.db_password),
-        )
         val bytes = String(password).toByteArray(Charsets.UTF_8)
         try {
-            val sealed = withContext(io) { crypto.seal(authenticated, bytes) }
+            val sealed = withContext(io) { seal(bytes) }
+            withContext(io) {
+                credentials.upsert(DbCredentialEntity(connectionId, sealed.encode()))
+            }
+        } catch (e: Exception) {
+            if (!e.isAuthenticationRequired()) throw e
+            unlock.authenticateUser(
+                title = context.getString(R.string.unlock_title),
+                subtitle = context.getString(R.string.db_password),
+            )
+            val sealed = withContext(io) { seal(bytes) }
             withContext(io) {
                 credentials.upsert(DbCredentialEntity(connectionId, sealed.encode()))
             }
@@ -118,4 +136,7 @@ class ConnectionRepository @Inject constructor(
             password.wipe()
         }
     }
+
+    private fun seal(bytes: ByteArray): Sealed =
+        crypto.seal(crypto.encryptCipher(KeystoreCrypto.PASSWORD_KEY_ALIAS), bytes)
 }

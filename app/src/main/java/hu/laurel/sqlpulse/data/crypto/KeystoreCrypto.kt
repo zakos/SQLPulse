@@ -16,13 +16,17 @@ import javax.inject.Singleton
 /**
  * All persistent secrets are wrapped by a hardware-backed, non-exportable AES-256-GCM key (§6).
  *
- * Two aliases, on purpose:
+ * Three aliases, on purpose:
  *  - [DEVICE_KEY_ALIAS] wraps the SQLCipher passphrase. It is device-bound but not
  *    user-authentication-bound, otherwise the database could not be opened before the user
  *    unlocks — and the local database holds no usable key material on its own.
- *  - [USER_KEY_ALIAS] wraps SSH private keys and MySQL passwords. Every single use requires a
- *    fresh biometric or device-credential authentication, so a [Cipher] created from it must be
- *    passed through a BiometricPrompt CryptoObject before it will do any work.
+ *  - [USER_KEY_ALIAS] wraps SSH private keys. Every single use requires a fresh biometric or
+ *    device-credential authentication, so a [Cipher] created from it must be passed through a
+ *    BiometricPrompt CryptoObject before it will do any work.
+ *  - [PASSWORD_KEY_ALIAS] wraps MySQL passwords on a short authentication window, so building a
+ *    tunnel prompts once rather than twice. The trade-off is deliberate and narrow: the key is the
+ *    secret worth binding per use, the database password is reachable for half a minute after the
+ *    user has already proved themselves.
  */
 @Singleton
 class KeystoreCrypto @Inject constructor() {
@@ -32,11 +36,12 @@ class KeystoreCrypto @Inject constructor() {
     fun ensureKeys() {
         ensureKey(DEVICE_KEY_ALIAS, userAuthRequired = false)
         ensureKey(USER_KEY_ALIAS, userAuthRequired = true)
+        ensureKey(PASSWORD_KEY_ALIAS, userAuthRequired = true)
     }
 
-    /** @return a cipher that must be authenticated before use when [alias] is the user key. */
+    /** @return a cipher that must be authenticated before use when [alias] needs the user. */
     fun encryptCipher(alias: String): Cipher {
-        ensureKey(alias, userAuthRequired = alias == USER_KEY_ALIAS)
+        ensureKey(alias, userAuthRequired = alias != DEVICE_KEY_ALIAS)
         return Cipher.getInstance(TRANSFORMATION)
             .apply { init(Cipher.ENCRYPT_MODE, secretKey(alias)) }
     }
@@ -64,8 +69,10 @@ class KeystoreCrypto @Inject constructor() {
      * lock removed), because nothing sealed with it can be recovered at that point.
      */
     fun resetUserKey() {
-        if (keyStore.containsAlias(USER_KEY_ALIAS)) keyStore.deleteEntry(USER_KEY_ALIAS)
-        ensureKey(USER_KEY_ALIAS, userAuthRequired = true)
+        listOf(USER_KEY_ALIAS, PASSWORD_KEY_ALIAS).forEach { alias ->
+            if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
+            ensureKey(alias, userAuthRequired = true)
+        }
     }
 
     private fun secretKey(alias: String): SecretKey =
@@ -85,15 +92,17 @@ class KeystoreCrypto @Inject constructor() {
 
         if (userAuthRequired) {
             builder.setUserAuthenticationRequired(true)
+            val validitySeconds = if (alias == PASSWORD_KEY_ALIAS) AUTH_WINDOW_SECONDS else 0
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Validity 0 seconds: authenticate per use, via a CryptoObject.
                 builder.setUserAuthenticationParameters(
-                    0,
+                    validitySeconds,
                     KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
                 )
             } else {
                 @Suppress("DEPRECATION")
-                builder.setUserAuthenticationValidityDurationSeconds(-1)
+                builder.setUserAuthenticationValidityDurationSeconds(
+                    if (validitySeconds == 0) -1 else validitySeconds,
+                )
             }
             builder.setInvalidatedByBiometricEnrollment(true)
         }
@@ -107,6 +116,14 @@ class KeystoreCrypto @Inject constructor() {
         const val PROVIDER = "AndroidKeyStore"
         const val DEVICE_KEY_ALIAS = "sqlpulse_device_key"
         const val USER_KEY_ALIAS = "sqlpulse_user_key"
+
+        /**
+         * MySQL passwords. Unlike private keys this one authenticates on a short time window
+         * rather than per use, so opening a tunnel does not ask for biometrics twice in a row:
+         * the prompt that unwrapped the private key also covers the password that follows it.
+         */
+        const val PASSWORD_KEY_ALIAS = "sqlpulse_password_key"
+        private const val AUTH_WINDOW_SECONDS = 30
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
     }

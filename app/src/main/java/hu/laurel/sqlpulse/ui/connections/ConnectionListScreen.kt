@@ -63,6 +63,7 @@ fun ConnectionListScreen(
     onCreate: () -> Unit,
     onEdit: (Long) -> Unit,
     onOpenKeyStore: () -> Unit,
+    onOpenSchema: () -> Unit,
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,14 +107,19 @@ fun ConnectionListScreen(
                             connection = connection,
                             tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
                             onClick = {
+                                // An already open connection goes straight to the schema;
+                                // disconnecting lives in the long-press menu and the notification.
                                 if (state.tunnel.connectionId == connection.id &&
                                     state.tunnel is TunnelState.Active
                                 ) {
-                                    viewModel.disconnect()
+                                    onOpenSchema()
                                 } else {
                                     viewModel.connect(connection)
                                 }
                             },
+                            connected = state.tunnel.connectionId == connection.id &&
+                                state.tunnel is TunnelState.Active,
+                            onDisconnect = viewModel::disconnect,
                             onEdit = { onEdit(connection.id) },
                             onDuplicate = { viewModel.duplicate(connection) },
                             onDelete = { viewModel.delete(connection) },
@@ -139,6 +145,8 @@ private fun ConnectionCard(
     connection: ConnectionEntity,
     tunnel: TunnelState?,
     onClick: () -> Unit,
+    connected: Boolean,
+    onDisconnect: () -> Unit,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
@@ -206,6 +214,12 @@ private fun ConnectionCard(
 
             Box {
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (connected) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.connection_disconnect)) },
+                            onClick = { menuOpen = false; onDisconnect() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.connection_edit)) },
                         onClick = { menuOpen = false; onEdit() },
