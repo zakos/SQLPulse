@@ -99,13 +99,23 @@ class SchemaRepository @Inject constructor(
         }
     }
 
-    /** First page of rows for the Data tab (§7.3). */
-    suspend fun preview(database: String, table: String, limit: Int = PREVIEW_ROWS): ResultTable =
+    /**
+     * A page of rows for the Data tab (§7.3), loaded as the grid scrolls (§7.5).
+     *
+     * [limit] and [offset] are integers we control, never user input, so interpolating them is
+     * safe; the identifiers are quoted because they cannot be bound.
+     */
+    suspend fun preview(
+        database: String,
+        table: String,
+        limit: Int = PREVIEW_ROWS,
+        offset: Int = 0,
+    ): ResultTable =
         sessions.withConnection { connection ->
             connection.createStatement().use { statement ->
                 statement.fetchSize = limit
-                val sql =
-                    "SELECT * FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)} LIMIT $limit"
+                val sql = "SELECT * FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)} " +
+                    "LIMIT $limit OFFSET $offset"
                 val started = System.currentTimeMillis()
                 statement.executeQuery(sql).use { rows ->
                     ResultTable.from(rows, limit)
@@ -199,6 +209,14 @@ class SchemaRepository @Inject constructor(
     private inline fun <T> ResultSet.collect(mapper: (ResultSet) -> T): List<T> = use { rows ->
         buildList {
             while (rows.next()) add(mapper(rows))
+        }
+    }
+
+    /** Exact count for the "loaded of total" line; only asked for when the user scrolls (§7.5). */
+    suspend fun rowCount(database: String, table: String): Long = sessions.withConnection { connection ->
+        connection.createStatement().use { statement ->
+            val sql = "SELECT COUNT(*) FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)}"
+            statement.executeQuery(sql).use { rows -> if (rows.next()) rows.getLong(1) else 0L }
         }
     }
 

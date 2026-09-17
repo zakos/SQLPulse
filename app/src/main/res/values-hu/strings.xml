@@ -49,7 +49,6 @@
     <string name="key_generate">Generálás az eszközön</string>
     <string name="key_name">Kulcs neve</string>
     <string name="key_passphrase">Passphrase</string>
-    <string name="key_fingerprint">Fingerprint</string>
     <string name="key_public_copy">Publikus kulcs másolása</string>
     <string name="key_delete">Kulcs törlése</string>
     <string name="key_clipboard_cleared">Kulcs beillesztve, a vágólap törölve.</string>
@@ -72,7 +71,6 @@
     <string name="error_key_unreadable">Ez nem tűnik támogatott formátumú privát kulcsnak.</string>
     <string name="error_no_device_credential">A SQLPulse-nak képernyőzár (biometria vagy PIN) kell a kulcsok tárolásához. Állítsd be a rendszerbeállításokban, és indítsd újra az appot.</string>
     <string name="error_details">Részletek</string>
-    <string name="retry">Újrapróbálás</string>
     <string name="cancel">Mégse</string>
 
     <string name="tunnel_notification_channel">SSH tunnel</string>
@@ -128,6 +126,39 @@
     <string name="query_no_session_title">Nincs élő kapcsolat</string>
     <string name="error_read_only">Ez a kapcsolat csak olvasható. Állítsd át a kapcsolatszerkesztőben, vagy használj írásjogú felhasználót.</string>
     <string name="error_unsupported_statement">Csak lekérdezések és sorszintű módosítások támogatottak, sémaváltoztatás nem.</string>
+
+    <!-- Rács, sorszerkesztés, export, beállítások, zárolás -->
+    <string name="grid_loading_more">További sorok betöltése…</string>
+    <string name="grid_loaded">%1$d sor betöltve.</string>
+    <string name="grid_loaded_of">%1$d / %2$d sor betöltve.</string>
+    <string name="cell_copy">Másolás</string>
+    <string name="cell_edit">Szerkesztés</string>
+    <string name="cell_set_null">Legyen NULL</string>
+    <string name="row_delete">Sor törlése</string>
+    <string name="confirm_update_title">Lefuttatod ezt a módosítást?</string>
+    <string name="confirm_delete_title">Törlöd ezt a sort?</string>
+    <string name="confirm_run">Futtatás</string>
+    <string name="confirm_type_table_name">Éles adatbázis. A megerősítéshez gépeld be a tábla nevét: %1$s</string>
+    <string name="edit_applied">A módosítás megtörtént.</string>
+    <string name="undo">Visszavonás</string>
+    <string name="export">Export</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_json">JSON</string>
+    <string name="settings_title">Beállítások</string>
+    <string name="settings_manage_keys">Kulcstár kezelése</string>
+    <string name="settings_default_limit">Alapértelmezett sorlimit</string>
+    <string name="settings_auto_lock">Automatikus zárolás</string>
+    <string name="settings_auto_lock_note">Zároláskor a tunnel bomlik, a betöltött eredmények törlődnek.</string>
+    <string name="settings_minutes">%1$d perc</string>
+    <string name="settings_theme">Téma</string>
+    <string name="settings_theme_system">Rendszer</string>
+    <string name="settings_theme_light">Világos</string>
+    <string name="settings_theme_dark">Sötét</string>
+    <string name="settings_grid_font">Betűméret a rácsban</string>
+    <string name="lock_title">A SQLPulse zárolva van</string>
+    <string name="lock_subtitle">Feloldás a folytatáshoz</string>
+    <string name="lock_body">Az app tétlenség miatt zárolta magát. A tunnel bomlott, a betöltött eredmények törlődtek.</string>
+    <string name="lock_unlock">Feloldás</string>
 
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">

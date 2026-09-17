@@ -3,6 +3,7 @@ package hu.laurel.sqlpulse.ui.keys
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -262,8 +263,9 @@ private fun ImportDialog(
                 onClick = {
                     val secret = passphrase.takeIf { it.isNotEmpty() }?.toCharArray()
                     onImport(name, secret)
-                    // §5, §6: the pasted key must not stay on the clipboard.
+                    // §5, §6: the pasted key must not stay on the clipboard, and the user is told.
                     context.clearClipboard()
+                    Toast.makeText(context, R.string.key_clipboard_cleared, Toast.LENGTH_SHORT).show()
                     passphrase = ""
                 },
             ) { Text(stringResource(R.string.keys_empty_action)) }

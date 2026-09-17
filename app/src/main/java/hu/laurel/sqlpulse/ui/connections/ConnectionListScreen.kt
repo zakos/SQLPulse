@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -66,6 +67,7 @@ fun ConnectionListScreen(
     onOpenKeyStore: () -> Unit,
     onOpenSchema: () -> Unit,
     onOpenQuery: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -82,6 +84,12 @@ fun ConnectionListScreen(
                     }
                     IconButton(onClick = onOpenKeyStore) {
                         Icon(Icons.Default.Key, contentDescription = stringResource(R.string.keys_title))
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                        )
                     }
                 },
             )

@@ -101,6 +101,10 @@ fun ConnectionEditorScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text(
+                    stringResource(R.string.connection_colour),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 ColorPicker(
                     selected = form.color,
                     onSelect = { value -> viewModel.update { it.copy(color = value) } },

@@ -19,19 +19,29 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,15 +49,24 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.schema.SchemaIndex
+import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.EditKind
+import hu.laurel.sqlpulse.ui.grid.CellEditDialog
+import hu.laurel.sqlpulse.ui.grid.CellSelection
+import hu.laurel.sqlpulse.ui.grid.CellSheet
+import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
+import hu.laurel.sqlpulse.ui.grid.RowDetailSheet
+import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
 
-/** Table page (§7.3): Data, Structure and DDL. */
+/** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TableDetailScreen(
@@ -58,8 +77,35 @@ fun TableDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val semantic = LocalSemanticColors.current
+    val snackbarHost = remember { SnackbarHostState() }
+
+    var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
+    var editingCell by remember { mutableStateOf<CellSelection?>(null) }
+    var detailRow by remember { mutableStateOf<Int?>(null) }
+    var exportMenuOpen by remember { mutableStateOf(false) }
+
+    // The share sheet is started once per export; the file lives in the cache until the next lock.
+    LaunchedEffect(state.shareIntent) {
+        state.shareIntent?.let { intent ->
+            context.startActivity(android.content.Intent.createChooser(intent, null))
+            viewModel.shareIntentHandled()
+        }
+    }
+
+    val undoLabel = stringResource(R.string.undo)
+    val undoMessage = stringResource(R.string.edit_applied)
+    LaunchedEffect(state.undoable) {
+        if (state.undoable == null) return@LaunchedEffect
+        val result = snackbarHost.showSnackbar(
+            message = undoMessage,
+            actionLabel = undoLabel,
+            duration = androidx.compose.material3.SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undo()
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
                 title = {
@@ -75,6 +121,34 @@ fun TableDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cancel))
+                    }
+                },
+                actions = {
+                    if (state.tab == TableTab.DATA && state.rows != null) {
+                        Box {
+                            IconButton(onClick = { exportMenuOpen = true }) {
+                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                            }
+                            DropdownMenu(
+                                expanded = exportMenuOpen,
+                                onDismissRequest = { exportMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_csv)) },
+                                    onClick = {
+                                        exportMenuOpen = false
+                                        viewModel.export(ExportFormat.CSV)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_json)) },
+                                    onClick = {
+                                        exportMenuOpen = false
+                                        viewModel.export(ExportFormat.JSON)
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -106,7 +180,7 @@ fun TableDetailScreen(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(Spacing.l),
+                    modifier = Modifier.clickable { viewModel.dismissError() }.padding(Spacing.l),
                 )
             }
 
@@ -117,7 +191,17 @@ fun TableDetailScreen(
             }
 
             when (state.tab) {
-                TableTab.DATA -> state.preview?.let { ResultGrid(it, modifier = Modifier.fillMaxSize()) }
+                TableTab.DATA -> state.rows?.let { rows ->
+                    ResultGrid(
+                        table = rows,
+                        modifier = Modifier.fillMaxSize(),
+                        onLoadMore = viewModel::loadMore,
+                        loadingMore = state.loadingMore,
+                        totalRows = state.totalRows,
+                        onCellClick = { selectedCell = it },
+                        onRowLongPress = { detailRow = it },
+                    )
+                }
 
                 TableTab.STRUCTURE -> state.structure?.let { structure ->
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -176,6 +260,72 @@ fun TableDetailScreen(
             }
         }
     }
+
+    selectedCell?.let { selection ->
+        CellSheet(
+            column = selection.column,
+            value = selection.value,
+            canEdit = state.canEdit,
+            editBlockedReason = state.editBlockedReason?.let {
+                stringResource(
+                    when (it) {
+                        EditBlock.READ_ONLY -> R.string.error_read_only
+                        EditBlock.NO_PRIMARY_KEY -> R.string.structure_no_primary_key
+                    },
+                )
+            },
+            onCopy = { context.copyToClipboard(it) },
+            onEdit = {
+                editingCell = selection
+                selectedCell = null
+            },
+            onDismiss = { selectedCell = null },
+        )
+    }
+
+    editingCell?.let { selection ->
+        CellEditDialog(
+            columnLabel = selection.column.label,
+            initialValue = if (selection.value is CellValue.Null) null else selection.value.asText(),
+            onConfirm = { newValue ->
+                viewModel.prepareCellEdit(selection.rowIndex, selection.column.label, newValue)
+                editingCell = null
+            },
+            onDismiss = { editingCell = null },
+        )
+    }
+
+    detailRow?.let { rowIndex ->
+        val rows = state.rows
+        if (rows != null) {
+            RowDetailSheet(
+                columns = rows.columns,
+                row = rows.rows.getOrElse(rowIndex) { emptyList() },
+                canDelete = state.canEdit,
+                onCopy = { context.copyToClipboard(it) },
+                onDelete = {
+                    viewModel.prepareRowDelete(rowIndex)
+                    detailRow = null
+                },
+                onDismiss = { detailRow = null },
+            )
+        }
+    }
+
+    state.pendingEdit?.let { edit ->
+        val destructive = edit.kind == EditKind.DELETE
+        ConfirmStatementDialog(
+            title = stringResource(
+                if (destructive) R.string.confirm_delete_title else R.string.confirm_update_title,
+            ),
+            statement = edit.preview,
+            destructive = destructive,
+            // §7.6: on a production connection, deleting means typing the table name.
+            requireTableName = state.table.takeIf { destructive && state.isProduction },
+            onConfirm = viewModel::confirmEdit,
+            onDismiss = viewModel::dismissEdit,
+        )
+    }
 }
 
 @Composable
@@ -225,8 +375,7 @@ private fun IndexRow(index: SchemaIndex) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
         Text(index.name, style = MonoStyles.cell)
         Text(
-            text = index.columns.joinToString(", ") +
-                if (index.unique) " · UNIQUE" else "",
+            text = index.columns.joinToString(", ") + if (index.unique) " · UNIQUE" else "",
             style = MaterialTheme.typography.bodySmall,
             color = semantic.textSecondary,
         )

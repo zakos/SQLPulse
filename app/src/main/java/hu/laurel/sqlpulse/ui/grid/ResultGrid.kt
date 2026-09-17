@@ -2,34 +2,46 @@ package hu.laurel.sqlpulse.ui.grid
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellType
@@ -41,27 +53,52 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
 
+/** What the grid hands back when the user picks a cell or a row. */
+data class CellSelection(val rowIndex: Int, val column: ColumnMeta, val value: CellValue)
+
 /**
- * Result grid (§7.5). Two-way scrolling with a header that stays put, monospace cells and muted
- * type colouring; no zebra striping, just a hairline between rows.
+ * Result grid (§7.5): scrolls both ways, with a header and a first column that stay put, column
+ * widths that can be dragged, and automatic loading as the list nears its end.
  *
- * Still to come in the grid's own phase (§12/6): a sticky first column, draggable column widths,
- * and paging as you scroll. Column widths here are derived from the content of the loaded page.
+ * Cells are monospace, numbers are right-aligned with tabular figures, NULL is faint italics and a
+ * BLOB shows a size rather than its contents.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ResultGrid(
     table: ResultTable,
     modifier: Modifier = Modifier,
+    /** Called when the list nears its end; null means there is nothing more to load. */
+    onLoadMore: (() -> Unit)? = null,
+    loadingMore: Boolean = false,
+    totalRows: Int? = null,
+    onCellClick: (CellSelection) -> Unit = {},
+    onRowLongPress: (Int) -> Unit = {},
 ) {
     val horizontal = rememberScrollState()
+    val listState = rememberLazyListState()
     val semantic = LocalSemanticColors.current
-    var selected by remember { mutableStateOf<Pair<ColumnMeta, CellValue>?>(null) }
+    val density = LocalDensity.current
 
-    val widths = remember(table) { columnWidths(table) }
+    // Widths start from the loaded page's content and are overridden once a user drags one.
+    val measured = remember(table.columns, table.rowCount) { columnWidths(table) }
+    val overrides = remember(table.columns) { mutableStateMapOf<Int, Dp>() }
+    fun widthOf(index: Int): Dp = overrides[index] ?: measured.getOrElse(index) { DEFAULT_WIDTH.dp }
+
+    if (onLoadMore != null) {
+        val nearEnd by remember {
+            derivedStateOf {
+                val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                last >= table.rowCount - LOAD_MORE_THRESHOLD
+            }
+        }
+        LaunchedEffect(listState, table.rowCount) {
+            snapshotFlow { nearEnd }.collect { if (it && !loadingMore) onLoadMore() }
+        }
+    }
 
     Column(modifier = modifier) {
         if (table.limitAdded) {
-            // §7.4: the added limit is stated quietly, not as a warning.
             Text(
                 text = stringResource(R.string.grid_limit_added),
                 style = MaterialTheme.typography.bodySmall,
@@ -70,72 +107,144 @@ fun ResultGrid(
             )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SqlPulseColors.DarkSurfaceRaised)
-                .horizontalScroll(horizontal)
-                .padding(vertical = Spacing.s),
-        ) {
-            table.columns.forEachIndexed { index, column ->
-                Text(
-                    text = column.label,
-                    style = MonoStyles.cell,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .width(widths[index])
-                        .padding(horizontal = Spacing.s),
-                )
-            }
-        }
+        HeaderRow(
+            table = table,
+            horizontal = horizontal,
+            widthOf = ::widthOf,
+            onResize = { index, deltaPx ->
+                val delta = with(density) { deltaPx.toDp() }
+                overrides[index] = (widthOf(index) + delta).coerceIn(MIN_WIDTH.dp, MAX_WIDTH.dp)
+            },
+        )
         HorizontalDivider(color = semantic.hairline)
 
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            itemsIndexed(table.rows) { _, row ->
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+            itemsIndexed(table.rows) { rowIndex, row ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(horizontal)
-                        // §8: the row is a 44dp target even though a cell is smaller.
-                        .heightIn(min = 44.dp)
-                        .padding(vertical = Spacing.xs),
+                        .heightIn(min = ROW_HEIGHT.dp)
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { onRowLongPress(rowIndex) },
+                        ),
                 ) {
-                    row.forEachIndexed { index, cell ->
-                        val column = table.columns.getOrNull(index) ?: return@forEachIndexed
-                        Cell(
+                    // The first column is outside the scrolling area, so it stays visible.
+                    table.columns.firstOrNull()?.let { column ->
+                        StickyCell(
                             column = column,
-                            value = cell,
-                            modifier = Modifier
-                                .width(widths[index])
-                                .clickable { selected = column to cell }
-                                .padding(horizontal = Spacing.s),
+                            value = row.firstOrNull() ?: CellValue.Null,
+                            width = widthOf(0),
+                            onClick = {
+                                onCellClick(CellSelection(rowIndex, column, row.first()))
+                            },
                         )
+                    }
+                    Row(modifier = Modifier.horizontalScroll(horizontal)) {
+                        row.drop(1).forEachIndexed { offset, cell ->
+                            val index = offset + 1
+                            val column = table.columns.getOrNull(index) ?: return@forEachIndexed
+                            Cell(
+                                column = column,
+                                value = cell,
+                                modifier = Modifier
+                                    .width(widthOf(index))
+                                    .clickable { onCellClick(CellSelection(rowIndex, column, cell)) }
+                                    .padding(horizontal = Spacing.s, vertical = Spacing.xs),
+                            )
+                        }
                     }
                 }
                 HorizontalDivider(color = semantic.hairline)
             }
 
-            if (table.truncated) {
-                item {
-                    Text(
-                        text = stringResource(R.string.grid_truncated, table.rowCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.textSecondary,
-                        modifier = Modifier.padding(Spacing.m),
-                    )
-                }
+            item {
+                Text(
+                    text = when {
+                        loadingMore -> stringResource(R.string.grid_loading_more)
+                        totalRows != null -> stringResource(R.string.grid_loaded_of, table.rowCount, totalRows)
+                        table.truncated -> stringResource(R.string.grid_truncated, table.rowCount)
+                        else -> stringResource(R.string.grid_loaded, table.rowCount)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                    modifier = Modifier.padding(Spacing.m),
+                )
             }
         }
-    }
-
-    selected?.let { (column, value) ->
-        CellDialog(column = column, value = value, onDismiss = { selected = null })
     }
 }
 
 @Composable
-private fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modifier) {
+private fun HeaderRow(
+    table: ResultTable,
+    horizontal: androidx.compose.foundation.ScrollState,
+    widthOf: (Int) -> Dp,
+    onResize: (Int, Float) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SqlPulseColors.DarkSurfaceRaised)
+            .height(HEADER_HEIGHT.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        table.columns.firstOrNull()?.let { column ->
+            HeaderCell(column.label, widthOf(0)) { onResize(0, it) }
+        }
+        Row(
+            modifier = Modifier.horizontalScroll(horizontal),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            table.columns.drop(1).forEachIndexed { offset, column ->
+                HeaderCell(column.label, widthOf(offset + 1)) { onResize(offset + 1, it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeaderCell(label: String, width: Dp, onResize: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = MonoStyles.cell,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .width(width)
+                .padding(horizontal = Spacing.s),
+        )
+        // The drag handle between two headers; 12dp wide so a thumb can find it.
+        Box(
+            modifier = Modifier
+                .width(RESIZE_HANDLE.dp)
+                .height(HEADER_HEIGHT.dp)
+                .background(LocalSemanticColors.current.hairline)
+                .pointerInput(label) {
+                    detectHorizontalDragGestures { _, dragAmount -> onResize(dragAmount) }
+                },
+        )
+    }
+}
+
+@Composable
+private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            // §8: a slight shadow on its right edge separates it while the rest scrolls.
+            .shadow(elevation = 2.dp, clip = false)
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s, vertical = Spacing.xs),
+    ) {
+        Cell(column = column, value = value)
+    }
+}
+
+@Composable
+internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modifier) {
     val text: String
     val color: Color
     var italic = false
@@ -186,34 +295,18 @@ private fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modi
     )
 }
 
-@Composable
-private fun CellDialog(column: ColumnMeta, value: CellValue, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("${column.label} · ${column.typeName}", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(
-                    text = when (value) {
-                        is CellValue.Null -> "NULL"
-                        is CellValue.Text -> value.value
-                        is CellValue.Number -> value.value
-                        is CellValue.Date -> value.value
-                        is CellValue.Bool -> value.value.toString()
-                        is CellValue.Blob -> formatBytes(value.sizeBytes)
-                    },
-                    style = MonoStyles.cell,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+/** The plain text of a cell, for the detail sheet and the clipboard. */
+fun CellValue.asText(): String = when (this) {
+    is CellValue.Null -> "NULL"
+    is CellValue.Text -> value
+    is CellValue.Number -> value
+    is CellValue.Date -> value
+    is CellValue.Bool -> if (value) "1" else "0"
+    is CellValue.Blob -> formatBytes(sizeBytes)
 }
 
 /** Width from the widest value in the loaded page, clamped so one long column cannot take over. */
-private fun columnWidths(table: ResultTable) = table.columns.mapIndexed { index, column ->
+private fun columnWidths(table: ResultTable): List<Dp> = table.columns.mapIndexed { index, column ->
     val widest = table.rows.asSequence()
         .mapNotNull { it.getOrNull(index) }
         .maxOfOrNull { displayLength(it) } ?: 0
@@ -230,7 +323,7 @@ private fun displayLength(value: CellValue): Int = when (value) {
     is CellValue.Blob -> 10
 }
 
-private fun formatBytes(size: Long): String = when {
+internal fun formatBytes(size: Long): String = when {
     size < 1024 -> "$size B"
     size < 1024 * 1024 -> "${size / 1024} KB"
     else -> "${size / (1024 * 1024)} MB"
@@ -241,3 +334,12 @@ private const val MAX_CHARS = 32
 
 /** Rough advance width of JetBrains Mono at 13sp. */
 private const val CHAR_WIDTH_DP = 8
+private const val DEFAULT_WIDTH = 120
+private const val MIN_WIDTH = 48
+private const val MAX_WIDTH = 480
+private const val RESIZE_HANDLE = 12
+private const val HEADER_HEIGHT = 40
+private const val ROW_HEIGHT = 44
+
+/** §7.5: the next page starts loading this many rows before the end. */
+private const val LOAD_MORE_THRESHOLD = 20

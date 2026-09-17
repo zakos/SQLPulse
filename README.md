@@ -9,7 +9,7 @@ section references in the code (`§5`, `§8`, …) point at it.
 
 ## What is implemented
 
-Phases 0–5 of the roadmap in §12, plus the part of phase 6 the results need:
+All phases of the roadmap in §12 (0–9), with the caveat about compilation below:
 
 | Area | State |
 | --- | --- |
@@ -23,15 +23,16 @@ Phases 0–5 of the roadmap in §12, plus the part of phase 6 the results need:
 | Connection list and editor, connection test | done |
 | JDBC over the tunnel (MariaDB Connector/J, pool of 3, read-only enforcement) | done |
 | Schema browser: databases, tables, columns, indexes, foreign keys, DDL | done |
-| Result grid: two-way scroll, sticky header, type colouring, BLOB sizes | partial |
 | Query editor: highlighting, key row, completion, history, favourites, :parameters | done |
-| Writes, export | not started (phases 7, 8) |
+| Result grid: sticky header and first column, draggable widths, scroll paging, row detail | done |
+| Row editing: primary key detection, generated SQL, confirmation, undo | done |
+| Export to CSV/JSON through the share sheet, settings, automatic lock | done |
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.
 
-Still missing from the grid, and due in its own phase (§12/6): a sticky first column, draggable
-column widths, and paging as you scroll.
+Not implemented, because §2 rules them out: DDL, bulk operations, user administration, offline
+sync, and anything that would reach MySQL without the tunnel.
 
 ## Layout
 
@@ -43,6 +44,8 @@ app/src/main/java/hu/laurel/sqlpulse/
   data/connection/ Connection profiles and MySQL credentials
   data/sql/        JDBC pool over the tunnel, statement guards, highlighter, execution
   data/query/      Query history and favourites
+  data/export/     CSV and JSON serialisation, share-sheet handoff
+  data/settings/   Preferences (row limit, auto-lock, theme, grid font)
   data/schema/     information_schema reads for the browser
   security/        BiometricPrompt around keystore ciphers
   ssh/             Tunnel state machine, host key pinning, port forward, foreground service
@@ -57,9 +60,9 @@ Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSd
 > network access to `dl.google.com`, so the Android build has never run. Expect to fix dependency
 > versions and small API mismatches on the first real build.
 >
-> The parts that do not depend on Android — `SqlGuards`, `SqlHighlighter`, `ResultTable`,
-> `Sealed` — were compiled with a standalone Kotlin compiler and their 41 unit tests pass.
-> `ConnectionFormTest` needs the Android toolchain and has not run.
+> The parts that do not depend on Android — `SqlGuards`, `SqlHighlighter`, `RowSqlBuilder`,
+> `ResultSerializer`, `ResultTable`, `Sealed` — were compiled with a standalone Kotlin compiler
+> and their 59 unit tests pass. `ConnectionFormTest` needs the Android toolchain and has not run.
 
 ## Security notes
 
@@ -74,3 +77,8 @@ Standard Android build: `./gradlew assembleDebug` with an Android SDK (compileSd
 - Named `:parameters` are rewritten into JDBC placeholders and bound, never pasted into the SQL.
 - MySQL passwords use a separate keystore key with a 30-second authentication window, so opening
   a connection prompts once rather than twice. Private keys stay bound per use.
+- Row edits run in a transaction and roll back unless exactly one row changed; the confirmation
+  shows the statement with its WHERE clause and cannot be tapped through for the first second.
+- Deleting a row on a production connection requires typing the table name.
+- Exports exist only as a cache file handed to the share sheet, wiped on the next start and on
+  every lock. The app locks itself after the configured idle time, dropping the tunnel with it.

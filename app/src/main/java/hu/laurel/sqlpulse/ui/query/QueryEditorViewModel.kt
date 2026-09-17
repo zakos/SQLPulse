@@ -1,12 +1,15 @@
 package hu.laurel.sqlpulse.ui.query
 
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
+import hu.laurel.sqlpulse.data.export.ExportFormat
+import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.query.QueryRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
@@ -48,6 +51,7 @@ data class QueryEditorUiState(
     val readOnly: Boolean = true,
     val connectionName: String? = null,
     val database: String? = null,
+    val shareIntent: Intent? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,6 +59,7 @@ data class QueryEditorUiState(
 class QueryEditorViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val executor: QueryExecutor,
+    private val exports: ExportManager,
     private val queries: QueryRepository,
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
@@ -184,6 +189,24 @@ class QueryEditorViewModel @Inject constructor(
             runJob?.cancel()
             _uiState.value = _uiState.value.copy(running = false)
         }
+    }
+
+    /** §7.7: CSV or JSON of what is loaded, straight into the share sheet. */
+    fun export(format: ExportFormat) {
+        val result = _uiState.value.result ?: return
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(
+                    shareIntent = exports.shareIntent(result, format, "query"),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: e.toString())
+            }
+        }
+    }
+
+    fun shareIntentHandled() {
+        _uiState.value = _uiState.value.copy(shareIntent = null)
     }
 
     fun dismissParameters() {

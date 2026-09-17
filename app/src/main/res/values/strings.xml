@@ -54,7 +54,6 @@
     <string name="key_generate">Generate on device</string>
     <string name="key_name">Key name</string>
     <string name="key_passphrase">Passphrase</string>
-    <string name="key_fingerprint">Fingerprint</string>
     <string name="key_public_copy">Copy public key</string>
     <string name="key_delete">Delete key</string>
     <string name="key_clipboard_cleared">Key pasted, clipboard cleared.</string>
@@ -79,7 +78,6 @@
     <string name="error_key_unreadable">This does not look like a private key in a supported format.</string>
     <string name="error_no_device_credential">SQLPulse needs a screen lock (biometrics or PIN) to store keys. Set one up in system settings and start the app again.</string>
     <string name="error_details">Details</string>
-    <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
 
     <!-- Tunnel service / biometrics -->
@@ -136,6 +134,39 @@
     <string name="query_no_session_title">No live connection</string>
     <string name="error_read_only">This connection is read-only. Change it in the connection editor, or use a user that may write.</string>
     <string name="error_unsupported_statement">Only queries and row edits are supported; schema changes are not.</string>
+
+    <!-- Grid, row editing, export, settings, lock -->
+    <string name="grid_loading_more">Loading more…</string>
+    <string name="grid_loaded">%1$d rows loaded.</string>
+    <string name="grid_loaded_of">%1$d of %2$d rows loaded.</string>
+    <string name="cell_copy">Copy</string>
+    <string name="cell_edit">Edit</string>
+    <string name="cell_set_null">Set to NULL</string>
+    <string name="row_delete">Delete row</string>
+    <string name="confirm_update_title">Run this update?</string>
+    <string name="confirm_delete_title">Delete this row?</string>
+    <string name="confirm_run">Run</string>
+    <string name="confirm_type_table_name">Production database. Type the table name to confirm: %1$s</string>
+    <string name="edit_applied">Change applied.</string>
+    <string name="undo">Undo</string>
+    <string name="export">Export</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_json">JSON</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_manage_keys">Manage keys</string>
+    <string name="settings_default_limit">Default row limit</string>
+    <string name="settings_auto_lock">Automatic lock</string>
+    <string name="settings_auto_lock_note">On locking, the tunnel drops and the loaded results are discarded.</string>
+    <string name="settings_minutes">%1$d minutes</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_grid_font">Grid font size</string>
+    <string name="lock_title">SQLPulse is locked</string>
+    <string name="lock_subtitle">Unlock to continue</string>
+    <string name="lock_body">The app locked itself after a period of inactivity. The tunnel was closed and the loaded results were discarded.</string>
+    <string name="lock_unlock">Unlock</string>
 
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">

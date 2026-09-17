@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
+import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.ssh.TunnelManager
@@ -35,12 +36,17 @@ class SqlPulseApplication : Application() {
     lateinit var sqlSessions: SqlSessionManager
 
     @Inject
+    lateinit var exports: ExportManager
+
+    @Inject
     @ApplicationScope
     lateinit var scope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
         keystoreCrypto.ensureKeys()
+        // §7.7, §9: an export from a previous session must not outlive it.
+        exports.clearExports()
 
         // §9: query history is kept for 30 days, then dropped.
         scope.launch {

@@ -1,5 +1,9 @@
 package hu.laurel.sqlpulse.ui.query
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,12 +20,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,7 +60,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
+import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.grid.CellSelection
+import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -73,7 +86,18 @@ fun QueryEditorScreen(
     val history by viewModel.history.collectAsStateWithLifecycle()
     val favourites by viewModel.favourites.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
+    val context = LocalContext.current
     var favouriteDialogOpen by remember { mutableStateOf(false) }
+    var exportMenuOpen by remember { mutableStateOf(false) }
+    var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
+
+    // §7.7: the export leaves through the system share sheet; the app keeps no file.
+    LaunchedEffect(state.shareIntent) {
+        state.shareIntent?.let { intent ->
+            context.startActivity(Intent.createChooser(intent, null))
+            viewModel.shareIntentHandled()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -99,6 +123,32 @@ fun QueryEditorScreen(
                         enabled = state.sql.isNotBlank(),
                     ) {
                         Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
+                    }
+                    if (state.result != null) {
+                        Box {
+                            IconButton(onClick = { exportMenuOpen = true }) {
+                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                            }
+                            DropdownMenu(
+                                expanded = exportMenuOpen,
+                                onDismissRequest = { exportMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_csv)) },
+                                    onClick = {
+                                        exportMenuOpen = false
+                                        viewModel.export(ExportFormat.CSV)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_json)) },
+                                    onClick = {
+                                        exportMenuOpen = false
+                                        viewModel.export(ExportFormat.JSON)
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -224,9 +274,22 @@ fun QueryEditorScreen(
                     onDelete = viewModel::deleteFavourite,
                 )
 
-                else -> ResultPanel(state)
+                else -> ResultPanel(state) { selectedCell = it }
             }
         }
+    }
+
+    selectedCell?.let { selection ->
+        CellSheet(
+            column = selection.column,
+            value = selection.value,
+            // Editing needs a table and a primary key, which an arbitrary query does not have (§7.6).
+            canEdit = false,
+            editBlockedReason = null,
+            onCopy = { context.copyToClipboard(it) },
+            onEdit = {},
+            onDismiss = { selectedCell = null },
+        )
     }
 
     if (state.pendingParameters.isNotEmpty()) {
@@ -275,7 +338,7 @@ private fun Placeholder(textId: Int) {
 }
 
 @Composable
-private fun ResultPanel(state: QueryEditorUiState) {
+private fun ResultPanel(state: QueryEditorUiState, onCellSelected: (CellSelection) -> Unit) {
     val result = state.result
     when {
         state.updateCount != null -> Placeholder(R.string.query_rows_changed)
@@ -288,7 +351,11 @@ private fun ResultPanel(state: QueryEditorUiState) {
                 color = LocalSemanticColors.current.textSecondary,
                 modifier = Modifier.padding(horizontal = Spacing.l),
             )
-            ResultGrid(result, modifier = Modifier.fillMaxSize())
+            ResultGrid(
+                table = result,
+                modifier = Modifier.fillMaxSize(),
+                onCellClick = { onCellSelected(it) },
+            )
         }
     }
 }
@@ -423,4 +490,9 @@ private fun NoSessionState(onBack: () -> Unit) {
         onAction = onBack,
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+private fun Context.copyToClipboard(text: String) {
+    val manager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    manager.setPrimaryClip(ClipData.newPlainText("sqlpulse", text))
 }
