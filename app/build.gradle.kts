@@ -1,3 +1,8 @@
+// Imported rather than written out: in a Kotlin build script "java" is Gradle's own extension, so
+// java.security.KeyStore does not resolve.
+import java.io.FileInputStream
+import java.security.KeyStore
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -49,8 +54,8 @@ val signingStoreType: String? = signingKeystorePath
 val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
     ?: signingKeystorePath?.let { path ->
         runCatching {
-            val store = java.security.KeyStore.getInstance(signingStoreType ?: "JKS")
-            java.io.FileInputStream(path).use { store.load(it, signingKeystorePassword?.toCharArray()) }
+            val store = KeyStore.getInstance(signingStoreType ?: "JKS")
+            FileInputStream(path).use { store.load(it, signingKeystorePassword?.toCharArray()) }
             store.aliases().toList().singleOrNull()
         }.getOrNull()
     }
