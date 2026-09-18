@@ -17,6 +17,7 @@ megnézhető.
 | SSH alagút kulcsos belépéssel, gépkulcs rögzítéssel | `ssh/SshTunnel.kt`, `ssh/PinningHostKeyVerifier.kt` |
 | Alagút nélküli, közvetlen kapcsolat (az SSH kapcsolható) | `ui/connections/ConnectionEditorScreen.kt` |
 | SSH belépés kulccsal vagy jelszóval (password és keyboard-interactive) | `ssh/SshAuthMethod.kt`, `ssh/SshTunnel.kt` |
+| Második SSH gép: a szerver egy köztes gépen át is elérhető | `ssh/SshTunnel.kt` |
 | TLS négy módban: kikapcsolva, kötelező, CA ellenőrzés, teljes ellenőrzés | `data/sql/SslMode.kt` |
 | Saját CA tanúsítvány importálása és tárolása | `data/connection/CertificateStore.kt` |
 | A kiépült kapcsolat TLS verziója és titkosítója látszik | `data/schema/ServerRepository.kt` |
@@ -64,18 +65,25 @@ megnézhető.
 | EXPLAIN: mi szúr szemet a tervben | `data/sql/ExplainAdvice.kt` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
+### Táblagép és billentyűzet
+
+| Funkció | Hol |
+| --- | --- |
+| Két hasáb 720dp felett: a lekérdező szerkesztő és az eredmény egymás mellett | `ui/query/QueryEditorScreen.kt` |
+| Két hasáb a sémanézőben: az adatbázisok külön oszlopban maradnak | `ui/schema/SchemaBrowserScreen.kt` |
+| Billentyűparancsok: Ctrl+Enter futtat, Ctrl+Shift+Enter az aktuális utasítást, Ctrl+F keresés, Ctrl+Shift+F formázás, Ctrl+S mentés, Esc bezárás | `ui/query/QueryShortcuts.kt` |
+
 ## Ami hiányzik
 
-A sorrend a kutatási összefoglaló prioritásait követi.
+A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az
+szándékos, nem elmaradás.
 
-### 1.1 — a következő kör
+Ami a táblagépes elrendezésből egy hasáb maradt: a tábla részletei külön képernyő,
+mert a sorszerkesztés lapjai keskeny hasábban olvashatatlanok lennének.
 
-1. **Ugrógép.** A belépés már kulccsal és jelszóval is megy, de csak egyetlen SSH
-   géppel. Sok helyen a szerver egy második gépen át érhető el.
-
-### 2.0
-
-2. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+És ami minden tételre igaz: a „kész" itt fordítást és egységteszteket jelent. Éles
+MySQL kiszolgálón a kapcsolat, a régi driver ága és az SSH ág van kipróbálva, a többi
+képernyő nincs minden kiszolgálóverzióval végigmérve.
 
 ## Amit szándékosan nem tartalmaz
 

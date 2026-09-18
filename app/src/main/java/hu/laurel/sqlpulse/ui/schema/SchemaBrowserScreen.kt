@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -35,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +56,7 @@ import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.schema.formatByteSize
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.explain
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
@@ -116,20 +121,12 @@ fun SchemaBrowserScreen(
             when {
                 state.session !is SqlSessionState.Ready -> SessionPlaceholder(state.session, onBack)
 
-                else -> Column(modifier = Modifier.fillMaxSize()) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                    ) {
-                        items(state.databases) { database ->
-                            FilterChip(
-                                selected = database == state.selectedDatabase,
-                                onClick = { viewModel.selectDatabase(database) },
-                                label = { Text(database) },
-                            )
-                        }
-                    }
-
+                else -> SchemaBody(
+                    wide = isWideWindow(),
+                    databases = state.databases,
+                    selectedDatabase = state.selectedDatabase,
+                    onSelectDatabase = viewModel::selectDatabase,
+                ) {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = Spacing.l),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.s),
@@ -237,6 +234,68 @@ fun SchemaBrowserScreen(
 
 /** The routine's `SHOW CREATE`, or a line saying the body is not visible to this user. */
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * One column on a phone, two where there is room (research summary, §2.0).
+ *
+ * Wide, the databases move out of the chip row into a column of their own and stay visible while
+ * the tables are read, which is the whole point of the extra width: switching database no longer
+ * means scrolling a row of chips back into view.
+ */
+@Composable
+private fun SchemaBody(
+    wide: Boolean,
+    databases: List<String>,
+    selectedDatabase: String?,
+    onSelectDatabase: (String) -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (wide) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(modifier = Modifier.width(DATABASE_COLUMN_WIDTH).fillMaxHeight()) {
+                items(databases) { database ->
+                    DatabaseRow(
+                        name = database,
+                        selected = database == selectedDatabase,
+                        onClick = { onSelectDatabase(database) },
+                    )
+                }
+            }
+            VerticalDivider()
+            Column(modifier = Modifier.weight(1f).fillMaxHeight(), content = content)
+        }
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                items(databases) { database ->
+                    FilterChip(
+                        selected = database == selectedDatabase,
+                        onClick = { onSelectDatabase(database) },
+                        label = { Text(database) },
+                    )
+                }
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DatabaseRow(name: String, selected: Boolean, onClick: () -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Text(
+        text = name,
+        style = MonoStyles.cell,
+        color = if (selected) MaterialTheme.colorScheme.primary else semantic.textSecondary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.l, vertical = Spacing.m),
+    )
+}
+
 @Composable
 private fun RoutineSheet(
     definition: RoutineDefinition,
@@ -391,3 +450,6 @@ private fun SessionPlaceholder(session: SqlSessionState, onBack: () -> Unit) {
         )
     }
 }
+
+/** Wide enough for a database name, narrow enough to leave the tables the room. */
+private val DATABASE_COLUMN_WIDTH = 200.dp
