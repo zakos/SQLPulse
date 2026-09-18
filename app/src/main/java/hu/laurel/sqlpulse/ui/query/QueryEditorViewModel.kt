@@ -7,13 +7,17 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.query.QueryRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
+import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.ColumnSort
+import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.ResultTable
@@ -36,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
@@ -58,6 +63,39 @@ data class StatementRun(
     val switchedTo: String? = null,
     val error: String? = null,
 )
+
+/**
+ * What the dialog in front of a hand-typed write shows, and what it demands before it lets go.
+ *
+ * It is built before anything is sent: the statements themselves, how many rows they are estimated
+ * to change, and which database is about to be changed. The three facts together are what makes
+ * "I meant the other connection" visible while it is still a thought.
+ */
+data class WriteConfirmation(
+    /** The write statements of the run, in order, as they were typed. */
+    val statements: List<String>,
+    /** Null when no count could be derived or the count itself failed: the dialog then says so. */
+    val estimatedRows: Long?,
+    val connectionName: String?,
+    val environment: ConnectionEnvironment,
+    val database: String?,
+    /** The ceiling from settings; 0 when it is turned off. */
+    val maxAffectedRows: Int,
+) {
+    val sql: String get() = statements.joinToString(";\n")
+
+    /**
+     * Production asks for the database name to be typed out. A tap is something a thumb does by
+     * itself; typing the name is not.
+     */
+    val requiresTypedDatabase: Boolean get() = environment.isProduction && !database.isNullOrBlank()
+
+    val exceedsLimit: Boolean get() = AffectedRowLimit.exceeds(estimatedRows, maxAffectedRows)
+
+    /** True when the typed confirmation matches, or when none was asked for. */
+    fun confirms(typed: String): Boolean =
+        !requiresTypedDatabase || typed.trim() == database
+}
 
 data class QueryEditorUiState(
     val sql: String = "",
@@ -94,6 +132,8 @@ data class QueryEditorUiState(
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Set while a hand-typed write waits to be confirmed (§7.4). */
+    val writeConfirmation: WriteConfirmation? = null,
 ) {
     /** True when the editor holds more than one statement, so "run" means "run all of them". */
     val isScript: Boolean get() = SqlScript.split(sql).size > 1
@@ -111,6 +151,7 @@ class QueryEditorViewModel @Inject constructor(
     private val queries: QueryRepository,
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
@@ -118,6 +159,9 @@ class QueryEditorViewModel @Inject constructor(
 
     private val connectionId = MutableStateFlow(0L)
     private var runJob: Job? = null
+
+    /** The run held back by the confirmation dialog, kept whole so confirming replays it exactly. */
+    private var pendingRun: PendingRun? = null
 
     /** Table and column names of the current database, for completion (§7.4). */
     private var schemaWords: List<String> = emptyList()
@@ -188,7 +232,7 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Runs only the statement the cursor is in, leaving the rest of the script alone. */
-    fun runCurrent(parameters: Map<String, String> = emptyMap()) {
+    fun runCurrent(parameters: Map<String, ParameterValue> = emptyMap()) {
         val state = _uiState.value
         val statement = SqlScript.statementAt(state.sql, state.selectionStart) ?: return
         execute(listOf(statement.sql), parameters)
@@ -314,7 +358,7 @@ class QueryEditorViewModel @Inject constructor(
      * A query with `:parameters` asks for their values first, rather than sending an empty string
      * to the server.
      */
-    fun run(parameters: Map<String, String> = emptyMap()) {
+    fun run(parameters: Map<String, ParameterValue> = emptyMap()) {
         val state = _uiState.value
         // A selection means "run this much of it", which is how a long script is worked through.
         val selected = state.sql.substring(
@@ -332,7 +376,11 @@ class QueryEditorViewModel @Inject constructor(
      * carrying on after an error would apply the rest to a state nobody planned for. What ran
      * before the failure stays on screen, with its results.
      */
-    private fun execute(statements: List<String>, parameters: Map<String, String>) {
+    private fun execute(
+        statements: List<String>,
+        parameters: Map<String, ParameterValue>,
+        confirmed: Boolean = false,
+    ) {
         val state = _uiState.value
         val id = connectionId.value
         if (statements.isEmpty() || id == 0L || state.running) return
@@ -340,6 +388,15 @@ class QueryEditorViewModel @Inject constructor(
         val needed = statements.flatMap { SqlGuards.parameters(it) }.distinct()
         if (needed.isNotEmpty() && !parameters.keys.containsAll(needed)) {
             _uiState.value = state.copy(pendingParameters = needed)
+            return
+        }
+
+        // A SELECT is never held up; a write typed by hand is, every time. Row editing goes through
+        // its own path and is not affected. A read-only connection refuses the write on its own,
+        // and being asked to confirm something that cannot run is worse than the refusal.
+        val writes = statements.filter { SqlGuards.classify(it) == StatementKind.WRITE }
+        if (writes.isNotEmpty() && !confirmed && !state.readOnly) {
+            askToConfirm(statements, parameters, writes)
             return
         }
 
@@ -393,6 +450,70 @@ class QueryEditorViewModel @Inject constructor(
             selectStatement(shown.coerceAtLeast(0))
         }
     }
+
+    /**
+     * Counts what the write would touch, then puts the dialog up.
+     *
+     * `running` is held while the count runs so the button cannot be pressed twice, and released
+     * with the dialog: confirming goes back through [execute], which checks it again.
+     */
+    private fun askToConfirm(
+        statements: List<String>,
+        parameters: Map<String, ParameterValue>,
+        writes: List<String>,
+    ) {
+        pendingRun = PendingRun(statements, parameters)
+        _uiState.value = _uiState.value.copy(running = true, error = null, errorDetail = null)
+        viewModelScope.launch {
+            val connection = sessions.currentConnection()
+            _uiState.value = _uiState.value.copy(
+                running = false,
+                writeConfirmation = WriteConfirmation(
+                    statements = writes,
+                    estimatedRows = estimate(writes, parameters),
+                    connectionName = connection?.name ?: _uiState.value.connectionName,
+                    environment = ConnectionEnvironment.fromName(connection?.environment),
+                    database = _uiState.value.database ?: connection?.database,
+                    maxAffectedRows = settings.settings.first().maxAffectedRows,
+                ),
+            )
+        }
+    }
+
+    /**
+     * The rows the whole run would change, or null when any part of it cannot be counted.
+     *
+     * One uncountable statement makes the total a half-truth, and a half-truth shown as a number
+     * is worse than "unknown" — so the whole estimate goes.
+     */
+    private suspend fun estimate(
+        writes: List<String>,
+        parameters: Map<String, ParameterValue>,
+    ): Long? {
+        var total = 0L
+        for (sql in writes) {
+            total += executor.estimateAffectedRows(sql, parameters) ?: return null
+        }
+        return total
+    }
+
+    /** Runs what the dialog was asking about. */
+    fun confirmWrite() {
+        val pending = pendingRun ?: return
+        pendingRun = null
+        _uiState.value = _uiState.value.copy(writeConfirmation = null)
+        execute(pending.statements, pending.parameters, confirmed = true)
+    }
+
+    fun dismissWriteConfirmation() {
+        pendingRun = null
+        _uiState.value = _uiState.value.copy(writeConfirmation = null)
+    }
+
+    private data class PendingRun(
+        val statements: List<String>,
+        val parameters: Map<String, ParameterValue>,
+    )
 
     /**
      * Sorts the loaded result in place (§7.5).

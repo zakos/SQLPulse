@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.ui.theme.ThemePreference
 import javax.inject.Inject
@@ -30,6 +31,14 @@ data class Settings(
      */
     val blockWritesWithoutWhere: Boolean = true,
     /**
+     * The most rows a hand-typed INSERT, UPDATE, DELETE or REPLACE may be estimated to change
+     * before the confirmation refuses it. 0 turns the ceiling off.
+     *
+     * A thousand is high enough that ordinary work never meets it and low enough to stop the
+     * WHERE that matched the whole table.
+     */
+    val maxAffectedRows: Int = AffectedRowLimit.DEFAULT_MAX_AFFECTED_ROWS,
+    /**
      * Keep screenshots and the recents-list preview blank (§6).
      *
      * On by default, because a result grid on screen is customer data. It can be turned off, since
@@ -51,11 +60,15 @@ class SettingsRepository @Inject constructor(
                 ?: ThemePreference.System,
             gridFontScale = preferences[GRID_FONT] ?: 100,
             blockWritesWithoutWhere = preferences[BLOCK_UNGUARDED_WRITES] ?: true,
+            maxAffectedRows = preferences[MAX_AFFECTED_ROWS] ?: AffectedRowLimit.DEFAULT_MAX_AFFECTED_ROWS,
             blockScreenshots = preferences[BLOCK_SCREENSHOTS] ?: true,
         )
     }
 
     suspend fun setDefaultRowLimit(limit: Int) = put(ROW_LIMIT, limit.coerceIn(10, 10_000))
+
+    /** 0 means no ceiling; the upper bound only keeps the slider's numbers sane. */
+    suspend fun setMaxAffectedRows(rows: Int) = put(MAX_AFFECTED_ROWS, rows.coerceIn(0, 1_000_000))
 
     suspend fun setAutoLockMinutes(minutes: Int) = put(AUTO_LOCK, minutes.coerceIn(1, 60))
 
@@ -83,6 +96,7 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val GRID_FONT = intPreferencesKey("grid_font_scale")
         val BLOCK_UNGUARDED_WRITES = booleanPreferencesKey("block_writes_without_where")
+        val MAX_AFFECTED_ROWS = intPreferencesKey("max_affected_rows")
         val BLOCK_SCREENSHOTS = booleanPreferencesKey("block_screenshots")
     }
 }

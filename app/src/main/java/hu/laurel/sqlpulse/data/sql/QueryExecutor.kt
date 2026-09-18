@@ -4,7 +4,9 @@ import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
 import hu.laurel.sqlpulse.di.IoDispatcher
+import java.sql.PreparedStatement
 import java.sql.Statement
+import java.sql.Types
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -50,7 +52,7 @@ class QueryExecutor @Inject constructor(
     suspend fun run(
         connectionId: Long,
         sql: String,
-        parameters: Map<String, String> = emptyMap(),
+        parameters: Map<String, ParameterValue> = emptyMap(),
         rowLimit: Int = SqlGuards.DEFAULT_ROW_LIMIT,
         readOnly: Boolean,
     ): QueryOutcome {
@@ -78,10 +80,7 @@ class QueryExecutor @Inject constructor(
         val started = System.currentTimeMillis()
         val outcome = sessions.withConnection { connection ->
             connection.prepareStatement(bound.sql).use { statement ->
-                bound.parameterOrder.forEachIndexed { index, name ->
-                    // Values arrive as text; MySQL coerces them against the column type.
-                    statement.setString(index + 1, parameters[name] ?: "")
-                }
+                bind(statement, bound.parameterOrder, parameters)
                 statement.queryTimeout = sessions.queryTimeoutSeconds()
                 running = statement
                 try {
@@ -120,6 +119,54 @@ class QueryExecutor @Inject constructor(
             )
         }
         return outcome.copy(table = outcome.table.copy(durationMs = duration))
+    }
+
+    /**
+     * How many rows the write in [sql] would touch, or null when that cannot be said.
+     *
+     * Null covers both halves of "we do not know": a statement WriteImpact will not rewrite, and a
+     * count that failed to run. The caller shows the same "unknown" for either, because the user's
+     * next decision is the same one.
+     *
+     * The count runs on the session like any other query — through [SqlSessionManager.withConnection],
+     * so off the main thread — but is not recorded in the history: it is this app's question, not
+     * the user's.
+     */
+    suspend fun estimateAffectedRows(
+        sql: String,
+        parameters: Map<String, ParameterValue> = emptyMap(),
+    ): Long? {
+        val count = WriteImpact.countQuery(sql) ?: return null
+        val bound = SqlGuards.bindParameters(count)
+        return runCatching {
+            sessions.withConnection { connection ->
+                connection.prepareStatement(bound.sql).use { statement ->
+                    bind(statement, bound.parameterOrder, parameters)
+                    statement.queryTimeout = sessions.queryTimeoutSeconds()
+                    statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else null }
+                }
+            }
+        }.getOrNull()
+    }
+
+    /** Binds the values by the type the user gave each one (§7.4). */
+    private fun bind(
+        statement: PreparedStatement,
+        order: List<String>,
+        parameters: Map<String, ParameterValue>,
+    ) {
+        order.forEachIndexed { index, name ->
+            val position = index + 1
+            when (val binding = QueryParameters.binding(parameters[name] ?: ParameterValue())) {
+                // The driver ignores the type it is given for a null; VARCHAR is the one every
+                // column accepts.
+                ParameterBinding.Null -> statement.setNull(position, Types.VARCHAR)
+                is ParameterBinding.Text -> statement.setString(position, binding.value)
+                is ParameterBinding.Integer -> statement.setLong(position, binding.value)
+                is ParameterBinding.Decimal -> statement.setDouble(position, binding.value)
+                is ParameterBinding.Bool -> statement.setBoolean(position, binding.value)
+            }
+        }
     }
 
     /**
