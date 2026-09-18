@@ -3,6 +3,7 @@ package hu.laurel.sqlpulse.data.sql
 import java.io.Closeable
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -90,7 +91,7 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
             setProperty("connectTimeout", config.connectTimeoutMs.toString())
             setProperty("socketTimeout", config.socketTimeoutMs.toString())
             // §11: connect as utf8mb4 and leave differing collations alone.
-            setProperty("connectionCollation", "utf8mb4_general_ci")
+            setProperty("connectionCollation", COLLATION)
             // A malicious or compromised server can otherwise ask the client for local files.
             setProperty("allowLocalInfile", "false")
             // §11: a dropped connection is never retried behind the user's back.
@@ -100,12 +101,27 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
                 .forEach { (key, value) -> setProperty(key, value) }
         }
         val url = "jdbc:mariadb://${config.host}:${config.port}/${config.database}"
-        return DriverManager.getConnection(url, properties).apply {
+        val connection = try {
+            DriverManager.getConnection(url, properties)
+        } catch (e: SQLException) {
+            // The driver reports a rejected session setup as "Initialization command fail" and
+            // says no more. The usual reason is the collation: a server older than MySQL 5.5.3
+            // has no utf8mb4 at all. Retrying once with the server's own default is better than
+            // refusing to connect to an old database that works perfectly well otherwise.
+            if (!isInitialisationFailure(e)) throw e
+            properties.remove("connectionCollation")
+            DriverManager.getConnection(url, properties)
+        }
+        return connection.apply {
             // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
             isReadOnly = config.readOnly
             autoCommit = true
         }
     }
+
+    private fun isInitialisationFailure(e: SQLException): Boolean =
+        SqlFailures.fullMessage(e).contains("initialization command", ignoreCase = true) ||
+            SqlFailures.fullMessage(e).contains(COLLATION, ignoreCase = true)
 
     override fun close() {
         closed = true
@@ -117,6 +133,9 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
     }
 
     companion object {
+        /** utf8mb4 everywhere it exists; servers older than MySQL 5.5.3 get their own default. */
+        private const val COLLATION = "utf8mb4_general_ci"
+
         /** §4: one pool per connection, at most three JDBC connections. */
         const val MAX_CONNECTIONS = 3
         private const val VALIDATION_TIMEOUT_SECONDS = 2

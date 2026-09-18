@@ -68,12 +68,33 @@ data class SqlFailure(
  */
 object SqlFailures {
 
-    fun of(e: SQLException): SqlFailure = SqlFailure(
-        kind = classify(e.errorCode, e.sqlState, e.message.orEmpty()),
-        errorCode = e.errorCode,
-        sqlState = e.sqlState,
-        serverMessage = e.message.orEmpty(),
-    )
+    fun of(e: SQLException): SqlFailure {
+        val message = fullMessage(e)
+        return SqlFailure(
+            kind = classify(e.errorCode, e.sqlState, message),
+            errorCode = e.errorCode,
+            sqlState = e.sqlState,
+            serverMessage = message,
+        )
+    }
+
+    /**
+     * The exception's own sentence, plus the cause underneath it when it says something else.
+     *
+     * The driver wraps a failed connection setup as "Initialization command fail" and puts what
+     * actually went wrong in the cause. Shown on its own, that sentence names no cause at all, and
+     * the classification below has nothing to work with either.
+     */
+    fun fullMessage(error: Throwable): String {
+        val messages = generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
+            .mapNotNull { it.message?.trim()?.takeIf(String::isNotEmpty) }
+            .distinct()
+            .toList()
+        // Keep the outer sentence first: it is the one the driver's documentation talks about.
+        return messages.filterIndexed { index, text ->
+            index == 0 || messages.take(index).none { it.contains(text) }
+        }.joinToString(" — ")
+    }
 
     fun classify(errorCode: Int, sqlState: String?, message: String): SqlFailureKind {
         byErrorCode(errorCode)?.let { return it }

@@ -75,6 +75,29 @@ class SqlFailuresTest {
     }
 
     @Test
+    fun `a wrapped failure keeps the cause that says what happened`() {
+        // The driver reports a rejected session setup as "Initialization command fail" and puts
+        // the reason underneath; on its own the outer sentence names no cause at all.
+        val cause = SQLException("Unknown collation: 'utf8mb4_general_ci'", "HY000", 1273)
+        val wrapper = SQLException("(conn=5778997) Initialization command fail", "08000", 0, cause)
+        val failure = SqlFailures.of(wrapper)
+        assertEquals(
+            "(conn=5778997) Initialization command fail — Unknown collation: 'utf8mb4_general_ci'",
+            failure.serverMessage,
+        )
+    }
+
+    @Test
+    fun `a cause that only repeats the outer message is not said twice`() {
+        val cause = SQLException("Connection refused")
+        val wrapper = SQLException("Socket fail to connect: Connection refused", "08000", 0, cause)
+        assertEquals(
+            "Socket fail to connect: Connection refused",
+            SqlFailures.of(wrapper).serverMessage,
+        )
+    }
+
+    @Test
     fun `the exception's own fields are carried through`() {
         val failure = SqlFailures.of(SQLException("Unknown database 'shop'", "42000", 1049))
         assertEquals(SqlFailureKind.UNKNOWN_DATABASE, failure.kind)
