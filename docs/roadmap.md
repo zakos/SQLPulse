@@ -64,22 +64,22 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-6. **Optimista zárolás a soroknál.** Ma az eredeti kulcs alapján ír vissza; ha közben
+4. **Optimista zárolás a soroknál.** Ma az eredeti kulcs alapján ír vissza; ha közben
    más módosította a sort, az ütközés észrevétlen marad. A mentés előtt össze kell
    vetni a kiolvasott értékekkel, és több sor esetén megmutatni a különbséget.
-7. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
-8. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
-9. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
-10. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
-    beállításával.
+5. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
+6. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
+7. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
+8. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
+   beállításával.
 
 ### 2.0
 
-11. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-12. **Felhasználók és jogosultságok megtekintése.**
-13. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
-    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-14. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+9. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+10. **Felhasználók és jogosultságok megtekintése.**
+11. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+   kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
+12. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 
