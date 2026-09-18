@@ -421,8 +421,9 @@ class QueryEditorViewModel @Inject constructor(
             )
             return
         }
-        setSql("EXPLAIN $sql")
-        run()
+        // The editor keeps the query: rewriting it to "EXPLAIN ..." left the user to delete the
+        // word again before running it for real.
+        execute(SqlScript.split(sql).map { "EXPLAIN ${it.sql}" }, emptyMap())
     }
 
     fun cancel() {

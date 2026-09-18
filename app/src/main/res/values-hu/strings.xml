@@ -282,4 +282,12 @@
 
     <string name="cell_blob_preview">Belenézek</string>
     <string name="cell_blob_truncated">Csak az első pár kilobájt látszik, a többi a kiszolgálón marad.</string>
+
+    <!-- Ami szembetűnik a végrehajtási tervben (§7.4). -->
+    <string name="explain_full_scan">A tábla minden sorát végigolvassa: nincs index, ami szűkítené.</string>
+    <string name="explain_index_scan">Egy teljes indexet bejár ahelyett, hogy keresne benne.</string>
+    <string name="explain_no_index">Ehhez a táblához nem használ indexet.</string>
+    <string name="explain_filesort">A sorokat beolvasás után rendezi.</string>
+    <string name="explain_temporary">Ideiglenes táblát épít a lekérdezéshez.</string>
+    <string name="explain_many_rows">A kiszolgáló sok sorral számol.</string>
 </resources>

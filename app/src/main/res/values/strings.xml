@@ -290,4 +290,12 @@
 
     <string name="cell_blob_preview">Look inside</string>
     <string name="cell_blob_truncated">Only the first few kilobytes are shown; the rest stays on the server.</string>
+
+    <!-- What stands out in a query plan (§7.4). -->
+    <string name="explain_full_scan">Reads every row of the table: no index narrows it down.</string>
+    <string name="explain_index_scan">Walks a whole index rather than looking up in it.</string>
+    <string name="explain_no_index">No index is used for this table.</string>
+    <string name="explain_filesort">The rows are sorted after being read.</string>
+    <string name="explain_temporary">An intermediate table is built for this query.</string>
+    <string name="explain_many_rows">The server expects to touch a lot of rows.</string>
 </resources>

@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.ui.query
 
 import android.content.Intent
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,8 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
+import hu.laurel.sqlpulse.data.sql.ExplainAdvice
+import hu.laurel.sqlpulse.data.sql.ExplainNote
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellSelection
@@ -502,6 +505,19 @@ private fun ResultPanel(
         result == null -> Placeholder(R.string.query_no_result_yet)
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
+            // A plan is worth reading before the rows are: these are the parts of it that decide
+            // whether the query is a good idea.
+            val notes = remember(result) { ExplainAdvice.of(result) }
+            if (notes.isNotEmpty()) {
+                Text(
+                    // map is inline, joinToString is not: stringResource needs the former.
+                    text = notes.map { stringResource(it.textRes()) }.joinToString("\n"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalSemanticColors.current.warning,
+                    modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.xs),
+                )
+            }
+
             // One line, not two: the note about the added LIMIT belongs with the row count.
             Text(
                 text = listOfNotNull(
@@ -798,4 +814,14 @@ private fun TransactionBar(onCommit: () -> Unit, onRollback: () -> Unit) {
             Text(stringResource(R.string.transaction_commit))
         }
     }
+}
+
+@StringRes
+private fun ExplainNote.textRes(): Int = when (this) {
+    ExplainNote.FULL_TABLE_SCAN -> R.string.explain_full_scan
+    ExplainNote.FULL_INDEX_SCAN -> R.string.explain_index_scan
+    ExplainNote.NO_INDEX -> R.string.explain_no_index
+    ExplainNote.FILESORT -> R.string.explain_filesort
+    ExplainNote.TEMPORARY_TABLE -> R.string.explain_temporary
+    ExplainNote.MANY_ROWS -> R.string.explain_many_rows
 }
