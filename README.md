@@ -89,15 +89,43 @@ version code is the CI run number, so a newer artifact is never a downgrade.
 access to the code must not be enough to build an update for an installed app. Create a key and
 upload it:
 
+On macOS or Linux:
+
 ```sh
 keytool -genkeypair -v -keystore sqlpulse.keystore -alias sqlpulse \
   -keyalg RSA -keysize 2048 -validity 10950 -dname "CN=SQLPulse, O=<your org>, C=HU"
 
-gh secret set SIGNING_KEYSTORE_BASE64 < <(base64 -w0 sqlpulse.keystore)
-gh secret set SIGNING_KEYSTORE_PASSWORD   # the store password you just chose
-gh secret set SIGNING_KEY_ALIAS           # sqlpulse
-gh secret set SIGNING_KEY_PASSWORD        # the key password you just chose
+gh secret set SIGNING_KEYSTORE_BASE64 --repo <owner>/SQLPulse < <(base64 -w0 sqlpulse.keystore)
+gh secret set SIGNING_KEYSTORE_PASSWORD --repo <owner>/SQLPulse   # the store password you chose
+gh secret set SIGNING_KEY_ALIAS --repo <owner>/SQLPulse           # sqlpulse
+gh secret set SIGNING_KEY_PASSWORD --repo <owner>/SQLPulse        # the key password you chose
 ```
+
+On Windows, in **PowerShell** (not `cmd`, which has neither `\` continuations nor `<(...)`).
+`keytool` comes with the JDK; Android Studio ships one, so give the full path if it is not on
+`PATH`:
+
+```powershell
+$keytool = "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"
+
+& $keytool -genkeypair -v -keystore sqlpulse.keystore -alias sqlpulse `
+  -keyalg RSA -keysize 2048 -validity 10950 -dname "CN=SQLPulse, O=<your org>, C=HU"
+
+# One line of base64, no wrapping and no trailing newline.
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("sqlpulse.keystore")) |
+  Out-File -Encoding ascii -NoNewline keystore.b64
+
+gh secret set SIGNING_KEYSTORE_BASE64 --repo <owner>/SQLPulse < keystore.b64
+gh secret set SIGNING_KEYSTORE_PASSWORD --repo <owner>/SQLPulse   # the store password you chose
+gh secret set SIGNING_KEY_ALIAS --repo <owner>/SQLPulse           # sqlpulse
+gh secret set SIGNING_KEY_PASSWORD --repo <owner>/SQLPulse        # the key password you chose
+
+Remove-Item keystore.b64
+```
+
+`--repo` is what lets these run from any directory; without it `gh` looks for a git checkout in the
+current one. The three password and alias secrets are typed at the prompt — do not put them on the
+command line, where they would land in the shell history.
 
 Keep `sqlpulse.keystore` somewhere safe and out of the repository (`*.keystore` is gitignored).
 Losing it means the next build cannot update installed copies — they would have to be uninstalled
