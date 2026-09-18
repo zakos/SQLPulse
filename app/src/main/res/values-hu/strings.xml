@@ -293,4 +293,15 @@
 
     <string name="export_tsv">TSV (tabulátoros)</string>
     <string name="export_sql">SQL INSERT</string>
+
+    <!-- CSV fájl importálása táblába (a kutatási összefoglaló 1.2-es köre). -->
+    <string name="import_csv">CSV import</string>
+    <string name="import_title">Importálás ide: %1$s</string>
+    <string name="import_rows">%1$d sor kerül beszúrásra.</string>
+    <string name="import_columns">Kitöltött oszlopok: %1$s</string>
+    <string name="import_ignored">A táblában nincs ilyen oszlop, ezek kimaradnak: %1$s</string>
+    <string name="import_malformed">%1$d sorban más volt a mezők száma, ezek kimaradnak.</string>
+    <string name="import_no_columns">A fájl egyetlen oszlopa sem illik ehhez a táblához.</string>
+    <string name="import_blocking">Ezeket az oszlopokat a fájl nem tölti ki, a tábla viszont megköveteli: %1$s</string>
+    <string name="import_run">Importálás</string>
 </resources>

@@ -10,6 +10,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.`import`.CsvImporter
+import hu.laurel.sqlpulse.data.`import`.ImportPlan
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableStructure
 import hu.laurel.sqlpulse.data.sql.BlobPreview
@@ -76,6 +78,9 @@ data class TableDetailUiState(
     /** The BLOB the user asked to look inside, once its first bytes have arrived. */
     val blobPreview: BlobPreview.Preview? = null,
     val loadingBlob: Boolean = false,
+    /** A CSV file that has been read and matched, waiting for the user to say go ahead. */
+    val importPlan: ImportPlan? = null,
+    val importing: Boolean = false,
     /** Set for ten seconds after a successful edit, while it can still be taken back (§7.6). */
     val undoable: RowEdit? = null,
     val isProduction: Boolean = false,
@@ -90,6 +95,7 @@ class TableDetailViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val schema: SchemaRepository,
     private val rowEditor: RowEditor,
+    private val importer: CsvImporter,
     private val exports: ExportManager,
     private val sessions: SqlSessionManager,
 ) : ViewModel() {
@@ -279,6 +285,40 @@ class TableDetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(loadingBlob = false, error = describe(e))
             }
         }
+    }
+
+    /** Reads the chosen file and works out what importing it would do. Nothing is written yet. */
+    fun prepareImport(uri: Uri) {
+        val structure = _uiState.value.structure ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(importing = true, error = null)
+            try {
+                _uiState.value = _uiState.value.copy(
+                    importing = false,
+                    importPlan = importer.plan(uri, structure.columns),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(importing = false, error = describe(e))
+            }
+        }
+    }
+
+    fun confirmImport() {
+        val plan = _uiState.value.importPlan ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(importPlan = null, importing = true)
+            try {
+                importer.execute(database, table, plan)
+                _uiState.value = _uiState.value.copy(importing = false)
+                reload()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(importing = false, error = describe(e))
+            }
+        }
+    }
+
+    fun dismissImport() {
+        _uiState.value = _uiState.value.copy(importPlan = null)
     }
 
     fun dismissBlobPreview() {

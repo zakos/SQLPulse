@@ -53,6 +53,7 @@ megnézhető.
 | Optimista zárolás: ütközés esetén szól, nem ír felül csendben | `data/sql/RowEditor.kt` |
 | Kézi tranzakció: COMMIT és ROLLBACK a lekérdező képernyőn | `data/sql/SqlSessionManager.kt` |
 | Export CSV, TSV, JSON és SQL INSERT formátumban | `data/export/` |
+| CSV import: oszlopok név szerinti illesztése, egy tranzakcióban | `data/import/` |
 | JSON cella formázva, BLOB belenézés (szöveg vagy hex) | `data/sql/JsonFormatter.kt`, `BlobPreview.kt` |
 | EXPLAIN: mi szúr szemet a tervben | `data/sql/ExplainAdvice.kt` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
@@ -68,16 +69,15 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-2. **CSV import.** Az export már négy formátumot tud, a beolvasás hiányzik.
-3. **Típus szerinti cellaszerkesztők** (dátumválasztó, felsorolás listából).
+2. **Típus szerinti cellaszerkesztők** (dátumválasztó, felsorolás listából).
 
 ### 2.0
 
-4. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-5. **Felhasználók és jogosultságok megtekintése.**
-6. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+3. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+4. **Felhasználók és jogosultságok megtekintése.**
+5. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-7. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+6. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

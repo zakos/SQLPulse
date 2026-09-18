@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.`import`.ImportPlan
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
@@ -90,6 +94,9 @@ fun TableDetailScreen(
     var editingCell by remember { mutableStateOf<CellSelection?>(null) }
     var detailRow by remember { mutableStateOf<Int?>(null) }
     var exportMenuOpen by remember { mutableStateOf(false) }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::prepareImport)
+    }
 
     // The share sheet is started once per export; the file lives in the cache until the next lock.
     LaunchedEffect(state.shareIntent) {
@@ -131,6 +138,18 @@ fun TableDetailScreen(
                     }
                 },
                 actions = {
+                    // Importing is a write, so it follows the same rule as editing a row.
+                    if (state.tab == TableTab.DATA && state.canEdit) {
+                        IconButton(
+                            onClick = { importPicker.launch(arrayOf("text/*", "text/csv", "*/*")) },
+                            enabled = !state.importing,
+                        ) {
+                            Icon(
+                                Icons.Default.Upload,
+                                contentDescription = stringResource(R.string.import_csv),
+                            )
+                        }
+                    }
                     if (state.tab == TableTab.DATA && state.rows != null) {
                         Box {
                             IconButton(onClick = { exportMenuOpen = true }) {
@@ -340,6 +359,15 @@ fun TableDetailScreen(
         )
     }
 
+    state.importPlan?.let { plan ->
+        ImportDialog(
+            plan = plan,
+            table = state.table,
+            onConfirm = viewModel::confirmImport,
+            onDismiss = viewModel::dismissImport,
+        )
+    }
+
     state.conflict?.let { conflict ->
         AlertDialog(
             onDismissRequest = viewModel::dismissConflict,
@@ -506,3 +534,76 @@ private fun ForeignKeyRow(foreignKey: ForeignKey, onClick: () -> Unit) {
     }
 }
 
+
+/**
+ * What importing this file would do, before it does it.
+ *
+ * Every number here is the answer to a question someone would otherwise have to ask afterwards:
+ * how many rows, which columns are filled, which of the file's columns are ignored, and which
+ * lines did not parse. An import that cannot work says why instead of offering a button.
+ */
+@Composable
+private fun ImportDialog(
+    plan: ImportPlan,
+    table: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.import_title, table)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                Text(stringResource(R.string.import_rows, plan.rowCount))
+                Text(
+                    text = stringResource(
+                        R.string.import_columns,
+                        plan.match.matched.values.joinToString(", "),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+                if (plan.match.unmatched.isNotEmpty()) {
+                    Text(
+                        text = stringResource(
+                            R.string.import_ignored,
+                            plan.match.unmatched.joinToString(", "),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
+                    )
+                }
+                if (plan.table.malformedRows > 0) {
+                    Text(
+                        text = stringResource(R.string.import_malformed, plan.table.malformedRows),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
+                    )
+                }
+                if (!plan.match.canImport) {
+                    Text(
+                        text = if (plan.match.blocking.isEmpty()) {
+                            stringResource(R.string.import_no_columns)
+                        } else {
+                            stringResource(
+                                R.string.import_blocking,
+                                plan.match.blocking.joinToString(", "),
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (plan.match.canImport && plan.rowCount > 0) {
+                Button(onClick = onConfirm) { Text(stringResource(R.string.import_run)) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}

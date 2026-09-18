@@ -301,4 +301,15 @@
 
     <string name="export_tsv">TSV (tabbed)</string>
     <string name="export_sql">SQL INSERT</string>
+
+    <!-- Importing a CSV file into a table (§1.2 of the research summary). -->
+    <string name="import_csv">Import CSV</string>
+    <string name="import_title">Import into %1$s</string>
+    <string name="import_rows">%1$d rows will be inserted.</string>
+    <string name="import_columns">Columns filled: %1$s</string>
+    <string name="import_ignored">The table has no such columns, so these are ignored: %1$s</string>
+    <string name="import_malformed">%1$d lines had a different number of fields and are skipped.</string>
+    <string name="import_no_columns">None of the file\'s columns match this table.</string>
+    <string name="import_blocking">The file does not fill these columns, and the table requires them: %1$s</string>
+    <string name="import_run">Import</string>
 </resources>
