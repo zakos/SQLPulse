@@ -1,0 +1,172 @@
+name: Security
+
+# What the project depends on, looked at on every pull request: the dependencies the change adds
+# or moves, and the published advisories against the libraries the app actually links.
+#
+# Nothing here blocks a merge. An advisory in a JDBC driver or in Bouncy Castle is usually not
+# something this pull request can act on — the fix is a version bump, which is its own change —
+# and a red check nobody can clear is a check people learn to ignore. So both jobs report and
+# leave the decision to a person; a dependency that genuinely must not land is caught in review.
+on:
+  pull_request:
+  # On main only to keep the dependency graph up to date, which is what a pull request's
+  # dependency review compares against.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only a pull request has two sides to compare; a manual run has nothing to diff against.
+    if: github.event_name == 'pull_request'
+
+    permissions:
+      contents: read
+      # For the summary comment the action leaves on the pull request.
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compares the dependencies of the base branch with this branch's and names what changed,
+      # with any known advisory and the licence of each addition.
+      #
+      # warn-only keeps the job green whatever it finds — see the note at the top of the file.
+      # It reads GitHub's dependency graph, which for Gradle exists only because the job below
+      # submits a snapshot from main; until the first snapshot lands the action finds nothing to
+      # compare and says so, rather than failing.
+      - name: Review the dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          warn-only: true
+          comment-summary-in-pr: on-failure
+          # Below high, the noise costs more attention than the findings are worth here.
+          fail-on-severity: high
+
+  dependency-graph:
+    name: Submit the dependency graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Main only: a snapshot is the record of what the released app depends on, and submitting one
+    # per pull request would make the graph flap. A fork's pull request could not write it anyway.
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # packages: '' because the action's default list still contains the retired "tools"
+      # package, which sdkmanager now refuses. The runner image already ships platform-tools.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      # Resolves every configuration and reports what it found to GitHub, which is what turns on
+      # Dependabot alerts for this project's libraries and gives the review above its baseline.
+      - name: Generate and submit the snapshot
+        uses: gradle/actions/dependency-submission@v4
+
+  advisories:
+    name: Advisories in the resolved libraries
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # packages: '' because the action's default list still contains the retired "tools"
+      # package, which sdkmanager now refuses. The runner image already ships platform-tools.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # A scanner recognises a library from the coordinates inside its archive, so the build is
+      # run first: resolving is what puts the actual jars on disk, and what is scanned is then
+      # what the app links — transitive dependencies included — rather than what the version
+      # catalogue names. The Gradle cache from setup-gradle makes this cheap after the first run.
+      - name: Resolve the dependencies
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Collect the resolved archives
+        run: |
+          mkdir -p "$RUNNER_TEMP/libraries"
+          # Sources and javadoc carry no code, and copying them would only slow the scan down.
+          find ~/.gradle/caches/modules-2 \
+            \( -name '*.jar' -o -name '*.aar' \) \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' \
+            -exec cp -n {} "$RUNNER_TEMP/libraries/" \;
+          echo "Collected $(ls "$RUNNER_TEMP/libraries" | wc -l) archives."
+
+      # Trivy reads the OSV and GitHub advisory data; it needs no account and no paid service.
+      # exit-code 0 is deliberate: this reports, it does not block. See the note at the top.
+      - name: Scan them for known advisories
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: rootfs
+          scan-ref: ${{ runner.temp }}/libraries
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          output: trivy-report.txt
+          exit-code: '0'
+
+      - name: Put the findings in the run summary
+        if: always()
+        run: |
+          {
+            echo "### Advisories in the resolved libraries"
+            echo
+            if [ -s trivy-report.txt ]; then
+              echo '```'
+              cat trivy-report.txt
+              echo '```'
+            else
+              echo "Nothing at HIGH or CRITICAL."
+            fi
+            echo
+            echo "_Reported, not enforced: a fix is a version bump, which is a change of its own._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advisory-report
+          path: trivy-report.txt
+          if-no-files-found: ignore
+          retention-days: 14

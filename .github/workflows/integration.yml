@@ -1,0 +1,106 @@
+name: Integration
+
+# The JDBC layer against real servers. Everything else in CI runs without a database: these are
+# the tests that can tell us the app's SQL is right rather than merely well-formed.
+#
+# The same tests live in the ordinary unit test source set and are skipped there — they ask the
+# environment for a server and, finding none, assume themselves away. That is why check.yml is
+# unaffected by them and why this workflow exists: here the server is provided.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    # Three servers, because the app supports three: the modern driver against MySQL 8, the old
+    # one against the sort of server it exists for, and MariaDB, which is what the modern driver
+    # is actually written for.
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      # One server failing says something about that server, not about the others, so the rest of
+      # the matrix is allowed to finish and report.
+      fail-fast: false
+      matrix:
+        include:
+          - name: MySQL 8.0
+            image: mysql:8.0
+            health: --health-cmd="mysqladmin ping --silent" --health-interval=10s --health-timeout=5s --health-retries=20
+            # MySQL 8 authenticates with caching_sha2_password, which the 2019 driver cannot do.
+            # The fallback test skips itself rather than pretending that is a failure.
+            legacy: 'false'
+          - name: MySQL 5.7
+            image: mysql:5.7
+            health: --health-cmd="mysqladmin ping --silent" --health-interval=10s --health-timeout=5s --health-retries=20
+            legacy: 'true'
+          - name: MariaDB 11
+            image: mariadb:11
+            # MariaDB 11 ships its own health script; mysqladmin is only a deprecated symlink.
+            health: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=20
+            legacy: 'true'
+
+    services:
+      db:
+        image: ${{ matrix.image }}
+        env:
+          # MariaDB's image still honours the MYSQL_ prefixed variables, so one set covers all
+          # three images.
+          MYSQL_ROOT_PASSWORD: sqlpulse
+          MYSQL_DATABASE: sqlpulse_test
+        ports:
+          - 3306:3306
+        # The job does not start until the server answers; without this the first test would race
+        # the server's own initialisation and fail on a connection refused.
+        options: ${{ matrix.health }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # packages: '' because the action's default list still contains the retired "tools"
+      # package, which sdkmanager now refuses. The runner image already ships platform-tools.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Only the integration package: the rest of the unit tests are check.yml's job, and running
+      # them again here would say nothing new about the server.
+      - name: Integration tests
+        env:
+          SQLPULSE_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/sqlpulse_test
+          SQLPULSE_TEST_MYSQL_USER: root
+          SQLPULSE_TEST_MYSQL_PASSWORD: sqlpulse
+          SQLPULSE_TEST_MYSQL_LEGACY: ${{ matrix.legacy }}
+        run: ./gradlew --no-daemon testDebugUnitTest --tests 'hu.laurel.sqlpulse.integration.*'
+
+      # A skipped test here would mean the server was never reached, which is exactly the failure
+      # this workflow exists to catch — so the report is kept whatever the outcome.
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-${{ strategy.job-index }}
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
