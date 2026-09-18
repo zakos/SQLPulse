@@ -267,4 +267,6 @@
     <string name="query_find">Find</string>
     <string name="query_replace">Replace with</string>
     <string name="query_replace_all">Replace all</string>
+
+    <string name="query_edit">Edit the query</string>
 </resources>

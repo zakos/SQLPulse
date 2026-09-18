@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -60,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -204,36 +206,49 @@ fun QueryEditorScreen(
             // TextFieldValue rather than a plain String: the selection is what decides whether
             // "run" means the whole script or only the part the user marked.
             var field by remember { mutableStateOf(TextFieldValue(state.sql)) }
-            LaunchedEffect(state.sql) {
-                // The text can also change from outside the field: a favourite, or the key row.
+            LaunchedEffect(state.sql, state.selectionStart) {
+                // The text can also change from outside the field: a completion, the key row, a
+                // favourite. The cursor then goes where the view model put it, not to the end.
                 if (field.text != state.sql) {
-                    field = TextFieldValue(state.sql, TextRange(state.sql.length))
+                    field = TextFieldValue(
+                        text = state.sql,
+                        selection = TextRange(state.selectionStart.coerceIn(0, state.sql.length)),
+                    )
                 }
             }
-            OutlinedTextField(
-                value = field,
-                onValueChange = { value ->
-                    field = value
-                    viewModel.setSql(value.text)
-                    viewModel.setSelection(value.selection.min, value.selection.max)
-                    viewModel.suggest(value.text.take(value.selection.min).takeLastWhile { it.isLetterOrDigit() || it == '_' })
-                },
-                textStyle = MonoStyles.editor,
-                visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 96.dp, max = 220.dp)
-                    .padding(horizontal = Spacing.l, vertical = Spacing.s),
-            )
 
-            if (state.suggestions.isNotEmpty()) {
+            if (state.editorCollapsed) {
+                CollapsedEditor(sql = state.sql, onExpand = viewModel::toggleEditor)
+            } else {
+                OutlinedTextField(
+                    value = field,
+                    onValueChange = { value ->
+                        field = value
+                        viewModel.setSql(value.text)
+                        viewModel.setSelection(value.selection.min, value.selection.max)
+                        viewModel.suggest(
+                            value.text.take(value.selection.min)
+                                .takeLastWhile { it.isLetterOrDigit() || it == '_' },
+                        )
+                    },
+                    textStyle = MonoStyles.editor,
+                    visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp, max = 220.dp)
+                        .padding(horizontal = Spacing.l, vertical = Spacing.s),
+                )
+            }
+
+            if (state.suggestions.isNotEmpty() && !state.editorCollapsed) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = Spacing.l),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s),
                 ) {
                     items(state.suggestions) { suggestion ->
                         AssistChip(
-                            onClick = { viewModel.append(suggestion) },
+                            // Completing replaces the half-typed word rather than adding to it.
+                            onClick = { viewModel.complete(suggestion) },
                             label = { Text(suggestion, style = MonoStyles.cell) },
                         )
                     }
@@ -241,15 +256,17 @@ fun QueryEditorScreen(
             }
 
             // The key row: characters that are three taps deep on a phone keyboard.
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-            ) {
-                items(KEY_ROW_ITEMS) { item ->
-                    AssistChip(
-                        onClick = { viewModel.append(item) },
-                        label = { Text(item, style = MonoStyles.cell) },
-                    )
+            if (!state.editorCollapsed) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                ) {
+                    items(KEY_ROW_ITEMS) { item ->
+                        AssistChip(
+                            onClick = { viewModel.append(item) },
+                            label = { Text(item, style = MonoStyles.cell) },
+                        )
+                    }
                 }
             }
 
@@ -661,5 +678,37 @@ private fun FindReplaceBar(onReplaceAll: (String, String) -> Unit, onClose: () -
         IconButton(onClick = onClose) {
             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel))
         }
+    }
+}
+
+/**
+ * The editor while a result is being read: one line of the query, and a way back to it.
+ *
+ * The whole row opens the editor, not just the arrow — after a query has run, the first thing
+ * anyone does with the text is change it.
+ */
+@Composable
+private fun CollapsedEditor(sql: String, onExpand: () -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onExpand)
+            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
+            style = MonoStyles.cell,
+            color = semantic.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Default.ExpandMore,
+            contentDescription = stringResource(R.string.query_edit),
+            tint = semantic.textSecondary,
+        )
     }
 }

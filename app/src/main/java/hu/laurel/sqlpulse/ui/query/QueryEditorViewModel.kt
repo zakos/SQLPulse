@@ -86,6 +86,11 @@ data class QueryEditorUiState(
     /** Where the cursor is, or what is selected, in the editor. */
     val selectionStart: Int = 0,
     val selectionEnd: Int = 0,
+    /**
+     * The editor folds away while a result is on screen: on a phone the result is what is being
+     * read, and the editor is only needed again to change the query.
+     */
+    val editorCollapsed: Boolean = false,
     val shareIntent: Intent? = null,
 ) {
     /** True when the editor holds more than one statement, so "run" means "run all of them". */
@@ -186,10 +191,43 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Inserts a snippet from the key row above the keyboard (§7.4). */
+    fun toggleEditor() {
+        _uiState.value = _uiState.value.copy(editorCollapsed = !_uiState.value.editorCollapsed)
+    }
+
+    /** Inserts text at the cursor, which is where the user is looking. */
     fun append(text: String) {
-        val current = _uiState.value.sql
-        val separator = if (current.isEmpty() || current.endsWith(" ")) "" else " "
-        setSql(current + separator + text)
+        val state = _uiState.value
+        val at = state.selectionStart.coerceIn(0, state.sql.length)
+        val before = state.sql.take(at)
+        val separator = if (before.isEmpty() || before.last().isWhitespace()) "" else " "
+        replaceRange(at, at, separator + text)
+    }
+
+    /**
+     * Completes the word the cursor sits in.
+     *
+     * The half-typed word is replaced, not added to: tapping "HIVASOK" after typing "hiv" has to
+     * give `FROM HIVASOK`, never `FROM hiv HIVASOK`.
+     */
+    fun complete(suggestion: String) {
+        val state = _uiState.value
+        val at = state.selectionStart.coerceIn(0, state.sql.length)
+        val start = at - state.sql.take(at).takeLastWhile { it.isLetterOrDigit() || it == '_' }.length
+        replaceRange(start, at, suggestion)
+    }
+
+    /** Replaces a range of the editor's text and leaves the cursor after what was inserted. */
+    private fun replaceRange(start: Int, end: Int, text: String) {
+        val state = _uiState.value
+        val caret = start + text.length
+        _uiState.value = state.copy(
+            sql = state.sql.substring(0, start) + text + state.sql.substring(end),
+            selectionStart = caret,
+            selectionEnd = caret,
+            suggestions = emptyList(),
+            error = null,
+        )
     }
 
     /**
@@ -279,6 +317,8 @@ class QueryEditorViewModel @Inject constructor(
                 switchedTo = null,
                 pendingParameters = emptyList(),
                 panel = QueryPanel.RESULT,
+                // Fold the editor away so the result gets the screen.
+                editorCollapsed = true,
                 statements = emptyList(),
                 selectedStatement = 0,
                 result = null,
@@ -393,7 +433,16 @@ class QueryEditorViewModel @Inject constructor(
 
     /** One tap from history or favourites puts the SQL back in the editor (§7.4). */
     fun load(sql: String) {
-        _uiState.value = _uiState.value.copy(sql = sql, panel = QueryPanel.RESULT, error = null)
+        // A query taken from the history or the favourites is meant to be read and edited, so the
+        // editor unfolds even if a result was filling the screen.
+        _uiState.value = _uiState.value.copy(
+            sql = sql,
+            panel = QueryPanel.RESULT,
+            error = null,
+            editorCollapsed = false,
+            selectionStart = sql.length,
+            selectionEnd = sql.length,
+        )
     }
 
     private fun loadDatabases() {

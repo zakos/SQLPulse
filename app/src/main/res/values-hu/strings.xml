@@ -259,4 +259,6 @@
     <string name="query_find">Keresés</string>
     <string name="query_replace">Csere erre</string>
     <string name="query_replace_all">Mind cseréje</string>
+
+    <string name="query_edit">Lekérdezés szerkesztése</string>
 </resources>
