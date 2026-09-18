@@ -34,6 +34,8 @@ megnézhető.
 | Adatbázis váltás menet közben, `USE` paranccsal is | `data/sql/QueryExecutor.kt` |
 | Adatbázis megadása nélküli kapcsolat (több adatbázisra kérdező lekérdezésekhez) | ugyanott |
 | SQL szerkesztő kiemeléssel, előzményekkel, mentett lekérdezésekkel | `ui/query/` |
+| Több utasítás futtatása, kijelölés futtatása, eredmény utasításonként | `data/sql/SqlScript.kt` |
+| SQL formázás, keresés és csere a szerkesztőben | `data/sql/SqlFormatter.kt` |
 | Nevesített paraméterek a lekérdezésben | `data/sql/SqlGuards.kt` |
 | Automatikus LIMIT olvasó utasításokra | ugyanott |
 | Csak olvasható kapcsolat, írás megtagadása | `data/sql/QueryExecutor.kt` |
@@ -60,24 +62,22 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 1. **Ugrógép.** A belépés már kulccsal és jelszóval is megy, de csak egyetlen SSH
    géppel. Sok helyen a szerver egy második gépen át érhető el.
-2. **Több utasítás egy futtatásban, kijelölés futtatása, és több eredményhalmaz.**
-3. **Keresés és csere a szerkesztőben, SQL formázás.**
 
 ### 1.2
 
-4. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
-5. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
-6. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
-7. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
+2. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
+3. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
+4. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
+5. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
    beállításával.
 
 ### 2.0
 
-9. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-10. **Felhasználók és jogosultságok megtekintése.**
-11. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+6. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+7. **Felhasználók és jogosultságok megtekintése.**
+8. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-12. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+9. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 
