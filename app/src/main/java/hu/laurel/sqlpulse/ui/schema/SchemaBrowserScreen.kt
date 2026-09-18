@@ -232,8 +232,6 @@ fun SchemaBrowserScreen(
     }
 }
 
-/** The routine's `SHOW CREATE`, or a line saying the body is not visible to this user. */
-@OptIn(ExperimentalMaterial3Api::class)
 /**
  * One column on a phone, two where there is room (research summary, §2.0).
  *
@@ -296,6 +294,8 @@ private fun DatabaseRow(name: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
+/** The routine's `SHOW CREATE`, or a line saying the body is not visible to this user. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoutineSheet(
     definition: RoutineDefinition,
