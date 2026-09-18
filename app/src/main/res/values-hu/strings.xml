@@ -271,4 +271,10 @@
     <string name="conflict_body">Valaki más módosította ezt az értéket, mióta beolvastad. Most ez van benne: %1$s. A te módosításod nem futott le.</string>
     <string name="conflict_row_gone">Valaki más törölte ezt a sort, mióta beolvastad, így nincs mit módosítani.</string>
     <string name="conflict_overwrite">Felülírom mégis</string>
+
+    <!-- Kézi tranzakciók. -->
+    <string name="transaction_begin">Tranzakció</string>
+    <string name="transaction_open">Nyitott tranzakció — semmi nem íródik ki, amíg nem véglegesíted.</string>
+    <string name="transaction_commit">Véglegesítés</string>
+    <string name="transaction_rollback">Visszavonás</string>
 </resources>

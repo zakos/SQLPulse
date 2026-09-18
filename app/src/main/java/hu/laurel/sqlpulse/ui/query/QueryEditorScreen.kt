@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.ui.query
 
 import android.content.Intent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -322,6 +323,15 @@ fun QueryEditorScreen(
                             enabled = state.sql.isNotBlank() && state.connectionName != null,
                             shape = Shapes.button,
                         ) { Text(stringResource(R.string.query_explain)) }
+                        // Only where writes are possible at all; on a read-only connection there
+                        // is nothing a transaction could hold back.
+                        if (!state.readOnly && !state.inTransaction) {
+                            OutlinedButton(
+                                onClick = { viewModel.setTransaction(true) },
+                                enabled = state.connectionName != null,
+                                shape = Shapes.button,
+                            ) { Text(stringResource(R.string.transaction_begin)) }
+                        }
                     }
                     Text(
                         text = stringResource(R.string.query_row_limit, state.rowLimit),
@@ -336,6 +346,13 @@ fun QueryEditorScreen(
                         )
                 }
             }
+            }
+
+            if (state.inTransaction) {
+                TransactionBar(
+                    onCommit = { viewModel.setTransaction(false) },
+                    onRollback = viewModel::rollback,
+                )
             }
 
             if (state.running) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -749,6 +766,36 @@ private fun CollapsedEditor(
                 contentDescription = stringResource(R.string.query_edit),
                 tint = semantic.textSecondary,
             )
+        }
+    }
+}
+
+/**
+ * The bar of an open transaction: what is happening, and the two ways out of it.
+ *
+ * It stays on screen while the editor is folded away, because a transaction nobody can see is a
+ * transaction somebody will forget to commit.
+ */
+@Composable
+private fun TransactionBar(onCommit: () -> Unit, onRollback: () -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(semantic.surfaceRaised)
+            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        Text(
+            text = stringResource(R.string.transaction_open),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.warning,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onRollback) { Text(stringResource(R.string.transaction_rollback)) }
+        Button(onClick = onCommit, shape = Shapes.button) {
+            Text(stringResource(R.string.transaction_commit))
         }
     }
 }

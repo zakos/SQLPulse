@@ -91,6 +91,8 @@ data class QueryEditorUiState(
      * read, and the editor is only needed again to change the query.
      */
     val editorCollapsed: Boolean = false,
+    /** True while a manual transaction is open: nothing is written until it is committed. */
+    val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
 ) {
     /** True when the editor holds more than one statement, so "run" means "run all of them". */
@@ -158,6 +160,12 @@ class QueryEditorViewModel @Inject constructor(
                 database?.let { loadCompletions(it) }
             }
             .launchIn(viewModelScope)
+
+        // The transaction belongs to the session, not to this screen: it survives navigating away
+        // and dies with the connection, and the bar has to say so either way.
+        sessions.inTransaction
+            .onEach { open -> _uiState.value = _uiState.value.copy(inTransaction = open) }
+            .launchIn(viewModelScope)
     }
 
     fun selectDatabase(database: String) = sessions.selectDatabase(database)
@@ -191,6 +199,32 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Inserts a snippet from the key row above the keyboard (§7.4). */
+    /**
+     * Opens a manual transaction, or closes the open one.
+     *
+     * Turning it off commits: switching away from "I will decide when this is written" means the
+     * work was meant to happen. Discarding is the explicit [rollback].
+     */
+    fun setTransaction(open: Boolean) {
+        viewModelScope.launch {
+            try {
+                if (open) sessions.beginTransaction() else sessions.commit()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = describe(e))
+            }
+        }
+    }
+
+    fun rollback() {
+        viewModelScope.launch {
+            try {
+                sessions.rollback()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = describe(e))
+            }
+        }
+    }
+
     fun toggleEditor() {
         _uiState.value = _uiState.value.copy(editorCollapsed = !_uiState.value.editorCollapsed)
     }

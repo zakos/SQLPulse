@@ -49,6 +49,19 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
         }
     }
 
+    /**
+     * Takes a connection out of the pool until [giveBack] returns it.
+     *
+     * Used by a manual transaction, which has to stay on one connection: a COMMIT is meaningless
+     * if the statements before it were spread over three.
+     */
+    fun take(): Connection {
+        check(!closed) { "session is closed" }
+        return borrow()
+    }
+
+    fun giveBack(connection: Connection) = release(connection)
+
     private fun borrow(): Connection {
         idle.poll()?.let { pooled ->
             return if (pooled.isValid(VALIDATION_TIMEOUT_SECONDS)) {

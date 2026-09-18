@@ -51,6 +51,7 @@ megnézhető.
 | Sor szerkesztése, beszúrása, törlése kulcs alapján | `data/sql/RowEditor.kt` |
 | A végrehajtandó SQL megmutatása mentés előtt | `data/sql/RowSqlBuilder.kt` |
 | Optimista zárolás: ütközés esetén szól, nem ír felül csendben | `data/sql/RowEditor.kt` |
+| Kézi tranzakció: COMMIT és ROLLBACK a lekérdező képernyőn | `data/sql/SqlSessionManager.kt` |
 | Export CSV és JSON formátumban | `data/export/` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
@@ -65,19 +66,18 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-2. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
-3. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
-4. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
-5. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
+2. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
+3. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
+4. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
    beállításával.
 
 ### 2.0
 
-6. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-7. **Felhasználók és jogosultságok megtekintése.**
-8. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+5. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+6. **Felhasználók és jogosultságok megtekintése.**
+7. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-9. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+8. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

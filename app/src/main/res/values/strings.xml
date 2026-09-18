@@ -279,4 +279,10 @@
     <string name="conflict_body">Someone else changed this value since you read it. It now holds: %1$s. Your edit was not applied.</string>
     <string name="conflict_row_gone">Someone else deleted this row since you read it, so there is nothing left to change.</string>
     <string name="conflict_overwrite">Overwrite anyway</string>
+
+    <!-- Manual transactions. -->
+    <string name="transaction_begin">Transaction</string>
+    <string name="transaction_open">Transaction open — nothing is written until you commit.</string>
+    <string name="transaction_commit">Commit</string>
+    <string name="transaction_rollback">Roll back</string>
 </resources>

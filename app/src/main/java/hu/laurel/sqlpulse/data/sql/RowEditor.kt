@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.sql
 
+import java.sql.Connection
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -160,6 +161,12 @@ class RowEditor @Inject constructor(
      * key that matched three rows is a bug, not something to commit and apologise for (§11).
      */
     suspend fun execute(statement: PreparedSql): Int = sessions.withConnection { connection ->
+        // Inside a manual transaction the user owns the commit: committing here would quietly
+        // write everything else they have run since they opened it. The row count is still
+        // checked, and a wrong count is reported without a rollback, so what to do about it stays
+        // their decision.
+        if (!connection.autoCommit) return@withConnection runGuarded(statement, connection)
+
         val previousAutoCommit = connection.autoCommit
         connection.autoCommit = false
         try {
@@ -182,6 +189,15 @@ class RowEditor @Inject constructor(
         } finally {
             connection.autoCommit = previousAutoCommit
         }
+    }
+
+    private fun runGuarded(statement: PreparedSql, connection: Connection): Int {
+        val affected = connection.prepareStatement(statement.sql).use { prepared ->
+            statement.parameters.forEachIndexed { index, value -> prepared.setString(index + 1, value) }
+            prepared.executeUpdate()
+        }
+        if (affected != 1) throw UnexpectedRowCountException(affected)
+        return affected
     }
 
     companion object {

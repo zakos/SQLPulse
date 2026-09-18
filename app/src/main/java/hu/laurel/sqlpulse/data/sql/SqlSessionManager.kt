@@ -65,6 +65,20 @@ class SqlSessionManager @Inject constructor(
     @Volatile
     private var session: SqlSession? = null
 
+    /**
+     * The connection a manual transaction is running on, or null when statements commit as they go.
+     *
+     * A transaction has to stay on one connection, so this one is taken out of the pool for as long
+     * as it is open. Everything the app does then runs on it, which is the point: a COMMIT should
+     * cover what the user has done since they started, not a subset that happened to share a
+     * connection.
+     */
+    @Volatile
+    private var transaction: Connection? = null
+
+    private val _inTransaction = MutableStateFlow(false)
+    val inTransaction: StateFlow<Boolean> = _inTransaction.asStateFlow()
+
     init {
         scope.launch {
             tunnelManager.state.collect { tunnel ->
@@ -81,10 +95,51 @@ class SqlSessionManager @Inject constructor(
     suspend fun <T> withConnection(block: (Connection) -> T): T {
         val live = session ?: throw NoSqlSessionException()
         val target = _database.value
+        val open = transaction
         return withContext(io) {
-            live.use { connection ->
-                if (target != null && connection.catalog != target) connection.catalog = target
-                block(connection)
+            if (open != null) {
+                if (target != null && open.catalog != target) open.catalog = target
+                block(open)
+            } else {
+                live.use { connection ->
+                    if (target != null && connection.catalog != target) connection.catalog = target
+                    block(connection)
+                }
+            }
+        }
+    }
+
+    /**
+     * Starts a manual transaction: from here nothing is written until [commit].
+     *
+     * Losing the session — the tunnel dropping, the app locking — rolls it back, because the
+     * server will do that anyway when the connection goes.
+     */
+    suspend fun beginTransaction() {
+        val live = session ?: throw NoSqlSessionException()
+        if (transaction != null) return
+        withContext(io) {
+            val connection = live.take()
+            connection.autoCommit = false
+            transaction = connection
+        }
+        _inTransaction.value = true
+    }
+
+    suspend fun commit() = endTransaction { it.commit() }
+
+    suspend fun rollback() = endTransaction { it.rollback() }
+
+    private suspend fun endTransaction(finish: (Connection) -> Unit) {
+        val open = transaction ?: return
+        transaction = null
+        _inTransaction.value = false
+        withContext(io) {
+            try {
+                finish(open)
+            } finally {
+                runCatching { open.autoCommit = true }
+                session?.giveBack(open)
             }
         }
     }
@@ -146,6 +201,13 @@ class SqlSessionManager @Inject constructor(
     }
 
     private fun closeSession() {
+        // An open transaction dies with the connection; rolling it back first is only tidier.
+        transaction?.let { open ->
+            runCatching { open.rollback() }
+            runCatching { open.close() }
+        }
+        transaction = null
+        _inTransaction.value = false
         session?.close()
         session = null
         _database.value = null
