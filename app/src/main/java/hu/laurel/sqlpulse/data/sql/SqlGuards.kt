@@ -68,6 +68,22 @@ object SqlGuards {
             .toList()
 
     /**
+     * True for an UPDATE or DELETE with no WHERE clause — a statement that rewrites or empties the
+     * whole table.
+     *
+     * A LIMIT does not count: `DELETE FROM t LIMIT 10` still picks its ten rows arbitrarily. This
+     * is a typo guard, not a security boundary; the boundary is the MySQL grants (§3).
+     */
+    fun isUnguardedWrite(sql: String): Boolean {
+        if (classify(sql) != StatementKind.WRITE) return false
+        val stripped = strip(sql)
+        val starter = firstKeyword(stripped)
+        // INSERT and REPLACE add rows rather than rewriting existing ones.
+        if (starter != "update" && starter != "delete") return false
+        return !Regex("(?i)\\bwhere\\b").containsMatchIn(stripped)
+    }
+
+    /**
      * The database named by a bare `USE somedb` statement, or null for anything else.
      *
      * `USE` cannot simply be executed: the app hands out connections from a pool, so it would

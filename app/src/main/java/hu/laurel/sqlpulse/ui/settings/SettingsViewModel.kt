@@ -28,6 +28,9 @@ class SettingsViewModel @Inject constructor(
 
     fun setTheme(theme: ThemePreference) = launch { repository.setTheme(theme) }
 
+    fun setBlockWritesWithoutWhere(block: Boolean) =
+        launch { repository.setBlockWritesWithoutWhere(block) }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

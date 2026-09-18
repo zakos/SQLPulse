@@ -189,6 +189,22 @@
     <string name="server_kill">Megszakítás</string>
     <string name="server_process_privilege">Más felhasználók lekérdezéseinek látásához PROCESS jog kell a MySQL felhasználón.</string>
 
+    <string name="tls_mode">A MySQL kapcsolat titkosítása</string>
+    <string name="tls_disabled">Kikapcsolva</string>
+    <string name="tls_disabled_note">Csak SSH tunnelen át értelmes, ahol a tunnel titkosít.</string>
+    <string name="tls_required">Titkosított</string>
+    <string name="tls_required_note">TLS kötelező, tanúsítvány-ellenőrzés nélkül: a lehallgatás ellen véd, a megszemélyesítés ellen nem.</string>
+    <string name="tls_verify_ca">Titkosított, CA ellenőrzéssel</string>
+    <string name="tls_verify_ca_note">A szerver tanúsítványát az alább importált CA-nak kell aláírnia.</string>
+    <string name="tls_verify_identity">Titkosított, CA és hoszt ellenőrzéssel</string>
+    <string name="tls_verify_identity_note">Mint fentebb, és a tanúsítványnak illeszkednie kell ahhoz a hoszthoz, amihez kapcsolódsz. Közvetlen kapcsolatnál ez a biztonságos választás.</string>
+    <string name="tls_import_ca">CA tanúsítvány importálása</string>
+    <string name="tls_ca_required">Ehhez a módhoz kell a CA tanúsítvány, ami a szerver tanúsítványát aláírta.</string>
+    <string name="error_certificate_invalid">Ez a fájl nem tartalmaz PEM tanúsítványt.</string>
+
+    <string name="error_no_where_clause">Ennek az utasításnak nincs WHERE feltétele, tehát minden sort módosítana. Adj hozzá feltételt, vagy engedélyezd a Beállításokban.</string>
+    <string name="settings_block_unguarded_writes">WHERE nélküli UPDATE és DELETE elutasítása</string>
+
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>

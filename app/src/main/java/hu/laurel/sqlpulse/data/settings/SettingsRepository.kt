@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -23,6 +24,11 @@ data class Settings(
     val autoLockMinutes: Int = 5,
     val theme: ThemePreference = ThemePreference.System,
     val gridFontScale: Int = 100,
+    /**
+     * Refuse UPDATE and DELETE without a WHERE clause. On by default: on a phone the statement is
+     * typed with a thumb, and the whole-table version of it looks almost identical.
+     */
+    val blockWritesWithoutWhere: Boolean = true,
 )
 
 @Singleton
@@ -37,6 +43,7 @@ class SettingsRepository @Inject constructor(
             theme = preferences[THEME]?.let { runCatching { ThemePreference.valueOf(it) }.getOrNull() }
                 ?: ThemePreference.System,
             gridFontScale = preferences[GRID_FONT] ?: 100,
+            blockWritesWithoutWhere = preferences[BLOCK_UNGUARDED_WRITES] ?: true,
         )
     }
 
@@ -45,6 +52,10 @@ class SettingsRepository @Inject constructor(
     suspend fun setAutoLockMinutes(minutes: Int) = put(AUTO_LOCK, minutes.coerceIn(1, 60))
 
     suspend fun setGridFontScale(scale: Int) = put(GRID_FONT, scale.coerceIn(80, 150))
+
+    suspend fun setBlockWritesWithoutWhere(block: Boolean) {
+        context.dataStore.edit { it[BLOCK_UNGUARDED_WRITES] = block }
+    }
 
     suspend fun setTheme(theme: ThemePreference) {
         context.dataStore.edit { it[THEME] = theme.name }
@@ -59,5 +70,6 @@ class SettingsRepository @Inject constructor(
         val AUTO_LOCK = intPreferencesKey("auto_lock_minutes")
         val THEME = stringPreferencesKey("theme")
         val GRID_FONT = intPreferencesKey("grid_font_scale")
+        val BLOCK_UNGUARDED_WRITES = booleanPreferencesKey("block_writes_without_where")
     }
 }

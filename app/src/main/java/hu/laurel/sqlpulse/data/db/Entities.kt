@@ -86,6 +86,10 @@ data class ConnectionEntity(
     val database: String,
     val dbUser: String,
     val readOnly: Boolean = true,
+    /** Name of an SslMode entry: how the MySQL connection itself is protected. */
+    val sslMode: String = "DISABLED",
+    /** File name under the app's `ca` directory holding the CA that signs the server cert. */
+    val caCertificate: String? = null,
     val lastUsedAt: Long? = null,
 )
 

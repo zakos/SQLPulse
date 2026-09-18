@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -122,7 +126,7 @@ fun ConnectionEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(
                         checked = form.useSsh,
-                        onCheckedChange = { value -> viewModel.update { it.copy(useSsh = value) } },
+                        onCheckedChange = viewModel::setUseSsh,
                     )
                     Text(
                         stringResource(R.string.ssh_use_tunnel),
@@ -244,6 +248,14 @@ fun ConnectionEditorScreen(
                         modifier = Modifier.padding(start = Spacing.s),
                     )
                 }
+
+                TlsSection(
+                    mode = form.sslMode,
+                    certificate = form.caCertificate,
+                    onMode = { value -> viewModel.update { it.copy(sslMode = value) } },
+                    onImport = viewModel::importCertificate,
+                    onClear = viewModel::clearCertificate,
+                )
             }
 
             TestResult(tunnel = tunnel, serverVersion = serverVersion)
@@ -273,6 +285,94 @@ fun ConnectionEditorScreen(
                 onAccept = viewModel::acceptHostKey,
                 onReject = viewModel::rejectHostKey,
             )
+        }
+    }
+}
+
+/**
+ * How the MySQL connection itself is protected (research summary, §1).
+ *
+ * The verifying modes need the CA that signed the server certificate: a database server usually
+ * has an internal CA that no public trust store knows about.
+ */
+@Composable
+private fun TlsSection(
+    mode: SslMode,
+    certificate: String?,
+    onMode: (SslMode) -> Unit,
+    onImport: (Uri, String) -> Unit,
+    onClear: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { onImport(it, it.lastPathSegment ?: "ca.pem") }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        Text(stringResource(R.string.tls_mode), style = MaterialTheme.typography.bodyMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            SslMode.entries.forEach { candidate ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onMode(candidate) }
+                        .padding(vertical = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.RadioButton(
+                        selected = candidate == mode,
+                        onClick = { onMode(candidate) },
+                    )
+                    Column(modifier = Modifier.padding(start = Spacing.s)) {
+                        Text(
+                            stringResource(
+                                when (candidate) {
+                                    SslMode.DISABLED -> R.string.tls_disabled
+                                    SslMode.REQUIRED -> R.string.tls_required
+                                    SslMode.VERIFY_CA -> R.string.tls_verify_ca
+                                    SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            stringResource(
+                                when (candidate) {
+                                    SslMode.DISABLED -> R.string.tls_disabled_note
+                                    SslMode.REQUIRED -> R.string.tls_required_note
+                                    SslMode.VERIFY_CA -> R.string.tls_verify_ca_note
+                                    SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity_note
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = semantic.textSecondary,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (mode.verifiesCertificate) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                OutlinedButton(
+                    onClick = { picker.launch(arrayOf("*/*")) },
+                    shape = Shapes.button,
+                ) { Text(stringResource(R.string.tls_import_ca)) }
+                certificate?.let {
+                    Text(it, style = MonoStyles.cell, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClear) { Text(stringResource(R.string.cancel)) }
+                }
+            }
+            if (certificate == null) {
+                Text(
+                    stringResource(R.string.tls_ca_required),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.warning,
+                )
+            }
         }
     }
 }

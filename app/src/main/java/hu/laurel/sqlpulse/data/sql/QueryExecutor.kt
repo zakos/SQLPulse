@@ -2,11 +2,13 @@ package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
+import hu.laurel.sqlpulse.data.settings.SettingsRepository
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.sql.Statement
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /** The connection is read-only, so a write was refused before it ever reached the server. */
@@ -14,6 +16,9 @@ class ReadOnlyConnectionException : Exception("this connection is read-only")
 
 /** DDL and administration are out of scope (§2). */
 class UnsupportedStatementException : Exception("only queries and row edits are supported")
+
+/** An UPDATE or DELETE with no WHERE clause, refused by the setting that is on by default. */
+class UnguardedWriteException : Exception("this statement has no WHERE clause")
 
 data class QueryOutcome(
     val table: ResultTable,
@@ -35,6 +40,7 @@ data class QueryOutcome(
 class QueryExecutor @Inject constructor(
     private val sessions: SqlSessionManager,
     private val history: QueryHistoryDao,
+    private val settings: SettingsRepository,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -62,6 +68,9 @@ class QueryExecutor @Inject constructor(
         val kind = SqlGuards.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()
+        if (settings.settings.first().blockWritesWithoutWhere && SqlGuards.isUnguardedWrite(sql)) {
+            throw UnguardedWriteException()
+        }
 
         val limited = SqlGuards.applyDefaultLimit(sql, rowLimit)
         val bound = SqlGuards.bindParameters(limited.sql)

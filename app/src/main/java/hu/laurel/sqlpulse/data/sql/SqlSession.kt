@@ -16,6 +16,9 @@ data class JdbcConfig(
     val user: String,
     val password: String?,
     val readOnly: Boolean,
+    val sslMode: SslMode = SslMode.DISABLED,
+    /** PEM file with the CA that signed the server certificate; needed by the verifying modes. */
+    val caCertificatePath: String? = null,
     val connectTimeoutMs: Int = 10_000,
     val socketTimeoutMs: Int = 30_000,
 )
@@ -93,6 +96,8 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
             // §11: a dropped connection is never retried behind the user's back.
             setProperty("autoReconnect", "false")
             setProperty("tcpKeepAlive", "true")
+            SslProperties.propertiesFor(config.sslMode, config.caCertificatePath)
+                .forEach { (key, value) -> setProperty(key, value) }
         }
         val url = "jdbc:mariadb://${config.host}:${config.port}/${config.database}"
         return DriverManager.getConnection(url, properties).apply {

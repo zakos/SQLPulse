@@ -123,4 +123,28 @@ class SqlGuardsTest {
     fun `USE is not classified as a runnable statement`() {
         assertEquals(StatementKind.OTHER, SqlGuards.classify("USE shop"))
     }
+
+    @Test
+    fun `an update or delete without a where clause is recognised`() {
+        assertTrue(SqlGuards.isUnguardedWrite("UPDATE orders SET paid = 1"))
+        assertTrue(SqlGuards.isUnguardedWrite("delete from orders"))
+        assertTrue(SqlGuards.isUnguardedWrite("/* cleanup */ DELETE FROM orders"))
+        assertFalse(SqlGuards.isUnguardedWrite("UPDATE orders SET paid = 1 WHERE id = 7"))
+        assertFalse(SqlGuards.isUnguardedWrite("delete from orders where id in (1, 2)"))
+    }
+
+    @Test
+    fun `a where hidden in a string or a column name does not count as a guard`() {
+        assertTrue(SqlGuards.isUnguardedWrite("UPDATE t SET note = 'where did it go'"))
+        assertFalse(SqlGuards.isUnguardedWrite("UPDATE t SET note = 'x' WHERE id = 1"))
+    }
+
+    @Test
+    fun `statements that cannot wipe a table are left alone`() {
+        assertFalse(SqlGuards.isUnguardedWrite("INSERT INTO t (a) VALUES (1)"))
+        assertFalse(SqlGuards.isUnguardedWrite("REPLACE INTO t (a) VALUES (1)"))
+        assertFalse(SqlGuards.isUnguardedWrite("SELECT * FROM t"))
+        assertFalse(SqlGuards.isUnguardedWrite("TRUNCATE TABLE t"))
+        assertFalse(SqlGuards.isUnguardedWrite(""))
+    }
 }

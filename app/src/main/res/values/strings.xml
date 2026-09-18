@@ -197,6 +197,22 @@
     <string name="server_kill">End statement</string>
     <string name="server_process_privilege">Seeing other users\' queries needs the PROCESS privilege on the MySQL user.</string>
 
+    <string name="tls_mode">MySQL connection encryption</string>
+    <string name="tls_disabled">Off</string>
+    <string name="tls_disabled_note">Only sensible through an SSH tunnel, where the tunnel does the encrypting.</string>
+    <string name="tls_required">Encrypted</string>
+    <string name="tls_required_note">TLS required, certificate not checked: stops listening, not impersonation.</string>
+    <string name="tls_verify_ca">Encrypted, CA checked</string>
+    <string name="tls_verify_ca_note">The server certificate has to be signed by the CA you import below.</string>
+    <string name="tls_verify_identity">Encrypted, CA and host checked</string>
+    <string name="tls_verify_identity_note">As above, and the certificate has to match the host you are connecting to. The safe choice for a direct connection.</string>
+    <string name="tls_import_ca">Import CA certificate</string>
+    <string name="tls_ca_required">This mode needs the CA certificate that signed the server certificate.</string>
+    <string name="error_certificate_invalid">That file does not contain a PEM certificate.</string>
+
+    <string name="error_no_where_clause">This statement has no WHERE clause, so it would change every row. Add a condition, or allow it in Settings.</string>
+    <string name="settings_block_unguarded_writes">Refuse UPDATE and DELETE without WHERE</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

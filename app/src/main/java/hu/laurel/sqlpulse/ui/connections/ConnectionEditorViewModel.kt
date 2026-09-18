@@ -1,9 +1,16 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.CertificateStore
+import hu.laurel.sqlpulse.data.sql.SslMode
+import hu.laurel.sqlpulse.data.sql.SslProperties
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
@@ -37,6 +44,9 @@ data class ConnectionForm(
     val password: String = "",
     val passwordTouched: Boolean = false,
     val readOnly: Boolean = true,
+    /** How the MySQL connection itself is protected, independently of the SSH tunnel. */
+    val sslMode: SslMode = SslMode.DISABLED,
+    val caCertificate: String? = null,
 ) {
     /**
      * With the tunnel on, §5 still holds: no key, no save, and no password-authentication path to
@@ -46,6 +56,8 @@ data class ConnectionForm(
         get() = name.isNotBlank() &&
             dbHost.isNotBlank() &&
             dbPort.toIntOrNull() != null &&
+            // A verifying TLS mode without a CA file would fail at connect time, not at save.
+            !SslProperties.missingCertificate(sslMode, caCertificate) &&
             (
                 !useSsh || (
                     sshHost.isNotBlank() &&
@@ -59,6 +71,8 @@ data class ConnectionForm(
 @HiltViewModel
 class ConnectionEditorViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context,
+    private val certificateStore: CertificateStore,
     private val connections: ConnectionRepository,
     private val keyRepository: SshKeyRepository,
     private val tunnelManager: TunnelManager,
@@ -92,6 +106,38 @@ class ConnectionEditorViewModel @Inject constructor(
     fun update(transform: (ConnectionForm) -> ConnectionForm) {
         _form.value = transform(_form.value)
     }
+
+    /**
+     * Switching the tunnel also moves the sensible TLS default: inside a tunnel the tunnel is the
+     * encryption, while a direct connection should verify the server it is talking to.
+     */
+    fun setUseSsh(useSsh: Boolean) {
+        val current = _form.value
+        val untouchedDefault = current.sslMode == SslMode.defaultFor(current.useSsh)
+        _form.value = current.copy(
+            useSsh = useSsh,
+            sslMode = if (untouchedDefault) SslMode.defaultFor(useSsh) else current.sslMode,
+        )
+    }
+
+    /** Copies a CA certificate chosen in the file picker into the app's storage. */
+    fun importCertificate(uri: Uri, name: String) {
+        viewModelScope.launch {
+            try {
+                val stored = certificateStore.import(uri, name)
+                _form.value = _form.value.copy(caCertificate = stored)
+            } catch (e: Exception) {
+                _error.value = context.getString(R.string.error_certificate_invalid)
+            }
+        }
+    }
+
+    fun clearCertificate() {
+        _form.value = _form.value.copy(caCertificate = null)
+    }
+
+    /** CA files already imported, so a second connection can reuse one. */
+    val availableCertificates: List<String> get() = certificateStore.list()
 
     fun save(onSaved: (Long) -> Unit) {
         val form = _form.value
@@ -148,6 +194,8 @@ class ConnectionEditorViewModel @Inject constructor(
         database = database.trim(),
         dbUser = dbUser.trim(),
         readOnly = readOnly,
+        sslMode = sslMode.name,
+        caCertificate = caCertificate,
     )
 
     private fun ConnectionEntity.toForm(hasPassword: Boolean) = ConnectionForm(
@@ -166,6 +214,8 @@ class ConnectionEditorViewModel @Inject constructor(
         password = if (hasPassword) PLACEHOLDER_PASSWORD else "",
         passwordTouched = false,
         readOnly = readOnly,
+        sslMode = SslMode.fromName(sslMode),
+        caCertificate = caCertificate,
     )
 
     private companion object {

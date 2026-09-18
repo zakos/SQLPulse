@@ -22,6 +22,7 @@ import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.UnguardedWriteException
 import hu.laurel.sqlpulse.data.sql.UnsupportedStatementException
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -309,6 +310,7 @@ class QueryEditorViewModel @Inject constructor(
     private fun describe(e: Exception): String = when (e) {
         is ReadOnlyConnectionException -> context.getString(R.string.error_read_only)
         is UnsupportedStatementException -> context.getString(R.string.error_unsupported_statement)
+        is UnguardedWriteException -> context.getString(R.string.error_no_where_clause)
         // §11: a MySQL error is shown as the server worded it.
         else -> e.message ?: e.toString()
     }

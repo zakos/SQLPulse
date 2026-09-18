@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.di.ApplicationScope
@@ -38,6 +39,7 @@ class NoSqlSessionException : Exception("no MySQL session")
 class SqlSessionManager @Inject constructor(
     private val tunnelManager: TunnelManager,
     private val connections: ConnectionRepository,
+    private val certificates: CertificateStore,
     @IoDispatcher private val io: CoroutineDispatcher,
     @ApplicationScope scope: CoroutineScope,
 ) {
@@ -113,6 +115,9 @@ class SqlSessionManager @Inject constructor(
                     user = entity.dbUser,
                     password = password?.concatToString(),
                     readOnly = entity.readOnly,
+                    sslMode = SslMode.fromName(entity.sslMode),
+                    caCertificatePath = entity.caCertificate
+                        ?.let { certificates.pathFor(it) },
                 ),
             )
             val version = withContext(io) {

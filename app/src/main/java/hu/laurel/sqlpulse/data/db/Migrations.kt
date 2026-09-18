@@ -72,5 +72,20 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * v4: TLS for the MySQL connection itself.
+     *
+     * Existing connections keep DISABLED: they were all tunnelled, where the tunnel is the
+     * encryption, and silently turning on verification would break them.
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `connection` ADD COLUMN `sslMode` TEXT NOT NULL DEFAULT 'DISABLED'",
+            )
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `caCertificate` TEXT")
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

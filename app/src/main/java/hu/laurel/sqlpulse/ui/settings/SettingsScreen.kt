@@ -18,10 +18,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -68,6 +70,19 @@ fun SettingsScreen(
             Section(stringResource(R.string.keys_title)) {
                 OutlinedButton(onClick = onOpenKeyStore, shape = Shapes.button) {
                     Text(stringResource(R.string.settings_manage_keys))
+                }
+            }
+
+            Section(stringResource(R.string.query_title)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = settings.blockWritesWithoutWhere,
+                        onCheckedChange = viewModel::setBlockWritesWithoutWhere,
+                    )
+                    Text(
+                        stringResource(R.string.settings_block_unguarded_writes),
+                        modifier = Modifier.padding(start = Spacing.s),
+                    )
                 }
             }
 

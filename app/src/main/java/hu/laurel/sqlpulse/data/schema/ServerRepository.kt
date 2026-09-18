@@ -71,6 +71,16 @@ class ServerRepository @Inject constructor(
                     facts += ServerFact(rows.getString(1), rows.getString(2) ?: "")
                 }
             }
+            // Session status, not global: this is what *this* connection negotiated. An empty
+            // Ssl_version means the connection is not encrypted at all (research summary, §1).
+            statement.executeQuery(
+                "SHOW SESSION STATUS WHERE Variable_name IN ('Ssl_version', 'Ssl_cipher')",
+            ).use { rows ->
+                while (rows.next()) {
+                    val value = rows.getString(2).orEmpty()
+                    facts += ServerFact(rows.getString(1), value.ifBlank { "—" })
+                }
+            }
         }
         facts
     }
