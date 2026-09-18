@@ -82,6 +82,10 @@ class ServerRepository @Inject constructor(
                 }
             }
         }
+        // Which driver this session settled on. Worth showing: on an old server it explains why
+        // TLS verification is unavailable, and it is the first thing to check if something the
+        // modern driver does is missing.
+        sessions.driverInUse()?.let { facts += ServerFact("JDBC driver", it.name.lowercase()) }
         facts
     }
 

@@ -149,6 +149,9 @@ class SqlSessionManager @Inject constructor(
         _database.value = name
     }
 
+    /** Which driver the live session opened with, or null when there is no session. */
+    fun driverInUse(): JdbcDriverKind? = session?.settled
+
     fun currentConnection(): ConnectionEntity? = (_state.value as? SqlSessionState.Ready)?.connection
 
     private suspend fun open(tunnel: TunnelState.Active) {

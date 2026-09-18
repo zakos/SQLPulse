@@ -23,7 +23,8 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | On-device Ed25519 key generation, public key export | done |
 | SSH tunnel with local port forward, host key TOFU + pinning, foreground service | done |
 | Connection list and editor, connection test | done |
-| JDBC over the tunnel (MariaDB Connector/J 2.7, pool of 3, read-only enforcement) | done |
+| JDBC over the tunnel (MariaDB Connector/J, pool of 3, read-only enforcement) | done |
+| Legacy driver for servers older than MySQL 5.5.3, chosen automatically | done |
 | Schema browser: databases, tables, columns, indexes, foreign keys, DDL | done |
 | Query editor: highlighting, key row, completion, history, favourites, :parameters | done |
 | Result grid: sticky header and first column, draggable widths, scroll paging, row detail | done |
@@ -36,10 +37,16 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | Views, routines, triggers and events in the browser; engine and size per table | done |
 | SSH password authentication beside key authentication | done |
 
-The driver is the 2.7 line rather than 3.x on purpose: 3.x sends `SET NAMES utf8mb4` on every
-connection, which a server older than MySQL 5.5.3 rejects outright, while 2.7 negotiates the
-character set with the server and still carries the plugins for MySQL 8 and for the pre-4.1
-password hash.
+Two JDBC drivers ship, and a connection settles on one by itself. MariaDB Connector/J is used for
+everything; it builds `SET NAMES utf8mb4` into the handshake, so a server older than MySQL 5.5.3
+refuses the session, and that one refusal — no other — switches the session to MySQL Connector/J
+5.1, which speaks back to MySQL 4.1. The server screen says which one is in use. On the legacy
+driver the two verifying TLS modes are refused rather than downgraded: it takes its CA in a Java
+keystore, not as a PEM file.
+
+The MariaDB 2.7 line, which would have covered both, cannot be used on Android at all: its driver
+class registers itself through JDBC 4.2's `DriverAction`, and its statement class compiles a regex
+with `CANON_EQ`. Neither exists on Android, and both fail at class initialisation.
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.

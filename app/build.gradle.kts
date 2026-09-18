@@ -193,6 +193,9 @@ dependencies {
         exclude(group = "net.java.dev.jna")
         exclude(group = "org.slf4j")
     }
+    // The second driver, used only for servers older than MySQL 5.5.3: the modern one hardcodes
+    // utf8mb4, which they do not have. See SqlSession for how the choice is made.
+    implementation(libs.mysql.legacy.client)
     implementation(libs.bouncycastle.prov)
     implementation(libs.bouncycastle.pkix)
     implementation(libs.eddsa)

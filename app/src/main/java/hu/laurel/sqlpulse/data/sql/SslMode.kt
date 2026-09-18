@@ -37,7 +37,23 @@ enum class SslMode {
     }
 }
 
-/** Maps a mode onto MariaDB Connector/J 2.7 connection properties. */
+/**
+ * A server the modern driver cannot speak to needs the older one, and the two spell every option
+ * differently. Which is in use decides how a connection is described and how TLS is configured.
+ */
+enum class JdbcDriverKind {
+    /** MariaDB Connector/J: everything from MySQL 5.5.3 onwards. */
+    MODERN,
+
+    /** MySQL Connector/J 5.1: the servers the modern driver refuses, back to MySQL 4.1. */
+    LEGACY,
+}
+
+/** TLS is configured with a CA file, which the legacy driver cannot take. */
+class TlsUnsupportedByLegacyDriverException :
+    Exception("this server needs the legacy driver, which cannot verify a CA certificate")
+
+/** Maps a TLS mode onto the connection properties of whichever driver is being used. */
 object SslProperties {
 
     /**
@@ -45,31 +61,44 @@ object SslProperties {
      *   by the verifying modes. Android's own trust store is not used: a database server's
      *   certificate is usually signed by an internal CA that no public store knows.
      */
-    fun propertiesFor(mode: SslMode, caCertificatePath: String?): Map<String, String> = when (mode) {
-        SslMode.DISABLED -> mapOf("useSsl" to "false")
+    fun propertiesFor(
+        mode: SslMode,
+        caCertificatePath: String?,
+        driver: JdbcDriverKind = JdbcDriverKind.MODERN,
+    ): Map<String, String> = when (driver) {
+        JdbcDriverKind.MODERN -> modern(mode, caCertificatePath)
+        JdbcDriverKind.LEGACY -> legacy(mode)
+    }
 
-        // Encrypted but unverified: the driver trusts whatever certificate it is shown.
-        SslMode.REQUIRED -> mapOf("useSsl" to "true", "trustServerCertificate" to "true")
+    private fun modern(mode: SslMode, caCertificatePath: String?): Map<String, String> = when (mode) {
+        SslMode.DISABLED -> mapOf("sslMode" to "disable")
+        SslMode.REQUIRED -> mapOf("sslMode" to "trust")
+        SslMode.VERIFY_CA -> verifying("verify-ca", caCertificatePath)
+        SslMode.VERIFY_IDENTITY -> verifying("verify-full", caCertificatePath)
+    }
 
-        // The certificate must be signed by the configured CA, but may name another host — which
-        // is what a server reached through a tunnel or by IP address looks like.
-        SslMode.VERIFY_CA -> verifying(caCertificatePath) +
-            mapOf("disableSslHostnameVerification" to "true")
+    /**
+     * The legacy driver takes its CA in a Java keystore, not as a PEM file, so the verifying
+     * modes are refused rather than quietly downgraded to "encrypted but unchecked" — which is
+     * what the user did not ask for.
+     */
+    private fun legacy(mode: SslMode): Map<String, String> = when (mode) {
+        SslMode.DISABLED -> mapOf("useSSL" to "false")
+        SslMode.REQUIRED -> mapOf(
+            "useSSL" to "true",
+            "requireSSL" to "true",
+            "verifyServerCertificate" to "false",
+        )
 
-        SslMode.VERIFY_IDENTITY -> verifying(caCertificatePath) +
-            mapOf("disableSslHostnameVerification" to "false")
+        SslMode.VERIFY_CA, SslMode.VERIFY_IDENTITY -> throw TlsUnsupportedByLegacyDriverException()
     }
 
     /** True when the mode needs a CA file that has not been configured. */
     fun missingCertificate(mode: SslMode, caCertificatePath: String?): Boolean =
         mode.verifiesCertificate && caCertificatePath.isNullOrBlank()
 
-    private fun verifying(caCertificatePath: String?): Map<String, String> {
-        require(!caCertificatePath.isNullOrBlank()) { "verification needs a CA certificate" }
-        return mapOf(
-            "useSsl" to "true",
-            "trustServerCertificate" to "false",
-            "serverSslCert" to caCertificatePath,
-        )
+    private fun verifying(driverMode: String, caCertificatePath: String?): Map<String, String> {
+        require(!caCertificatePath.isNullOrBlank()) { "$driverMode needs a CA certificate" }
+        return mapOf("sslMode" to driverMode, "serverSslCert" to caCertificatePath)
     }
 }

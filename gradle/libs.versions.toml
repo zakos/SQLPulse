@@ -15,11 +15,9 @@ sqlite = "2.4.0"
 biometric = "1.2.0-alpha05"
 datastore = "1.1.1"
 sshj = "0.38.0"
-# 2.7 rather than 3.x: the 3.x driver sends "SET NAMES utf8mb4" on every connection, which a
-# server older than MySQL 5.5.3 rejects outright. The 2.7 line negotiates the character set with
-# the server, and still carries the plugins for MySQL 8 (caching_sha2_password) and for the
-# pre-4.1 password hash that old installations use.
-mariadb = "2.7.11"
+mariadb = "3.4.1"
+# Only for servers the modern driver cannot speak to; see SqlSession.
+mysql-legacy = "5.1.49"
 bouncycastle = "1.78.1"
 eddsa = "0.3.0"
 slf4j = "2.0.16"
@@ -56,6 +54,7 @@ hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", v
 hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigation" }
 sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
 mariadb-client = { group = "org.mariadb.jdbc", name = "mariadb-java-client", version.ref = "mariadb" }
+mysql-legacy-client = { group = "mysql", name = "mysql-connector-java", version.ref = "mysql-legacy" }
 bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 bouncycastle-pkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", version.ref = "bouncycastle" }
 eddsa = { group = "net.i2p.crypto", name = "eddsa", version.ref = "eddsa" }

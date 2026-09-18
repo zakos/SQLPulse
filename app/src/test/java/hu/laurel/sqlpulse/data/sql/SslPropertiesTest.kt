@@ -9,51 +9,53 @@ import org.junit.Test
 class SslPropertiesTest {
 
     @Test
-    fun `each mode maps onto the driver's own vocabulary`() {
+    fun `each mode maps onto the modern driver's own vocabulary`() {
         assertEquals(
-            mapOf("useSsl" to "false"),
+            mapOf("sslMode" to "disable"),
             SslProperties.propertiesFor(SslMode.DISABLED, null),
         )
         assertEquals(
-            mapOf("useSsl" to "true", "trustServerCertificate" to "true"),
+            mapOf("sslMode" to "trust"),
             SslProperties.propertiesFor(SslMode.REQUIRED, null),
         )
         assertEquals(
-            mapOf(
-                "useSsl" to "true",
-                "trustServerCertificate" to "false",
-                "serverSslCert" to "/ca/db.pem",
-                "disableSslHostnameVerification" to "true",
-            ),
+            mapOf("sslMode" to "verify-ca", "serverSslCert" to "/ca/db.pem"),
             SslProperties.propertiesFor(SslMode.VERIFY_CA, "/ca/db.pem"),
         )
         assertEquals(
-            mapOf(
-                "useSsl" to "true",
-                "trustServerCertificate" to "false",
-                "serverSslCert" to "/ca/db.pem",
-                "disableSslHostnameVerification" to "false",
-            ),
+            mapOf("sslMode" to "verify-full", "serverSslCert" to "/ca/db.pem"),
             SslProperties.propertiesFor(SslMode.VERIFY_IDENTITY, "/ca/db.pem"),
         )
+    }
+
+    @Test
+    fun `the legacy driver spells the same two modes differently`() {
+        assertEquals(
+            mapOf("useSSL" to "false"),
+            SslProperties.propertiesFor(SslMode.DISABLED, null, JdbcDriverKind.LEGACY),
+        )
+        assertEquals(
+            mapOf("useSSL" to "true", "requireSSL" to "true", "verifyServerCertificate" to "false"),
+            SslProperties.propertiesFor(SslMode.REQUIRED, null, JdbcDriverKind.LEGACY),
+        )
+    }
+
+    @Test
+    fun `verification is refused on the legacy driver rather than quietly dropped`() {
+        // It takes its CA in a Java keystore, not as a PEM file. Falling back to "encrypted but
+        // unchecked" would give the user something they did not ask for.
+        listOf(SslMode.VERIFY_CA, SslMode.VERIFY_IDENTITY).forEach { mode ->
+            val error = runCatching {
+                SslProperties.propertiesFor(mode, "/ca/db.pem", JdbcDriverKind.LEGACY)
+            }.exceptionOrNull()
+            assertTrue(mode.name, error is TlsUnsupportedByLegacyDriverException)
+        }
     }
 
     @Test
     fun `a certificate left over from another mode is not passed on`() {
         // Switching back to REQUIRED must actually stop verifying, not verify quietly.
         assertNull(SslProperties.propertiesFor(SslMode.REQUIRED, "/ca/db.pem")["serverSslCert"])
-    }
-
-    @Test
-    fun `only the identity check separates the two verifying modes`() {
-        val ca = SslProperties.propertiesFor(SslMode.VERIFY_CA, "/ca/db.pem")
-        val identity = SslProperties.propertiesFor(SslMode.VERIFY_IDENTITY, "/ca/db.pem")
-        assertEquals(
-            ca - "disableSslHostnameVerification",
-            identity - "disableSslHostnameVerification",
-        )
-        assertEquals("true", ca["disableSslHostnameVerification"])
-        assertEquals("false", identity["disableSslHostnameVerification"])
     }
 
     @Test
