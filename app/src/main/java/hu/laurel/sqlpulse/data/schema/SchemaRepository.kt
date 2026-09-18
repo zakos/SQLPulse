@@ -247,6 +247,35 @@ class SchemaRepository @Inject constructor(
             }
         }
 
+    /**
+     * The first bytes of a BLOB, for the preview (§7.5).
+     *
+     * At most [maxBytes], read with SUBSTRING on the server: a video in a LONGBLOB would otherwise
+     * travel down the tunnel in full to show sixteen lines of hex. The extra byte is asked for so
+     * that "there is more" can be said without a second query.
+     */
+    suspend fun blobBytes(
+        database: String,
+        table: String,
+        key: Map<String, String?>,
+        column: String,
+        maxBytes: Int = PREVIEW_BYTES,
+    ): Pair<ByteArray, Boolean> = sessions.withConnection { connection ->
+        val where = key.keys.joinToString(prefix = " WHERE ", separator = " AND ") {
+            "${quoteIdentifier(it)} = ?"
+        }
+        val sql = "SELECT SUBSTRING(${quoteIdentifier(column)}, 1, ${maxBytes + 1}) FROM " +
+            "${quoteIdentifier(database)}.${quoteIdentifier(table)}$where"
+        connection.prepareStatement(sql).use { statement ->
+            key.values.forEachIndexed { index, value -> statement.setString(index + 1, value) }
+            statement.executeQuery().use { rows ->
+                if (!rows.next()) return@withConnection ByteArray(0) to false
+                val bytes = rows.getBytes(1) ?: ByteArray(0)
+                if (bytes.size > maxBytes) bytes.copyOf(maxBytes) to true else bytes to false
+            }
+        }
+    }
+
     fun clearCache() {
         tableCache.clear()
         structureCache.clear()
@@ -337,6 +366,9 @@ class SchemaRepository @Inject constructor(
 
     private companion object {
         const val PREVIEW_ROWS = 100
+
+        /** Enough to recognise a file header or read a paragraph; not enough to hurt. */
+        const val PREVIEW_BYTES = 4096
         val SYSTEM_SCHEMAS = setOf("information_schema", "mysql", "performance_schema", "sys")
     }
 }

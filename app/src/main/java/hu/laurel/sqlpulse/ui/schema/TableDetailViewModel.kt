@@ -12,6 +12,7 @@ import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableStructure
+import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.ColumnSort
@@ -72,6 +73,9 @@ data class TableDetailUiState(
     val pendingEdit: RowEdit? = null,
     /** Set when the row changed between being read and being written (§7.6). */
     val conflict: EditConflict? = null,
+    /** The BLOB the user asked to look inside, once its first bytes have arrived. */
+    val blobPreview: BlobPreview.Preview? = null,
+    val loadingBlob: Boolean = false,
     /** Set for ten seconds after a successful edit, while it can still be taken back (§7.6). */
     val undoable: RowEdit? = null,
     val isProduction: Boolean = false,
@@ -246,6 +250,39 @@ class TableDetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(loading = false, error = describe(e))
             }
         }
+    }
+
+    /**
+     * Reads the beginning of a BLOB cell so it can be looked at.
+     *
+     * On demand rather than with the page: the grid shows a size for a reason, and loading every
+     * BLOB of every row to display "size" would be the opposite of that.
+     */
+    fun previewBlob(rowIndex: Int, columnLabel: String) {
+        val state = _uiState.value
+        val rows = state.rows ?: return
+        val structure = state.structure ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loadingBlob = true, blobPreview = null)
+            try {
+                val (bytes, truncated) = schema.blobBytes(
+                    database = database,
+                    table = table,
+                    key = primaryKeyOf(rows, structure, rowIndex),
+                    column = columnLabel,
+                )
+                _uiState.value = _uiState.value.copy(
+                    loadingBlob = false,
+                    blobPreview = BlobPreview.of(bytes, truncated),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(loadingBlob = false, error = describe(e))
+            }
+        }
+    }
+
+    fun dismissBlobPreview() {
+        _uiState.value = _uiState.value.copy(blobPreview = null)
     }
 
     fun dismissConflict() {

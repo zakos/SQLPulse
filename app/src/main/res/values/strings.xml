@@ -287,4 +287,7 @@
     <string name="transaction_rollback">Roll back</string>
 
     <string name="cell_json">Formatted JSON</string>
+
+    <string name="cell_blob_preview">Look inside</string>
+    <string name="cell_blob_truncated">Only the first few kilobytes are shown; the rest stays on the server.</string>
 </resources>

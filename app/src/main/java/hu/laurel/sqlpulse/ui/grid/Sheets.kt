@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
+import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.JsonFormatter
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -50,6 +51,10 @@ fun CellSheet(
     onCopy: (String) -> Unit,
     onEdit: () -> Unit,
     onDismiss: () -> Unit,
+    /** Null where the bytes cannot be fetched — a query result has no row to go back to. */
+    onPreviewBlob: (() -> Unit)? = null,
+    blobPreview: BlobPreview.Preview? = null,
+    loadingBlob: Boolean = false,
 ) {
     val semantic = LocalSemanticColors.current
     ModalBottomSheet(
@@ -84,7 +89,11 @@ fun CellSheet(
             }
 
             Text(
-                text = if (showFormatted && formatted != null) formatted else raw,
+                text = when {
+                    blobPreview != null -> blobPreview.content
+                    showFormatted && formatted != null -> formatted
+                    else -> raw
+                },
                 style = MonoStyles.cell,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -93,6 +102,14 @@ fun CellSheet(
                     .horizontalScroll(rememberScrollState()),
             )
 
+            blobPreview?.takeIf { it.truncated }?.let {
+                Text(
+                    stringResource(R.string.cell_blob_truncated),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
+
             editBlockedReason?.takeIf { !canEdit }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.warning)
             }
@@ -100,10 +117,23 @@ fun CellSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
                 // Copies what is on screen: someone reading the formatted version wants that one.
                 OutlinedButton(
-                    onClick = { onCopy(if (showFormatted && formatted != null) formatted else raw) },
+                    onClick = {
+                        onCopy(
+                            blobPreview?.content
+                                ?: if (showFormatted && formatted != null) formatted else raw,
+                        )
+                    },
                     shape = Shapes.button,
                 ) {
                     Text(stringResource(R.string.cell_copy))
+                }
+                // Only for a BLOB, and only once: a second tap would fetch the same bytes again.
+                if (value is CellValue.Blob && onPreviewBlob != null && blobPreview == null) {
+                    OutlinedButton(
+                        onClick = onPreviewBlob,
+                        enabled = !loadingBlob,
+                        shape = Shapes.button,
+                    ) { Text(stringResource(R.string.cell_blob_preview)) }
                 }
                 if (canEdit) {
                     Button(onClick = onEdit, shape = Shapes.button) {
