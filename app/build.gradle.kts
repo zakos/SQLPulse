@@ -27,8 +27,34 @@ val commitSha = System.getenv("GITHUB_SHA")?.take(7)
  */
 val signingKeystorePath: String? = System.getenv("SIGNING_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 val signingKeystorePassword: String? = System.getenv("SIGNING_KEYSTORE_PASSWORD")
-val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
 val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
+    ?: signingKeystorePassword
+
+/**
+ * A PKCS#12 keystore (`.p12`, `.pfx`) can be produced without a JDK — Windows PowerShell exports
+ * one — so both formats are accepted, chosen by the file's extension.
+ */
+val signingStoreType: String? = signingKeystorePath
+    ?.substringAfterLast('.', "")
+    ?.lowercase()
+    ?.let { if (it == "p12" || it == "pfx") "PKCS12" else null }
+
+/**
+ * The alias to sign with.
+ *
+ * SIGNING_KEY_ALIAS names it, but a keystore exported by a tool that does not ask for an alias
+ * ends up with one nobody chose. When the variable is unset, the only alias in the keystore is
+ * used, which is the whole content of a keystore made for this one purpose.
+ */
+val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")?.takeIf { it.isNotBlank() }
+    ?: signingKeystorePath?.let { path ->
+        runCatching {
+            val store = java.security.KeyStore.getInstance(signingStoreType ?: "JKS")
+            java.io.FileInputStream(path).use { store.load(it, signingKeystorePassword?.toCharArray()) }
+            store.aliases().toList().singleOrNull()
+        }.getOrNull()
+    }
+
 val hasExternalSigning = signingKeystorePath != null &&
     signingKeystorePassword != null &&
     signingKeyAlias != null &&
@@ -58,6 +84,7 @@ android {
             if (hasExternalSigning) {
                 storeFile = file(signingKeystorePath!!)
                 storePassword = signingKeystorePassword
+                storeType = signingStoreType
                 keyAlias = signingKeyAlias
                 keyPassword = signingKeyPassword
             }

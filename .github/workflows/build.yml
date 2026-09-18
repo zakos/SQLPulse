@@ -56,13 +56,25 @@ jobs:
             echo "::error::SIGNING_KEYSTORE_BASE64 is not set. See \"CI and installing the app\" in the README."
             exit 1
           fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.bin"
+          # A JKS file starts with the magic feedfeed; a PKCS#12 one is DER, starting with 30 82.
+          # The extension is what tells Gradle which of the two it is.
+          MAGIC="$(head -c 4 "$RUNNER_TEMP/keystore.bin" | od -An -tx1 | tr -d ' \n')"
+          if [ "$MAGIC" = "feedfeed" ]; then
+            mv "$RUNNER_TEMP/keystore.bin" "$RUNNER_TEMP/signing.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
+          else
+            mv "$RUNNER_TEMP/keystore.bin" "$RUNNER_TEMP/signing.p12"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/signing.p12" >> "$GITHUB_ENV"
+          fi
 
       # The run number becomes the version code, so this APK installs over the previous one.
       - name: Assemble debug
         env:
-          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/signing.keystore
+          SIGNING_KEYSTORE_PATH: ${{ env.KEYSTORE_FILE }}
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          # Both optional: without an alias the keystore's only one is used, and without a key
+          # password the store password is tried, which is how PKCS#12 keystores are usually made.
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
@@ -77,7 +89,7 @@ jobs:
 
       - name: Remove the keystore
         if: always()
-        run: rm -f "$RUNNER_TEMP/signing.keystore"
+        run: rm -f "$RUNNER_TEMP"/signing.* "$RUNNER_TEMP/keystore.bin"
 
       - name: Android Lint
         run: ./gradlew --no-daemon lintDebug

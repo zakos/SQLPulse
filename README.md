@@ -101,30 +101,43 @@ gh secret set SIGNING_KEY_ALIAS --repo <owner>/SQLPulse           # sqlpulse
 gh secret set SIGNING_KEY_PASSWORD --repo <owner>/SQLPulse        # the key password you chose
 ```
 
-On Windows, in **PowerShell** (not `cmd`, which has neither `\` continuations nor `<(...)`).
-`keytool` comes with the JDK; Android Studio ships one, so give the full path if it is not on
-`PATH`:
+On Windows, in **PowerShell** (not `cmd`, which has neither `\` continuations nor `<(...)`), with
+nothing to install — Windows can create the key and export it as PKCS#12, which the build accepts
+alongside the JDK's own JKS format:
 
 ```powershell
-$keytool = "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe"
+cd $HOME\Desktop
 
-& $keytool -genkeypair -v -keystore sqlpulse.keystore -alias sqlpulse `
-  -keyalg RSA -keysize 2048 -validity 10950 -dname "CN=SQLPulse, O=<your org>, C=HU"
+$password = Read-Host "Keystore password" -AsSecureString
+
+$certificate = New-SelfSignedCertificate `
+  -Subject "CN=SQLPulse, O=<your org>, C=HU" `
+  -FriendlyName sqlpulse `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -KeyAlgorithm RSA -KeyLength 2048 `
+  -KeyExportPolicy Exportable -KeySpec Signature `
+  -Type Custom -NotAfter (Get-Date).AddYears(30)
+
+Export-PfxCertificate -Cert $certificate -FilePath sqlpulse.p12 -Password $password
 
 # One line of base64, no wrapping and no trailing newline.
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("sqlpulse.keystore")) |
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("sqlpulse.p12")) |
   Out-File -Encoding ascii -NoNewline keystore.b64
 
 gh secret set SIGNING_KEYSTORE_BASE64 --repo <owner>/SQLPulse < keystore.b64
-gh secret set SIGNING_KEYSTORE_PASSWORD --repo <owner>/SQLPulse   # the store password you chose
-gh secret set SIGNING_KEY_ALIAS --repo <owner>/SQLPulse           # sqlpulse
-gh secret set SIGNING_KEY_PASSWORD --repo <owner>/SQLPulse        # the key password you chose
+gh secret set SIGNING_KEYSTORE_PASSWORD --repo <owner>/SQLPulse   # the password you just typed
 
 Remove-Item keystore.b64
+# The certificate is now also in your personal store; remove it there if you would rather it
+# only existed in the file: Remove-Item ("Cert:\CurrentUser\My\" + $certificate.Thumbprint)
 ```
 
+A PKCS#12 keystore has one password and one key, so `SIGNING_KEY_ALIAS` and `SIGNING_KEY_PASSWORD`
+can be left unset: the build takes the keystore's only alias and tries the store password for the
+key. Keep `sqlpulse.p12` — it is what makes every later build able to update an installed app.
+
 `--repo` is what lets these run from any directory; without it `gh` looks for a git checkout in the
-current one. The three password and alias secrets are typed at the prompt — do not put them on the
+current one. The password and alias secrets are typed at the prompt — do not put them on the
 command line, where they would land in the shell history.
 
 Keep `sqlpulse.keystore` somewhere safe and out of the repository (`*.keystore` is gitignored).
