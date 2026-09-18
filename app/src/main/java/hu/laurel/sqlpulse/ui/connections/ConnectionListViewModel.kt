@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
+import hu.laurel.sqlpulse.data.connection.ProductionPolicy
+import hu.laurel.sqlpulse.data.connection.WriteAccess
+import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelManager
@@ -23,7 +26,23 @@ data class ConnectionListUiState(
     val tunnel: TunnelState = TunnelState.Disconnected,
     val hostKeyPrompt: HostKeyPrompt? = null,
     val serverVersion: String? = null,
+    /** Connection id to the end of its write window; empty when nothing is unlocked. */
+    val unlockedUntil: Map<Long, Long> = emptyMap(),
 ) {
+    /**
+     * Whether this connection may be written to at [now], and why not when it may not.
+     *
+     * The clock is passed in by the screen, which ticks it while a window is open, so the
+     * countdown is drawn from the same answer that decides whether writes go through.
+     */
+    fun writeAccess(connection: ConnectionEntity, now: Long): WriteAccess =
+        ProductionPolicy.writeAccess(
+            environment = ConnectionEnvironment.fromName(connection.environment),
+            readOnly = connection.readOnly,
+            unlockedUntil = unlockedUntil[connection.id],
+            now = now,
+        )
+
     /** The list by environment, in [ConnectionEnvironment.ORDER], with empty groups left out. */
     val groups: List<Pair<ConnectionEnvironment, List<ConnectionEntity>>>
         get() = ConnectionEnvironment.group(connections) {
@@ -38,6 +57,7 @@ data class ConnectionListUiState(
 class ConnectionListViewModel @Inject constructor(
     private val repository: ConnectionRepository,
     private val tunnelManager: TunnelManager,
+    private val writeUnlock: WriteUnlockStore,
 ) : ViewModel() {
 
     val uiState: StateFlow<ConnectionListUiState> = combine(
@@ -45,8 +65,9 @@ class ConnectionListViewModel @Inject constructor(
         tunnelManager.state,
         tunnelManager.hostKeyPrompt,
         tunnelManager.serverVersion,
-    ) { connections, tunnel, prompt, version ->
-        ConnectionListUiState(connections, tunnel, prompt, version)
+        writeUnlock.unlockedUntil,
+    ) { connections, tunnel, prompt, version, unlocked ->
+        ConnectionListUiState(connections, tunnel, prompt, version, unlocked)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -82,7 +103,23 @@ class ConnectionListViewModel @Inject constructor(
         _confirming.value = null
     }
 
-    fun disconnect() = tunnelManager.disconnect()
+    /**
+     * Opens the write window (§2.0). The user says so once, and it closes by itself a quarter of
+     * an hour later — nothing here has to remember to turn it off again.
+     */
+    fun unlockWrites(connection: ConnectionEntity) {
+        writeUnlock.unlock(connection.id)
+    }
+
+    fun lockWrites(connection: ConnectionEntity) {
+        writeUnlock.lock(connection.id)
+    }
+
+    fun disconnect() {
+        // Every window closes with the tunnel: the next session is a new decision.
+        writeUnlock.lockAll()
+        tunnelManager.disconnect()
+    }
 
     fun acceptHostKey() = tunnelManager.acceptHostKey()
 

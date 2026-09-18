@@ -140,7 +140,34 @@ object Migrations {
         }
     }
 
+    /**
+     * v8: the jump host can be entered with a credential of its own.
+     *
+     * Existing rows get NULL in `sshJumpAuthMethod` and in `sshJumpKeyId`, and NULL is defined to
+     * mean "the first hop uses the same credential as the second" — which is what every two-hop
+     * connection saved so far has been doing. Nothing is rewritten and nothing changes behaviour:
+     * a connection only splits its credentials once the user fills the new fields in.
+     *
+     * The new password gets its own table rather than a column on `ssh_credential`, whose
+     * `sealedPassword` is NOT NULL and would have to be rebuilt to take a second, optional one.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpAuthMethod` TEXT")
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpKeyId` INTEGER")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ssh_jump_credential` (
+                    `connectionId` INTEGER PRIMARY KEY NOT NULL,
+                    `sealedPassword` BLOB NOT NULL
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+        MIGRATION_7_8,
     )
 }

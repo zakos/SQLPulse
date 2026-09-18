@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Kept out of strings.xml on purpose: Android merges every values file, and a separate one is
+    one fewer file two people have to edit at the same time.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+
+    <!-- Network changes and reconnecting -->
+    <string name="network_connection_lost">Connection lost</string>
+    <string name="network_reconnect">Reconnect</string>
+    <string name="network_lost">The network dropped, so the connection is gone.</string>
+    <string name="network_changed">The phone moved to another network, so the connection is gone.</string>
+    <string name="network_lost_body">%1$s is no longer connected.</string>
+    <string name="network_reconnecting">Reconnecting…</string>
+    <string name="network_reconnecting_attempt">Reconnecting, attempt %1$d…</string>
+    <string name="network_transaction_rolled_back">Your open transaction was rolled back by the server. Reconnect when you are ready to start again.</string>
+    <string name="network_manual_writable">%1$s can write, so it is not reconnected on its own.</string>
+    <string name="network_manual_in_flight">A statement was running and it is not known whether the server finished it.</string>
+    <string name="network_manual_exhausted">Reconnecting did not work. Try again when you have a signal.</string>
+</resources>

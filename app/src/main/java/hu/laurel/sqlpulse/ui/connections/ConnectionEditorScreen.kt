@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -49,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
+import hu.laurel.sqlpulse.data.connection.SaveRefusal
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
@@ -75,6 +77,7 @@ fun ConnectionEditorScreen(
     val tunnel by viewModel.tunnel.collectAsStateWithLifecycle()
     val serverVersion by viewModel.serverVersion.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val readOnlyOffer by viewModel.readOnlyOffer.collectAsStateWithLifecycle()
     val hostKeyPrompt by viewModel.hostKeyPrompt.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
 
@@ -136,7 +139,7 @@ fun ConnectionEditorScreen(
                     ConnectionEnvironment.ORDER.forEachIndexed { index, candidate ->
                         SegmentedButton(
                             selected = form.environment == candidate,
-                            onClick = { viewModel.update { it.copy(environment = candidate) } },
+                            onClick = { viewModel.setEnvironment(candidate) },
                             shape = SegmentedButtonDefaults.itemShape(
                                 index = index,
                                 count = ConnectionEnvironment.ORDER.size,
@@ -156,6 +159,24 @@ fun ConnectionEditorScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = if (form.readOnly) semantic.textSecondary else semantic.warning,
                     )
+                    // The policy's own reason, in place, while the form can still be fixed — the
+                    // save button repeats it, but by then the user has already pressed it.
+                    form.refusal?.let { refusal ->
+                        Text(
+                            when (refusal) {
+                                SaveRefusal.Unprotected ->
+                                    stringResource(R.string.policy_unprotected)
+
+                                is SaveRefusal.QueryTimeoutTooLong -> stringResource(
+                                    R.string.policy_query_timeout_too_long,
+                                    refusal.maxSeconds,
+                                    refusal.requestedSeconds,
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
 
@@ -238,11 +259,91 @@ fun ConnectionEditorScreen(
                             modifier = Modifier.weight(2f),
                         )
                     }
+
+                    // The two hops can be different machines run by different people, so the first
+                    // one may carry its own credential. Off keeps the old arrangement, which is
+                    // what every connection saved so far has.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = form.jumpSeparateCredential,
+                            onCheckedChange = { value ->
+                                viewModel.update { it.copy(jumpSeparateCredential = value) }
+                            },
+                        )
+                        Text(
+                            stringResource(R.string.ssh_jump_separate_credential),
+                            modifier = Modifier.padding(start = Spacing.s),
+                        )
+                    }
                     Text(
-                        stringResource(R.string.ssh_jump_note),
+                        stringResource(
+                            if (form.jumpSeparateCredential) {
+                                R.string.ssh_jump_separate_note
+                            } else {
+                                R.string.ssh_jump_shared_note
+                            },
+                        ),
                         color = semantic.textSecondary,
                         style = MaterialTheme.typography.bodySmall,
                     )
+
+                    if (form.jumpSeparateCredential) {
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            SshAuthMethod.entries.forEachIndexed { index, method ->
+                                SegmentedButton(
+                                    selected = form.jumpAuthMethod == method,
+                                    onClick = { viewModel.update { it.copy(jumpAuthMethod = method) } },
+                                    shape = SegmentedButtonDefaults.itemShape(
+                                        index,
+                                        SshAuthMethod.entries.size,
+                                    ),
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            when (method) {
+                                                SshAuthMethod.KEY -> R.string.ssh_auth_key
+                                                SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
+                                            },
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                        when (form.jumpAuthMethod) {
+                            SshAuthMethod.KEY -> {
+                                Text(
+                                    stringResource(R.string.ssh_jump_key),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                KeyPicker(
+                                    keys = keys,
+                                    selectedId = form.jumpKeyId,
+                                    onSelect = { id -> viewModel.update { it.copy(jumpKeyId = id) } },
+                                    onOpenKeyStore = onOpenKeyStore,
+                                )
+                                if (form.jumpKeyId == null) {
+                                    Text(
+                                        stringResource(R.string.ssh_key_required),
+                                        color = semantic.warning,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+
+                            SshAuthMethod.PASSWORD -> OutlinedTextField(
+                                value = form.jumpPassword,
+                                onValueChange = { value ->
+                                    viewModel.update {
+                                        it.copy(jumpPassword = value, jumpPasswordTouched = true)
+                                    }
+                                },
+                                label = { Text(stringResource(R.string.ssh_jump_password)) },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
 
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -432,6 +533,26 @@ fun ConnectionEditorScreen(
                 prompt = prompt,
                 onAccept = viewModel::acceptHostKey,
                 onReject = viewModel::rejectHostKey,
+            )
+        }
+
+        // Offered, not done: the switch stays the user's, and saying no leaves the connection
+        // writable — it will simply ask for an unlock before the first write.
+        if (readOnlyOffer) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissReadOnlyOffer,
+                title = { Text(stringResource(R.string.policy_read_only_offer_title)) },
+                text = { Text(stringResource(R.string.policy_read_only_offer_body)) },
+                confirmButton = {
+                    TextButton(onClick = viewModel::acceptReadOnlyOffer) {
+                        Text(stringResource(R.string.policy_read_only_offer_accept))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissReadOnlyOffer) {
+                        Text(stringResource(R.string.policy_read_only_offer_decline))
+                    }
+                },
             )
         }
     }
