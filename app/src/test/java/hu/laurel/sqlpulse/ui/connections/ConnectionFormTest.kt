@@ -9,7 +9,7 @@ class ConnectionFormTest {
 
     private val valid = ConnectionForm(
         name = "Reporting replica",
-        bastionHost = "bastion.internal",
+        sshHost = "jump.internal",
         sshUser = "andras",
         sshKeyId = 7,
         dbHost = "db.internal",
@@ -28,13 +28,13 @@ class ConnectionFormTest {
     }
 
     @Test
-    fun `blank bastion host means no save`() {
-        assertFalse(valid.copy(bastionHost = "  ").canSave)
+    fun `a blank ssh host means no save`() {
+        assertFalse(valid.copy(sshHost = "  ").canSave)
     }
 
     @Test
     fun `non numeric ports are rejected`() {
-        assertFalse(valid.copy(bastionPort = "twenty-two").canSave)
+        assertFalse(valid.copy(sshPort = "twenty-two").canSave)
         assertFalse(valid.copy(dbPort = "").canSave)
     }
 

@@ -2,7 +2,7 @@
 <resources>
     <string name="connections_title">Kapcsolatok</string>
     <string name="connections_empty_title">Még nincs kapcsolat</string>
-    <string name="connections_empty_body">Egy kapcsolathoz bastion host és SSH kulcs kell. Közvetlen MySQL mód nincs.</string>
+    <string name="connections_empty_body">Egy kapcsolathoz kell egy adatbázis, és vagy egy SSH szerver, amin át elérjük, vagy egy közvetlenül elérhető cím.</string>
     <string name="connections_empty_action">Első kapcsolat létrehozása</string>
     <string name="connection_new">Új kapcsolat</string>
     <string name="connection_edit">Szerkesztés</string>
@@ -13,14 +13,14 @@
     <string name="connection_name">Név</string>
     <string name="connection_colour">Szín</string>
     <string name="connection_production">Éles adatbázis</string>
-    <string name="section_ssh">SSH</string>
+    <string name="section_ssh">Kapcsolódás módja</string>
     <string name="section_mysql">MySQL</string>
-    <string name="bastion_host">Bastion host</string>
-    <string name="bastion_port">Port</string>
+    <string name="ssh_host">SSH szerver</string>
+    <string name="ssh_port">SSH port</string>
     <string name="ssh_user">SSH felhasználó</string>
     <string name="ssh_key">SSH kulcs</string>
-    <string name="ssh_key_required">Kulcs nélkül nem menthető — jelszavas hitelesítés nincs.</string>
-    <string name="db_host">DB host a bastion felől nézve</string>
+    <string name="ssh_key_required">Az SSH-hoz kulcs kell, jelszavas belépés nincs. Válassz egyet, vagy kapcsold ki fentebb az SSH-t.</string>
+    <string name="db_host">Adatbázis címe az SSH szerver felől nézve</string>
     <string name="db_port">Port</string>
     <string name="db_name">Adatbázis</string>
     <string name="db_user">MySQL felhasználó</string>
@@ -52,17 +52,17 @@
     <string name="key_public_copy">Publikus kulcs másolása</string>
     <string name="key_delete">Kulcs törlése</string>
     <string name="key_clipboard_cleared">Kulcs beillesztve, a vágólap törölve.</string>
-    <string name="key_add_to_authorized_keys">Vedd fel ezt a publikus kulcsot a bastion authorized_keys fájljába.</string>
+    <string name="key_add_to_authorized_keys">Vedd fel ezt a publikus kulcsot annak az SSH felhasználónak az authorized_keys fájljába, amivel kapcsolódsz.</string>
 
-    <string name="host_key_new_title">Ismeretlen host key</string>
-    <string name="host_key_new_body">Első csatlakozás ide: %1$s. Ellenőrizd a fingerprintet megbízható csatornán, mielőtt elfogadod.</string>
+    <string name="host_key_new_title">Ismeretlen szerver-fingerprint</string>
+    <string name="host_key_new_body">Első csatlakozás ide: %1$s. Vesd össze ezt a fingerprintet a szerverrel, mielőtt elfogadod — utána a megváltozása blokkolni fogja a kapcsolatot.</string>
     <string name="host_key_accept">Elfogadás és mentés</string>
     <string name="host_key_reject">Mégse</string>
-    <string name="host_key_changed_title">A host key megváltozott — a kapcsolat blokkolva</string>
-    <string name="host_key_changed_body">Tárolt: %1$s\nKapott: %2$s\n\nEz jelentheti azt, hogy a bastiont újratelepítették, de azt is, hogy valaki belehallgat. Csak akkor oldd fel a kapcsolatszerkesztőben, ha tudod, miért változott.</string>
+    <string name="host_key_changed_title">A szerver fingerprintje megváltozott — a kapcsolat blokkolva</string>
+    <string name="host_key_changed_body">Tárolt: %1$s\nKapott: %2$s\n\nA szerver máshogy azonosítja magát, mint legutóbb. Ez történik akkor, ha újratelepítették vagy lecserélték — de így néz ki az is, ha valaki belehallgat a kapcsolatba. Csak akkor oldd fel a kapcsolatszerkesztőben, ha tudod, melyikről van szó.</string>
 
-    <string name="error_auth_rejected">SSH hitelesítés elutasítva. Ellenőrizd, hogy a kulcs benne van-e a bastion authorized_keys fájljában.</string>
-    <string name="error_bastion_unreachable">A bastion host nem válaszol.</string>
+    <string name="error_auth_rejected">Az SSH szerver elutasította a kulcsot. Ellenőrizd, hogy ennek a kulcsnak a publikus fele benne van-e annak az SSH felhasználónak az authorized_keys fájljában, amivel kapcsolódsz.</string>
+    <string name="error_ssh_unreachable">Az SSH szerver nem válaszol. Ellenőrizd a címet és a portot, és azt, hogy elérsz-e most arra a hálózatra.</string>
     <string name="error_passphrase">Hibás passphrase.</string>
     <string name="error_passphrase_backoff">Túl sok sikertelen kísérlet. Próbáld újra %1$d másodperc múlva.</string>
     <string name="error_key_ppk">A PuTTY .ppk kulcs nem támogatott. Előbb konvertáld: puttygen key.ppk -O private-openssh-new -o key</string>
@@ -89,7 +89,7 @@
     <string name="schema_no_tables_body">Ebben az adatbázisban egy tábla sem felel meg a szűrőnek.</string>
     <string name="schema_clear_filter">Szűrő törlése</string>
     <string name="schema_no_session_title">Nincs élő kapcsolat</string>
-    <string name="schema_no_session_body">Nyiss meg egy kapcsolatot a kezdőképernyőn; a séma csak élő tunnelen olvasható.</string>
+    <string name="schema_no_session_body">Nyiss meg egy kapcsolatot a kezdőképernyőn; a séma csak élő kapcsolat mellett olvasható.</string>
     <string name="refresh">Frissítés</string>
     <string name="connection_disconnect">Bontás</string>
 
@@ -148,7 +148,7 @@
     <string name="settings_manage_keys">Kulcstár kezelése</string>
     <string name="settings_default_limit">Alapértelmezett sorlimit</string>
     <string name="settings_auto_lock">Automatikus zárolás</string>
-    <string name="settings_auto_lock_note">Zároláskor a tunnel bomlik, a betöltött eredmények törlődnek.</string>
+    <string name="settings_auto_lock_note">Zároláskor a kapcsolat bezárul, a betöltött eredmények törlődnek.</string>
     <string name="settings_minutes">%1$d perc</string>
     <string name="settings_theme">Téma</string>
     <string name="settings_theme_system">Rendszer</string>
@@ -157,16 +157,16 @@
     <string name="settings_grid_font">Betűméret a rácsban</string>
     <string name="lock_title">A SQLPulse zárolva van</string>
     <string name="lock_subtitle">Feloldás a folytatáshoz</string>
-    <string name="lock_body">Az app tétlenség miatt zárolta magát. A tunnel bomlott, a betöltött eredmények törlődtek.</string>
+    <string name="lock_body">Az app tétlenség miatt zárolta magát. A kapcsolat bezárult, a betöltött eredmények törlődtek.</string>
     <string name="lock_unlock">Feloldás</string>
 
     <string name="key_delete_title">Törlöd a kulcsot?</string>
-    <string name="key_delete_body">A(z) "%1$s" kikerül a kulcstárból. A bastionon lévő példányt ez nem érinti, azt külön kell visszavonni.</string>
+    <string name="key_delete_body">A(z) "%1$s" lekerül a telefonról. A szerver továbbra is elfogadja: a végleges visszavonáshoz ott kell kivenni a sorát az authorized_keys fájlból.</string>
     <string name="error_key_delete_failed">A kulcsot nem sikerült törölni.</string>
 
     <string name="key_generated_title">Kulcspár generálva</string>
     <string name="key_imported_title">Kulcs importálva</string>
-    <string name="key_imported_body">Az alábbi publikus kulcs az importált privát kulcshoz tartozik — abból származtattuk, új kulcs nem készült. Ezt vesd össze a bastion authorized_keys fájljában lévő bejegyzéssel.</string>
+    <string name="key_imported_body">Az alábbi publikus kulcs az importált privát kulcshoz tartozik — abból származtattuk, új kulcs nem készült. Vesd össze a szerver authorized_keys fájljában lévő sorral.</string>
 
     <string name="query_switched_database">A lekérdezések mostantól a(z) "%1$s" adatbázison futnak.</string>
 
@@ -174,10 +174,10 @@
     <string name="grid_sort_desc">"%1$s": csökkenő sorrend</string>
     <string name="grid_sort_none">Rendezés: "%1$s"</string>
 
-    <string name="ssh_use_tunnel">Kapcsolódás SSH tunnelen</string>
-    <string name="ssh_direct_note">Tunnel nélkül a telefon közvetlenül a MySQL-hez kapcsolódik, tehát az adatbázis portjának elérhetőnek kell lennie arról a hálózatról, ahol a telefon éppen van.</string>
-    <string name="section_ssh_details">SSH részletek</string>
-    <string name="db_host_direct">DB host a telefon felől nézve</string>
+    <string name="ssh_use_tunnel">Az adatbázis elérése SSH szerveren át</string>
+    <string name="ssh_direct_note">SSH nélkül a telefon közvetlenül a MySQL-hez kapcsolódik. Ez csak ott működik, ahol az adatbázis portja elérhető a telefon aktuális hálózatáról.</string>
+    <string name="section_ssh_details">SSH kapcsolat</string>
+    <string name="db_host_direct">Adatbázis címe a telefon felől nézve</string>
 
     <string name="filter_contains">Tartalmazza</string>
 

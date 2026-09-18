@@ -65,7 +65,7 @@ class ConnectionRepository @Inject constructor(
     suspend fun delete(connection: ConnectionEntity) = withContext(io) {
         // History rows cascade; the credential and the pinned host key are ours to clean up (§9).
         credentials.delete(connection.id)
-        knownHosts.delete(connection.bastionHost, connection.bastionPort)
+        knownHosts.delete(connection.sshHost, connection.sshPort)
         connections.delete(connection)
     }
 

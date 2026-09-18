@@ -60,7 +60,7 @@ class SshKeyRepository @Inject constructor(
 
     /**
      * Generates an Ed25519 pair on the device. Only the seed is stored; the public key is shown so
-     * it can be added to the bastion's authorized_keys (§5).
+     * it can be added to the server's authorized_keys (§5).
      */
     suspend fun generate(name: String): SshKeyEntity {
         val (seed, parsed) = withContext(io) { SshKeyParser.generateEd25519() }

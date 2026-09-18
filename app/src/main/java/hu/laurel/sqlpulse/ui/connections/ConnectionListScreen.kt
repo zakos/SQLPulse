@@ -187,9 +187,9 @@ private fun ConnectionCard(
             ) {
                 Text(connection.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    // Without a tunnel there is no bastion to name.
+                    // Without a tunnel there is no SSH host to name.
                     if (connection.useSshTunnel) {
-                        "${connection.sshUser}@${connection.bastionHost} → " +
+                        "${connection.sshUser}@${connection.sshHost} → " +
                             "${connection.dbHost}:${connection.dbPort}/${connection.database}"
                     } else {
                         "${connection.dbHost}:${connection.dbPort}/${connection.database}"

@@ -13,8 +13,9 @@ object Migrations {
      * v2: the SSH tunnel becomes optional, so `sshKeyId` has to allow NULL and a `useSshTunnel`
      * flag is added.
      *
-     * SQLite cannot relax a column's NOT NULL, so the table is rebuilt and copied. Existing
-     * connections were all tunnelled, hence the flag defaults to 1 for them.
+     * SQLite cannot relax a column's NOT NULL, so the table is rebuilt and copied. The columns are
+     * still named `bastionHost`/`bastionPort` here — this migration has to match the schema as it
+     * was at version 2, whatever later versions renamed.
      */
     val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -57,5 +58,19 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2)
+    /**
+     * v3: "bastion" is gone from the app's vocabulary, so the two columns carrying it are renamed
+     * to what they always were — the SSH host and port.
+     *
+     * A rename rather than another rebuild: SQLCipher ships a recent SQLite, so RENAME COLUMN is
+     * available regardless of the Android version.
+     */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `connection` RENAME COLUMN `bastionHost` TO `sshHost`")
+            db.execSQL("ALTER TABLE `connection` RENAME COLUMN `bastionPort` TO `sshPort`")
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

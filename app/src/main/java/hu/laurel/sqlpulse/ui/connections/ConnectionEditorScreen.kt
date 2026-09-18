@@ -142,17 +142,17 @@ fun ConnectionEditorScreen(
             if (form.useSsh) {
                 Section(stringResource(R.string.section_ssh_details)) {
                 OutlinedTextField(
-                    value = form.bastionHost,
-                    onValueChange = { value -> viewModel.update { it.copy(bastionHost = value) } },
-                    label = { Text(stringResource(R.string.bastion_host)) },
+                    value = form.sshHost,
+                    onValueChange = { value -> viewModel.update { it.copy(sshHost = value) } },
+                    label = { Text(stringResource(R.string.ssh_host)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
                     OutlinedTextField(
-                        value = form.bastionPort,
-                        onValueChange = { value -> viewModel.update { it.copy(bastionPort = value) } },
-                        label = { Text(stringResource(R.string.bastion_port)) },
+                        value = form.sshPort,
+                        onValueChange = { value -> viewModel.update { it.copy(sshPort = value) } },
+                        label = { Text(stringResource(R.string.ssh_port)) },
                         singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             keyboardType = KeyboardType.Number,

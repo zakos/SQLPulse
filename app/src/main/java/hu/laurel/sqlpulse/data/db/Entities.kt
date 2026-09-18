@@ -75,12 +75,12 @@ data class ConnectionEntity(
      * the phone happens to be.
      */
     val useSshTunnel: Boolean = true,
-    val bastionHost: String,
-    val bastionPort: Int = 22,
+    val sshHost: String,
+    val sshPort: Int = 22,
     val sshUser: String,
     /** Null only when [useSshTunnel] is false; a tunnel without a key is refused (§5). */
     val sshKeyId: Long?,
-    /** With a tunnel, as seen from the bastion; without one, as seen from the phone. */
+    /** With a tunnel, as seen from the SSH host; without one, as seen from the phone. */
     val dbHost: String,
     val dbPort: Int = 3306,
     val database: String,

@@ -74,17 +74,18 @@ reports are uploaded as artifacts, the reports even when the build is red.
 
 ## Notes on two design decisions
 
-**Why a bastion, and how to do without one.** The specification's premise (§4) is that the MySQL
-port is never reachable from the internet — only from a jump host. With the tunnel on, the app
-opens an SSH connection to that host and forwards a local port through it; the JDBC driver talks
-to `127.0.0.1`.
+**How a connection reaches the database.** Two shapes, chosen per connection with a switch in the
+editor:
 
-The tunnel is a per-connection switch. §2 originally ruled out a direct connection; the app's
-owner asked for one, so with the switch off the phone dials MySQL itself and the SSH fields go
-unused. That means the database port has to be reachable from whatever network the phone is on,
-and the editor says so where the switch is. A third option, if there is no separate jump host but
-the database server runs sshd, is to keep the tunnel and point the SSH fields at the database
-server: then "DB host" is `localhost` as seen from there.
+- *Through an SSH host.* The app opens an SSH connection to a machine that can reach the database
+  and forwards a local port through it; the JDBC driver talks to `127.0.0.1`. This is the shape the
+  specification assumes (§4), where the MySQL port is not reachable from the internet at all. The
+  SSH host can be a dedicated jump host or the database server itself, as long as it runs sshd.
+- *Directly.* The phone dials MySQL itself. §2 originally ruled this out; the app's owner asked for
+  it, so it is a switch rather than an argument. It only works where the database port is reachable
+  from the phone's current network, and the editor says so next to the switch.
+
+The interface names the field for what it is: an SSH host.
 
 **Importing a private key shows a public key.** Nothing is generated: the public half is
 mathematically contained in the private key, so the app derives it and shows it for comparison
@@ -96,7 +97,7 @@ with the entry in `authorized_keys`. Only "Generate on device" creates a new pai
   every single use, and are never exported or displayed.
 - The SQLCipher passphrase is 32 random bytes, sealed with a separate device-bound keystore key.
 - `FLAG_SECURE` is set on the whole app: no screenshots, no recents preview.
-- A changed bastion host key blocks the connection; unblocking is explicit, in the editor.
+- A changed SSH host fingerprint blocks the connection; unblocking is explicit, in the editor.
 - The tunnel lives in a foreground service and drops after five minutes in the background.
 - JDBC connects with `allowLocalInfile=false`, so a hostile server cannot ask the client for
   local files, and with `autoReconnect=false`, so a dropped connection is never retried silently.

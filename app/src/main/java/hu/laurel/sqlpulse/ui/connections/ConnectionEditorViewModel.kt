@@ -26,8 +26,8 @@ data class ConnectionForm(
     val color: ConnectionColor = ConnectionColor.Blue,
     /** On by default: a tunnel is the safe shape, and the spec's original rule (§4). */
     val useSsh: Boolean = true,
-    val bastionHost: String = "",
-    val bastionPort: String = "22",
+    val sshHost: String = "",
+    val sshPort: String = "22",
     val sshUser: String = "",
     val sshKeyId: Long? = null,
     val dbHost: String = "localhost",
@@ -48,10 +48,10 @@ data class ConnectionForm(
             dbPort.toIntOrNull() != null &&
             (
                 !useSsh || (
-                    bastionHost.isNotBlank() &&
+                    sshHost.isNotBlank() &&
                         sshUser.isNotBlank() &&
                         sshKeyId != null &&
-                        bastionPort.toIntOrNull() != null
+                        sshPort.toIntOrNull() != null
                     )
                 )
 }
@@ -129,7 +129,7 @@ class ConnectionEditorViewModel @Inject constructor(
     fun forgetHostKey() {
         val form = _form.value
         viewModelScope.launch {
-            tunnelManager.forgetHostKey(form.bastionHost, form.bastionPort.toIntOrNull() ?: 22)
+            tunnelManager.forgetHostKey(form.sshHost, form.sshPort.toIntOrNull() ?: 22)
         }
     }
 
@@ -138,8 +138,8 @@ class ConnectionEditorViewModel @Inject constructor(
         name = name.trim(),
         color = color.name,
         useSshTunnel = useSsh,
-        bastionHost = bastionHost.trim(),
-        bastionPort = bastionPort.toIntOrNull() ?: 22,
+        sshHost = sshHost.trim(),
+        sshPort = sshPort.toIntOrNull() ?: 22,
         sshUser = sshUser.trim(),
         // Kept rather than cleared when the tunnel is switched off, so switching back is painless.
         sshKeyId = if (useSsh) requireNotNull(sshKeyId) else sshKeyId,
@@ -155,8 +155,8 @@ class ConnectionEditorViewModel @Inject constructor(
         name = name,
         color = ConnectionColor.fromName(color),
         useSsh = useSshTunnel,
-        bastionHost = bastionHost,
-        bastionPort = bastionPort.toString(),
+        sshHost = sshHost,
+        sshPort = sshPort.toString(),
         sshUser = sshUser,
         sshKeyId = sshKeyId,
         dbHost = dbHost,

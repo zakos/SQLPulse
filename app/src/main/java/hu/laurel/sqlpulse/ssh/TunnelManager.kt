@@ -275,13 +275,13 @@ class TunnelManager @Inject constructor(
 
             is UnknownHostException, is ConnectException, is SocketTimeoutException -> TunnelFailure(
                 FailureLayer.SSH_NETWORK,
-                context.getString(R.string.error_bastion_unreachable),
+                context.getString(R.string.error_ssh_unreachable),
                 e.toString(),
             )
 
             is TransportException, is IOException -> TunnelFailure(
                 FailureLayer.SSH_NETWORK,
-                e.message ?: context.getString(R.string.error_bastion_unreachable),
+                e.message ?: context.getString(R.string.error_ssh_unreachable),
                 e.toString(),
             )
 
@@ -294,7 +294,7 @@ class TunnelManager @Inject constructor(
 
     private fun networkDropFailure() = TunnelFailure(
         layer = FailureLayer.SSH_NETWORK,
-        message = context.getString(R.string.error_bastion_unreachable),
+        message = context.getString(R.string.error_ssh_unreachable),
     )
 
     /**
@@ -348,8 +348,8 @@ class TunnelManager @Inject constructor(
 }
 
 fun ConnectionEntity.toTunnelConfig() = TunnelConfig(
-    bastionHost = bastionHost,
-    bastionPort = bastionPort,
+    sshHost = sshHost,
+    sshPort = sshPort,
     sshUser = sshUser,
     dbHost = dbHost,
     dbPort = dbPort,

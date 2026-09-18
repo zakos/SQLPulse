@@ -17,8 +17,8 @@ import net.schmizz.sshj.userauth.keyprovider.KeyProvider
 
 /** Everything the tunnel needs; deliberately free of persistence types. */
 data class TunnelConfig(
-    val bastionHost: String,
-    val bastionPort: Int,
+    val sshHost: String,
+    val sshPort: Int,
     val sshUser: String,
     val dbHost: String,
     val dbPort: Int,
@@ -28,7 +28,7 @@ data class TunnelConfig(
 /**
  * One SSH connection carrying one local port forward (§4). MySQL traffic never leaves this path:
  * the JDBC client will talk to 127.0.0.1 on an ephemeral port, and sshj forwards it through the
- * bastion to the database.
+ * SSH host to the database.
  */
 class SshTunnel(
     private val config: TunnelConfig,
@@ -57,7 +57,7 @@ class SshTunnel(
         ssh.connectTimeout = config.connectTimeoutMs
         ssh.timeout = config.connectTimeoutMs
         client = ssh
-        ssh.connect(config.bastionHost, config.bastionPort)
+        ssh.connect(config.sshHost, config.sshPort)
         ssh.authPublickey(config.sshUser, KeyPairProvider(keyPair))
         // Cheap liveness signal: a dead mobile link is noticed without waiting for a query.
         ssh.connection.keepAlive.keepAliveInterval = KEEPALIVE_SECONDS

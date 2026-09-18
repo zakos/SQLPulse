@@ -5,7 +5,7 @@
     <!-- Connections -->
     <string name="connections_title">Connections</string>
     <string name="connections_empty_title">No connections yet</string>
-    <string name="connections_empty_body">A connection needs a bastion host and an SSH key. There is no direct MySQL mode.</string>
+    <string name="connections_empty_body">A connection needs a database, and either an SSH host to reach it through or a directly reachable address.</string>
     <string name="connections_empty_action">Create first connection</string>
     <string name="connection_new">New connection</string>
     <string name="connection_edit">Edit</string>
@@ -16,14 +16,14 @@
     <string name="connection_name">Name</string>
     <string name="connection_colour">Colour</string>
     <string name="connection_production">Production database</string>
-    <string name="section_ssh">SSH</string>
+    <string name="section_ssh">How to connect</string>
     <string name="section_mysql">MySQL</string>
-    <string name="bastion_host">Bastion host</string>
-    <string name="bastion_port">Port</string>
+    <string name="ssh_host">SSH host</string>
+    <string name="ssh_port">SSH port</string>
     <string name="ssh_user">SSH user</string>
     <string name="ssh_key">SSH key</string>
-    <string name="ssh_key_required">A key is required — password authentication is not supported.</string>
-    <string name="db_host">DB host (as seen from the bastion)</string>
+    <string name="ssh_key_required">SSH needs a key: password logins are not supported. Pick one, or switch SSH off above.</string>
+    <string name="db_host">Database host (as seen from the SSH host)</string>
     <string name="db_port">Port</string>
     <string name="db_name">Database</string>
     <string name="db_user">MySQL user</string>
@@ -57,19 +57,19 @@
     <string name="key_public_copy">Copy public key</string>
     <string name="key_delete">Delete key</string>
     <string name="key_clipboard_cleared">Key pasted, clipboard cleared.</string>
-    <string name="key_add_to_authorized_keys">Add this public key to the bastion\'s authorized_keys file.</string>
+    <string name="key_add_to_authorized_keys">Add this public key to the authorized_keys file of the SSH user you connect as.</string>
 
     <!-- Host key -->
-    <string name="host_key_new_title">Unknown host key</string>
-    <string name="host_key_new_body">First connection to %1$s. Verify the fingerprint through a trusted channel before accepting it.</string>
+    <string name="host_key_new_title">Unknown server fingerprint</string>
+    <string name="host_key_new_body">First connection to %1$s. Check this fingerprint against the server before accepting it — after that, a change will block the connection.</string>
     <string name="host_key_accept">Accept and save</string>
     <string name="host_key_reject">Cancel</string>
-    <string name="host_key_changed_title">Host key changed — connection blocked</string>
-    <string name="host_key_changed_body">Stored: %1$s\nOffered: %2$s\n\nThis can mean the bastion was rebuilt, or that the connection is being intercepted. Unblock it in the connection editor only if you know why it changed.</string>
+    <string name="host_key_changed_title">The server fingerprint changed — connection blocked</string>
+    <string name="host_key_changed_body">Stored: %1$s\nOffered: %2$s\n\nThe server is identifying itself differently than last time. That happens when it is rebuilt or replaced — and it is also what someone intercepting the connection would look like. Unblock it in the connection editor only once you know which of the two it is.</string>
 
     <!-- Errors -->
-    <string name="error_auth_rejected">SSH authentication rejected. Check that the key is present in the bastion\'s authorized_keys file.</string>
-    <string name="error_bastion_unreachable">The bastion host is not responding.</string>
+    <string name="error_auth_rejected">The SSH server refused the key. Check that this key\'s public half is in the authorized_keys file of the SSH user you are connecting as.</string>
+    <string name="error_ssh_unreachable">The SSH host is not answering. Check the address and port, and whether you can reach that network right now.</string>
     <string name="error_passphrase">Wrong passphrase.</string>
     <string name="error_passphrase_backoff">Too many attempts. Try again in %1$d seconds.</string>
     <string name="error_key_ppk">PuTTY .ppk keys are not supported. Convert it first: puttygen key.ppk -O private-openssh-new -o key</string>
@@ -97,7 +97,7 @@
     <string name="schema_no_tables_body">No table in this database matches the filter.</string>
     <string name="schema_clear_filter">Clear filter</string>
     <string name="schema_no_session_title">No live connection</string>
-    <string name="schema_no_session_body">Open a connection on the start screen; the schema is only readable over a live tunnel.</string>
+    <string name="schema_no_session_body">Open a connection on the start screen; the schema is only readable while a connection is live.</string>
     <string name="refresh">Refresh</string>
     <string name="connection_disconnect">Disconnect</string>
 
@@ -156,7 +156,7 @@
     <string name="settings_manage_keys">Manage keys</string>
     <string name="settings_default_limit">Default row limit</string>
     <string name="settings_auto_lock">Automatic lock</string>
-    <string name="settings_auto_lock_note">On locking, the tunnel drops and the loaded results are discarded.</string>
+    <string name="settings_auto_lock_note">On locking, the connection is closed and the loaded results are discarded.</string>
     <string name="settings_minutes">%1$d minutes</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_theme_system">System</string>
@@ -165,16 +165,16 @@
     <string name="settings_grid_font">Grid font size</string>
     <string name="lock_title">SQLPulse is locked</string>
     <string name="lock_subtitle">Unlock to continue</string>
-    <string name="lock_body">The app locked itself after a period of inactivity. The tunnel was closed and the loaded results were discarded.</string>
+    <string name="lock_body">The app locked itself after a period of inactivity. The connection was closed and the loaded results were discarded.</string>
     <string name="lock_unlock">Unlock</string>
 
     <string name="key_delete_title">Delete key?</string>
-    <string name="key_delete_body">"%1$s" is removed from the key store. The copy on the bastion is not touched; revoke it there separately.</string>
+    <string name="key_delete_body">"%1$s" is removed from this phone. The server still accepts it: to withdraw it for good, remove its line from authorized_keys there.</string>
     <string name="error_key_delete_failed">The key could not be deleted.</string>
 
     <string name="key_generated_title">Key pair generated</string>
     <string name="key_imported_title">Key imported</string>
-    <string name="key_imported_body">The public key below belongs to the private key you imported — it was derived from it, nothing new was generated. Compare it with the entry in the bastion\'s authorized_keys file.</string>
+    <string name="key_imported_body">The public key below belongs to the private key you imported — it was derived from it, nothing new was generated. Compare it with the line in the server\'s authorized_keys file.</string>
 
     <string name="query_switched_database">Now running against "%1$s".</string>
 
@@ -182,10 +182,10 @@
     <string name="grid_sort_desc">"%1$s": sorted descending</string>
     <string name="grid_sort_none">Sort by "%1$s"</string>
 
-    <string name="ssh_use_tunnel">Connect through an SSH tunnel</string>
-    <string name="ssh_direct_note">Without a tunnel the phone dials MySQL directly, so the database port has to be reachable from whatever network the phone is on.</string>
-    <string name="section_ssh_details">SSH details</string>
-    <string name="db_host_direct">DB host (as seen from the phone)</string>
+    <string name="ssh_use_tunnel">Reach the database through an SSH host</string>
+    <string name="ssh_direct_note">Without SSH, this phone connects to MySQL directly. That only works where the database port is reachable from the phone\'s current network.</string>
+    <string name="section_ssh_details">SSH connection</string>
+    <string name="db_host_direct">Database host (as seen from this phone)</string>
 
     <string name="filter_contains">Contains</string>
 
