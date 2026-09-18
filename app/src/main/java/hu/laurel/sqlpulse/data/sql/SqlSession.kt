@@ -3,11 +3,11 @@ package hu.laurel.sqlpulse.data.sql
 import java.io.Closeable
 import java.sql.Connection
 import java.sql.SQLException
-import org.mariadb.jdbc.Driver
 import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import org.mariadb.jdbc.Driver
 
 data class JdbcConfig(
     /** Loopback for a tunnelled connection, the database's own address for a direct one. */
