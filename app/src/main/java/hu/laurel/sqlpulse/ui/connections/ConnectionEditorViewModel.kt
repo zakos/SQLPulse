@@ -16,6 +16,7 @@ import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
 import hu.laurel.sqlpulse.security.UnlockCancelledException
+import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -36,7 +37,11 @@ data class ConnectionForm(
     val sshHost: String = "",
     val sshPort: String = "22",
     val sshUser: String = "",
+    /** A key, or a password, for entering the SSH host. */
+    val sshAuthMethod: SshAuthMethod = SshAuthMethod.KEY,
     val sshKeyId: Long? = null,
+    val sshPassword: String = "",
+    val sshPasswordTouched: Boolean = false,
     val dbHost: String = "localhost",
     val dbPort: String = "3306",
     val database: String = "",
@@ -49,8 +54,8 @@ data class ConnectionForm(
     val caCertificate: String? = null,
 ) {
     /**
-     * With the tunnel on, §5 still holds: no key, no save, and no password-authentication path to
-     * fall back on. With it off, the SSH fields are irrelevant and only the database matters.
+     * With the tunnel on, the SSH host needs an address, a user and whichever credential the
+     * chosen method uses. With it off, the SSH fields are irrelevant and only the database matters.
      */
     val canSave: Boolean
         get() = name.isNotBlank() &&
@@ -62,10 +67,16 @@ data class ConnectionForm(
                 !useSsh || (
                     sshHost.isNotBlank() &&
                         sshUser.isNotBlank() &&
-                        sshKeyId != null &&
-                        sshPort.toIntOrNull() != null
+                        sshPort.toIntOrNull() != null &&
+                        hasSshCredential
                     )
                 )
+
+    private val hasSshCredential: Boolean
+        get() = when (sshAuthMethod) {
+            SshAuthMethod.KEY -> sshKeyId != null
+            SshAuthMethod.PASSWORD -> sshPassword.isNotEmpty()
+        }
 }
 
 @HiltViewModel
@@ -97,7 +108,10 @@ class ConnectionEditorViewModel @Inject constructor(
         if (connectionId != 0L) {
             viewModelScope.launch {
                 connections.byId(connectionId)?.let { entity ->
-                    _form.value = entity.toForm(hasPassword = connections.hasPassword(entity.id))
+                    _form.value = entity.toForm(
+                        hasPassword = connections.hasPassword(entity.id),
+                        hasSshPassword = connections.hasSshPassword(entity.id),
+                    )
                 }
             }
         }
@@ -146,8 +160,10 @@ class ConnectionEditorViewModel @Inject constructor(
             try {
                 val saved = connections.save(
                     form.toEntity(),
-                    // Only re-seal the password when the field was actually edited.
+                    // Only re-seal a password when its field was actually edited.
                     password = form.password.toCharArray().takeIf { form.passwordTouched },
+                    sshPassword = form.sshPassword.toCharArray()
+                        .takeIf { form.sshPasswordTouched && form.useSsh },
                 )
                 onSaved(saved.id)
             } catch (e: UnlockCancelledException) {
@@ -187,8 +203,9 @@ class ConnectionEditorViewModel @Inject constructor(
         sshHost = sshHost.trim(),
         sshPort = sshPort.toIntOrNull() ?: 22,
         sshUser = sshUser.trim(),
-        // Kept rather than cleared when the tunnel is switched off, so switching back is painless.
-        sshKeyId = if (useSsh) requireNotNull(sshKeyId) else sshKeyId,
+        sshAuthMethod = sshAuthMethod.name,
+        // Kept rather than cleared when the tunnel or the method changes, so going back is painless.
+        sshKeyId = sshKeyId,
         dbHost = dbHost.trim(),
         dbPort = dbPort.toIntOrNull() ?: 3306,
         database = database.trim(),
@@ -198,7 +215,7 @@ class ConnectionEditorViewModel @Inject constructor(
         caCertificate = caCertificate,
     )
 
-    private fun ConnectionEntity.toForm(hasPassword: Boolean) = ConnectionForm(
+    private fun ConnectionEntity.toForm(hasPassword: Boolean, hasSshPassword: Boolean) = ConnectionForm(
         id = id,
         name = name,
         color = ConnectionColor.fromName(color),
@@ -206,7 +223,10 @@ class ConnectionEditorViewModel @Inject constructor(
         sshHost = sshHost,
         sshPort = sshPort.toString(),
         sshUser = sshUser,
+        sshAuthMethod = SshAuthMethod.fromName(sshAuthMethod),
         sshKeyId = sshKeyId,
+        sshPassword = if (hasSshPassword) PLACEHOLDER_PASSWORD else "",
+        sshPasswordTouched = false,
         dbHost = dbHost,
         dbPort = dbPort.toString(),
         database = database,

@@ -70,6 +70,18 @@ interface DbCredentialDao {
 }
 
 @Dao
+interface SshCredentialDao {
+    @Query("SELECT * FROM ssh_credential WHERE connectionId = :connectionId")
+    suspend fun byConnection(connectionId: Long): SshCredentialEntity?
+
+    @Upsert
+    suspend fun upsert(credential: SshCredentialEntity)
+
+    @Query("DELETE FROM ssh_credential WHERE connectionId = :connectionId")
+    suspend fun delete(connectionId: Long)
+}
+
+@Dao
 interface KnownHostDao {
     @Query("SELECT * FROM known_host WHERE host = :host AND port = :port")
     suspend fun find(host: String, port: Int): KnownHostEntity?

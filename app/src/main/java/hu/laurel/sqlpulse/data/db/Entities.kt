@@ -78,7 +78,9 @@ data class ConnectionEntity(
     val sshHost: String,
     val sshPort: Int = 22,
     val sshUser: String,
-    /** Null only when [useSshTunnel] is false; a tunnel without a key is refused (§5). */
+    /** Name of an SshAuthMethod entry: how the SSH host is convinced who we are. */
+    val sshAuthMethod: String = "KEY",
+    /** Null unless the SSH host is entered with a key; a key tunnel without one is refused (§5). */
     val sshKeyId: Long?,
     /** With a tunnel, as seen from the SSH host; without one, as seen from the phone. */
     val dbHost: String,
@@ -101,6 +103,24 @@ data class DbCredentialEntity(
 ) {
     override fun equals(other: Any?): Boolean =
         other is DbCredentialEntity && other.connectionId == connectionId
+
+    override fun hashCode(): Int = connectionId.hashCode()
+}
+
+/**
+ * The SSH password, for hosts that do not take keys.
+ *
+ * A separate table from [DbCredentialEntity] rather than a second column: the two are unlocked at
+ * different moments, and a connection can need one, both or neither.
+ */
+@Entity(tableName = "ssh_credential")
+data class SshCredentialEntity(
+    @PrimaryKey val connectionId: Long,
+    /** Sealed by the keystore user key. */
+    val sealedPassword: ByteArray,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is SshCredentialEntity && other.connectionId == connectionId
 
     override fun hashCode(): Int = connectionId.hashCode()
 }

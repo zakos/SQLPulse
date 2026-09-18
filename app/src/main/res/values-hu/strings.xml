@@ -239,4 +239,10 @@
     <string name="schema_no_routines_title">Nincs eljárás vagy függvény</string>
     <string name="schema_no_triggers_title">Nincs trigger</string>
     <string name="schema_no_events_title">Nincs ütemezett esemény</string>
+
+    <!-- Belépés az SSH gépre. -->
+    <string name="ssh_auth_key">Kulcs</string>
+    <string name="ssh_auth_password">Jelszó</string>
+    <string name="ssh_password">SSH jelszó</string>
+    <string name="ssh_password_note">A kulcs biztonságosabb: nem kitalálható, és a kiszolgáló sosem látja. Jelszót csak ott használj, ahol a gép mást nem enged.</string>
 </resources>

@@ -24,11 +24,12 @@ class Converters {
         SshKeyEntity::class,
         ConnectionEntity::class,
         DbCredentialEntity::class,
+        SshCredentialEntity::class,
         KnownHostEntity::class,
         QueryHistoryEntity::class,
         SavedQueryEntity::class,
     ],
-    version = 2,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -36,6 +37,7 @@ abstract class SqlPulseDatabase : RoomDatabase() {
     abstract fun sshKeys(): SshKeyDao
     abstract fun connections(): ConnectionDao
     abstract fun credentials(): DbCredentialDao
+    abstract fun sshCredentials(): SshCredentialDao
     abstract fun knownHosts(): KnownHostDao
     abstract fun queryHistory(): QueryHistoryDao
     abstract fun savedQueries(): SavedQueryDao

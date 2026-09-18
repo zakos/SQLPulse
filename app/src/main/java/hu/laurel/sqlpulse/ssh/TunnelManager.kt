@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.db.ConnectionDao
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.KnownHostDao
@@ -19,7 +20,6 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.security.KeyPair
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CompletableDeferred
@@ -46,6 +46,8 @@ import net.schmizz.sshj.userauth.UserAuthException
 class TunnelManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val connections: ConnectionDao,
+    /** Only for the sealed SSH password; everything else here goes through the DAO. */
+    private val secrets: ConnectionRepository,
     private val knownHosts: KnownHostDao,
     private val keys: SshKeyRepository,
     @IoDispatcher private val io: CoroutineDispatcher,
@@ -153,12 +155,22 @@ class TunnelManager @Inject constructor(
         }
 
         _state.value = TunnelState.Unlocking(connectionId)
-        val keyPair: KeyPair = try {
-            val keyId = connection.sshKeyId
-                ?: throw IllegalStateException("a tunnelled connection without a key (§5)")
-            val key = withContext(io) { keys.byId(keyId) }
-                ?: throw IllegalStateException("connection references a key that is gone")
-            keys.unlockKeyPair(key)
+        val credential: SshCredential = try {
+            when (SshAuthMethod.fromName(connection.sshAuthMethod)) {
+                SshAuthMethod.KEY -> {
+                    val keyId = connection.sshKeyId
+                        ?: throw IllegalStateException("a key tunnel without a key (§5)")
+                    val key = withContext(io) { keys.byId(keyId) }
+                        ?: throw IllegalStateException("connection references a key that is gone")
+                    SshCredential.Key(keys.unlockKeyPair(key))
+                }
+
+                SshAuthMethod.PASSWORD -> {
+                    val password = secrets.sshPassword(connectionId, connection.name)
+                        ?: throw IllegalStateException("no SSH password stored for this connection")
+                    SshCredential.Password(password)
+                }
+            }
         } catch (e: UnlockCancelledException) {
             _state.value = TunnelState.Disconnected
             return
@@ -175,7 +187,7 @@ class TunnelManager @Inject constructor(
 
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.SSH)
         val verifier = PinningHostKeyVerifier(knownHosts, ::askAboutHostKey)
-        val fresh = SshTunnel(connection.toTunnelConfig(), keyPair, verifier)
+        val fresh = SshTunnel(connection.toTunnelConfig(), credential, verifier)
         tunnel = fresh
 
         val port = try {
@@ -188,6 +200,9 @@ class TunnelManager @Inject constructor(
             tunnel = null
             _state.value = TunnelState.Failed(connectionId, sshFailure(e, verifier))
             return
+        } finally {
+            // The handshake is over either way; the password has no reason to stay in memory.
+            (credential as? SshCredential.Password)?.password?.fill(Char(0))
         }
 
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)

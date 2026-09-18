@@ -87,5 +87,27 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * v5: the SSH host can be entered with a password as well as a key.
+     *
+     * Existing connections keep KEY, which is what they all were. The password lives in its own
+     * table, sealed the same way as the MySQL one.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `connection` ADD COLUMN `sshAuthMethod` TEXT NOT NULL DEFAULT 'KEY'",
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ssh_credential` (
+                    `connectionId` INTEGER PRIMARY KEY NOT NULL,
+                    `sealedPassword` BLOB NOT NULL
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

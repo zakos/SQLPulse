@@ -14,6 +14,11 @@ import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.connection.channel.direct.LocalPortForwarder
 import net.schmizz.sshj.connection.channel.direct.Parameters
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
+import net.schmizz.sshj.userauth.method.AuthKeyboardInteractive
+import net.schmizz.sshj.userauth.method.AuthPassword
+import net.schmizz.sshj.userauth.method.PasswordResponseProvider
+import net.schmizz.sshj.userauth.password.PasswordFinder
+import net.schmizz.sshj.userauth.password.Resource
 
 /** Everything the tunnel needs; deliberately free of persistence types. */
 data class TunnelConfig(
@@ -25,6 +30,20 @@ data class TunnelConfig(
     val connectTimeoutMs: Int = 10_000,
 )
 
+/** What we present to the SSH host: a key pair, or a password. */
+sealed interface SshCredential {
+    data class Key(val keyPair: KeyPair) : SshCredential
+
+    /**
+     * The characters are used for this one handshake. They are not copied into a String, because a
+     * String would stay in the heap until the garbage collector felt like moving it.
+     */
+    data class Password(val password: CharArray) : SshCredential {
+        override fun equals(other: Any?): Boolean = this === other
+        override fun hashCode(): Int = System.identityHashCode(this)
+    }
+}
+
 /**
  * One SSH connection carrying one local port forward (§4). MySQL traffic never leaves this path:
  * the JDBC client will talk to 127.0.0.1 on an ephemeral port, and sshj forwards it through the
@@ -32,7 +51,7 @@ data class TunnelConfig(
  */
 class SshTunnel(
     private val config: TunnelConfig,
-    private val keyPair: KeyPair,
+    private val credential: SshCredential,
     private val verifier: PinningHostKeyVerifier,
 ) {
 
@@ -58,7 +77,20 @@ class SshTunnel(
         ssh.timeout = config.connectTimeoutMs
         client = ssh
         ssh.connect(config.sshHost, config.sshPort)
-        ssh.authPublickey(config.sshUser, KeyPairProvider(keyPair))
+        when (credential) {
+            is SshCredential.Key -> ssh.authPublickey(config.sshUser, KeyPairProvider(credential.keyPair))
+
+            // Both password methods, because a host configured for keyboard-interactive refuses
+            // plain "password" even though what it wants is the same password.
+            is SshCredential.Password -> {
+                val finder = OneAnswerPasswordFinder(credential.password)
+                ssh.auth(
+                    config.sshUser,
+                    AuthPassword(finder),
+                    AuthKeyboardInteractive(PasswordResponseProvider(finder)),
+                )
+            }
+        }
         // Cheap liveness signal: a dead mobile link is noticed without waiting for a query.
         ssh.connection.keepAlive.keepAliveInterval = KEEPALIVE_SECONDS
     }
@@ -118,4 +150,17 @@ class SshTunnel(
         const val LOOPBACK = "127.0.0.1"
         private const val KEEPALIVE_SECONDS = 30
     }
+}
+
+/**
+ * Hands the same password to whichever method asks for it, and never retries.
+ *
+ * A copy per request, because sshj blanks the array it is given once it is done with it, and the
+ * second method would otherwise be handed an empty password. The caller wipes the original.
+ */
+private class OneAnswerPasswordFinder(private val password: CharArray) : PasswordFinder {
+    override fun reqPassword(resource: Resource<*>?): CharArray = password.copyOf()
+
+    // Retrying a rejected password just locks the account out that much faster.
+    override fun shouldRetry(resource: Resource<*>?): Boolean = false
 }

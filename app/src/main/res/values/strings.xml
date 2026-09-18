@@ -247,4 +247,10 @@
     <string name="schema_no_routines_title">No procedures or functions</string>
     <string name="schema_no_triggers_title">No triggers</string>
     <string name="schema_no_events_title">No scheduled events</string>
+
+    <!-- Entering the SSH host. -->
+    <string name="ssh_auth_key">Key</string>
+    <string name="ssh_auth_password">Password</string>
+    <string name="ssh_password">SSH password</string>
+    <string name="ssh_password_note">A key is safer: it cannot be guessed, and the server never sees it. Use a password only where the host allows nothing else.</string>
 </resources>

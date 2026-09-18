@@ -1,11 +1,13 @@
 # SQLPulse
 
-Internal Android MySQL client. Every connection runs over an SSH tunnel authenticated with an
-OpenSSH private key — there is no password SSH login and no direct MySQL mode, not even behind a
-developer flag.
+Internal Android MySQL client. A connection reaches the database through an SSH tunnel or
+directly, and the MySQL connection itself can be plain or TLS-protected with a verified
+certificate. The SSH host is entered with an OpenSSH key or, where the host allows nothing else,
+a password.
 
 The functional and UX specification lives in [`docs/specification.md`](docs/specification.md);
-section references in the code (`§5`, `§8`, …) point at it.
+section references in the code (`§5`, `§8`, …) point at it. What exists and what is still missing
+is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## What is implemented
 
@@ -29,6 +31,10 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | Export to CSV/JSON through the share sheet, settings, automatic lock | done |
 | Optional SSH: per-connection switch, direct connections allowed | done |
 | Column sorting, quick column filter, EXPLAIN, running queries with KILL QUERY | done |
+| TLS for the MySQL connection (four modes, CA import), whole-table write guard | done |
+| Server errors classified into what to do about them, with the server's own wording kept | done |
+| Views, routines, triggers and events in the browser; engine and size per table | done |
+| SSH password authentication beside key authentication | done |
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.

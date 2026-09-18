@@ -24,10 +24,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.SslMode
+import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -172,18 +176,61 @@ fun ConnectionEditorScreen(
                     )
                 }
 
-                KeyPicker(
-                    keys = keys,
-                    selectedId = form.sshKeyId,
-                    onSelect = { id -> viewModel.update { it.copy(sshKeyId = id) } },
-                    onOpenKeyStore = onOpenKeyStore,
-                )
-                if (form.sshKeyId == null) {
-                    Text(
-                        stringResource(R.string.ssh_key_required),
-                        color = semantic.warning,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SshAuthMethod.entries.forEachIndexed { index, method ->
+                        SegmentedButton(
+                            selected = form.sshAuthMethod == method,
+                            onClick = { viewModel.update { it.copy(sshAuthMethod = method) } },
+                            shape = SegmentedButtonDefaults.itemShape(index, SshAuthMethod.entries.size),
+                        ) {
+                            Text(
+                                stringResource(
+                                    when (method) {
+                                        SshAuthMethod.KEY -> R.string.ssh_auth_key
+                                        SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
+                                    },
+                                ),
+                            )
+                        }
+                    }
+                }
+
+                when (form.sshAuthMethod) {
+                    SshAuthMethod.KEY -> {
+                        KeyPicker(
+                            keys = keys,
+                            selectedId = form.sshKeyId,
+                            onSelect = { id -> viewModel.update { it.copy(sshKeyId = id) } },
+                            onOpenKeyStore = onOpenKeyStore,
+                        )
+                        if (form.sshKeyId == null) {
+                            Text(
+                                stringResource(R.string.ssh_key_required),
+                                color = semantic.warning,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+
+                    SshAuthMethod.PASSWORD -> {
+                        OutlinedTextField(
+                            value = form.sshPassword,
+                            onValueChange = { value ->
+                                viewModel.update {
+                                    it.copy(sshPassword = value, sshPasswordTouched = true)
+                                }
+                            },
+                            label = { Text(stringResource(R.string.ssh_password)) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            stringResource(R.string.ssh_password_note),
+                            color = semantic.textSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
                 }
             }

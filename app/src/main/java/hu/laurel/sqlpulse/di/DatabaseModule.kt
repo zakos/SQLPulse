@@ -11,6 +11,7 @@ import hu.laurel.sqlpulse.data.crypto.DatabaseKeyProvider
 import hu.laurel.sqlpulse.data.crypto.wipe
 import hu.laurel.sqlpulse.data.db.ConnectionDao
 import hu.laurel.sqlpulse.data.db.DbCredentialDao
+import hu.laurel.sqlpulse.data.db.SshCredentialDao
 import hu.laurel.sqlpulse.data.db.KnownHostDao
 import hu.laurel.sqlpulse.data.db.Migrations
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
@@ -53,6 +54,9 @@ object DatabaseModule {
 
     @Provides
     fun provideCredentialDao(db: SqlPulseDatabase): DbCredentialDao = db.credentials()
+
+    @Provides
+    fun provideSshCredentialDao(db: SqlPulseDatabase): SshCredentialDao = db.sshCredentials()
 
     @Provides
     fun provideKnownHostDao(db: SqlPulseDatabase): KnownHostDao = db.knownHosts()

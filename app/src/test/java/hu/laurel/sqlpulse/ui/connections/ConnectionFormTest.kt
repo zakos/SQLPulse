@@ -1,10 +1,11 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The rule with no exceptions (§5): a connection cannot be saved without an SSH key. */
+/** What a connection needs before it can be saved (§5). */
 class ConnectionFormTest {
 
     private val valid = ConnectionForm(
@@ -23,8 +24,25 @@ class ConnectionFormTest {
     }
 
     @Test
-    fun `no key means no save`() {
+    fun `key authentication without a key means no save`() {
         assertFalse(valid.copy(sshKeyId = null).canSave)
+    }
+
+    @Test
+    fun `password authentication needs a password instead of a key`() {
+        val withPassword = valid.copy(
+            sshAuthMethod = SshAuthMethod.PASSWORD,
+            sshKeyId = null,
+            sshPassword = "hunter2",
+        )
+        assertTrue(withPassword.canSave)
+        assertFalse(withPassword.copy(sshPassword = "").canSave)
+    }
+
+    @Test
+    fun `a direct connection needs neither`() {
+        val direct = valid.copy(useSsh = false, sshKeyId = null, sshHost = "")
+        assertTrue(direct.canSave)
     }
 
     @Test
