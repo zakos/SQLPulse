@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connections_title">Kapcsolatok</string>
+    <string name="connections_empty_title">Még nincs kapcsolat</string>
+    <string name="connections_empty_body">Egy kapcsolathoz kell egy adatbázis, és vagy egy SSH szerver, amin át elérjük, vagy egy közvetlenül elérhető cím.</string>
+    <string name="connections_empty_action">Első kapcsolat létrehozása</string>
+    <string name="connection_new">Új kapcsolat</string>
+    <string name="connection_edit">Szerkesztés</string>
+    <string name="connection_duplicate">Duplikálás</string>
+    <string name="connection_delete">Törlés</string>
+    <string name="connection_test">Kapcsolat tesztelése</string>
+    <string name="connection_save">Mentés</string>
+    <string name="connection_name">Név</string>
+    <string name="connection_colour">Szín</string>
+    <string name="connection_production">Éles adatbázis</string>
+    <string name="section_ssh">Kapcsolódás módja</string>
+    <string name="section_mysql">MySQL</string>
+    <string name="ssh_host">SSH szerver</string>
+    <string name="ssh_port">SSH port</string>
+    <string name="ssh_user">SSH felhasználó</string>
+    <string name="ssh_key">SSH kulcs</string>
+    <string name="ssh_key_required">Az SSH-hoz kulcs kell, jelszavas belépés nincs. Válassz egyet, vagy kapcsold ki fentebb az SSH-t.</string>
+    <string name="db_host">Adatbázis címe az SSH szerver felől nézve</string>
+    <string name="db_port">Port</string>
+    <string name="db_name">Adatbázis</string>
+    <string name="db_user">MySQL felhasználó</string>
+    <string name="db_password">MySQL jelszó</string>
+    <string name="db_read_only">Csak olvasás</string>
+    <string name="last_used">Utoljára: %1$s</string>
+    <string name="never_used">Még nem használt</string>
+
+    <string name="state_disconnected">Bontva</string>
+    <string name="state_unlocking">Feloldás</string>
+    <string name="state_connecting">Csatlakozik</string>
+    <string name="state_active">Aktív</string>
+    <string name="state_paused">Szünetel</string>
+    <string name="state_error">Hiba</string>
+    <string name="step_key">Kulcs</string>
+    <string name="step_ssh">SSH</string>
+    <string name="step_mysql">MySQL</string>
+    <string name="step_schema">Séma</string>
+
+    <string name="keys_title">Kulcstár</string>
+    <string name="keys_empty_title">Nincs tárolt kulcs</string>
+    <string name="keys_empty_body">Importálj egy OpenSSH privát kulcsot, vagy generálj Ed25519 kulcspárt az eszközön.</string>
+    <string name="keys_empty_action">Kulcs importálása</string>
+    <string name="key_import_file">Importálás fájlból</string>
+    <string name="key_import_paste">Kulcs beillesztése</string>
+    <string name="key_generate">Generálás az eszközön</string>
+    <string name="key_name">Kulcs neve</string>
+    <string name="key_passphrase">Passphrase</string>
+    <string name="key_public_copy">Publikus kulcs másolása</string>
+    <string name="key_delete">Kulcs törlése</string>
+    <string name="key_clipboard_cleared">Kulcs beillesztve, a vágólap törölve.</string>
+    <string name="key_add_to_authorized_keys">Vedd fel ezt a publikus kulcsot annak az SSH felhasználónak az authorized_keys fájljába, amivel kapcsolódsz.</string>
+
+    <string name="host_key_new_title">Ismeretlen szerver-fingerprint</string>
+    <string name="host_key_new_body">Első csatlakozás ide: %1$s. Vesd össze ezt a fingerprintet a szerverrel, mielőtt elfogadod — utána a megváltozása blokkolni fogja a kapcsolatot.</string>
+    <string name="host_key_accept">Elfogadás és mentés</string>
+    <string name="host_key_reject">Mégse</string>
+    <string name="host_key_changed_title">A szerver fingerprintje megváltozott — a kapcsolat blokkolva</string>
+    <string name="host_key_changed_body">Tárolt: %1$s\nKapott: %2$s\n\nA szerver máshogy azonosítja magát, mint legutóbb. Ez történik akkor, ha újratelepítették vagy lecserélték — de így néz ki az is, ha valaki belehallgat a kapcsolatba. Csak akkor oldd fel a kapcsolatszerkesztőben, ha tudod, melyikről van szó.</string>
+
+    <string name="error_auth_rejected">Az SSH szerver elutasította a kulcsot. Ellenőrizd, hogy ennek a kulcsnak a publikus fele benne van-e annak az SSH felhasználónak az authorized_keys fájljában, amivel kapcsolódsz.</string>
+    <string name="error_ssh_unreachable">Az SSH szerver nem válaszol. Ellenőrizd a címet és a portot, és azt, hogy elérsz-e most arra a hálózatra.</string>
+    <string name="error_passphrase">Hibás passphrase.</string>
+    <string name="error_passphrase_backoff">Túl sok sikertelen kísérlet. Próbáld újra %1$d másodperc múlva.</string>
+    <string name="error_key_ppk">A PuTTY .ppk kulcs nem támogatott. Előbb konvertáld: puttygen key.ppk -O private-openssh-new -o key</string>
+    <string name="error_key_dsa">A DSA kulcsokat elutasítjuk, az algoritmus elavult. Használj Ed25519-et vagy legalább 2048 bites RSA-t.</string>
+    <string name="error_key_rsa_short">Ez az RSA kulcs %1$d bites. Legalább 2048 bit kell.</string>
+    <string name="error_key_unreadable">Ez nem tűnik támogatott formátumú privát kulcsnak.</string>
+    <string name="error_no_device_credential">A SQLPulse-nak képernyőzár (biometria vagy PIN) kell a kulcsok tárolásához. Állítsd be a rendszerbeállításokban, és indítsd újra az appot.</string>
+    <string name="error_details">Részletek</string>
+    <string name="cancel">Mégse</string>
+
+    <string name="tunnel_notification_channel">SSH tunnel</string>
+    <string name="tunnel_notification_title">Tunnel aktív — %1$s</string>
+    <string name="tunnel_notification_body">127.0.0.1:%1$d → %2$s:%3$d</string>
+    <string name="tunnel_notification_stop">Bontás</string>
+    <string name="unlock_title">SSH kulcs feloldása</string>
+    <string name="unlock_subtitle">%1$s</string>
+    <string name="unlock_cancel">Mégse</string>
+    <!-- Séma-böngésző -->
+    <string name="schema_title">Séma</string>
+    <string name="schema_search">Tábla keresése</string>
+    <string name="schema_view">nézet</string>
+    <string name="schema_rows_approx">~%1$d sor</string>
+    <string name="schema_no_tables_title">Nincs megjeleníthető tábla</string>
+    <string name="schema_no_tables_body">Ebben az adatbázisban egy tábla sem felel meg a szűrőnek.</string>
+    <string name="schema_clear_filter">Szűrő törlése</string>
+    <string name="schema_no_session_title">Nincs élő kapcsolat</string>
+    <string name="schema_no_session_body">Nyiss meg egy kapcsolatot a kezdőképernyőn; a séma csak élő kapcsolat mellett olvasható.</string>
+    <string name="refresh">Frissítés</string>
+    <string name="connection_disconnect">Bontás</string>
+
+    <!-- Tábla lap -->
+    <string name="tab_data">Adatok</string>
+    <string name="tab_structure">Szerkezet</string>
+    <string name="tab_ddl">DDL</string>
+    <string name="structure_indexes">Indexek</string>
+    <string name="structure_foreign_keys">Idegen kulcsok</string>
+    <string name="structure_primary_key">PK</string>
+    <string name="structure_no_primary_key">Ennek a táblának nincs elsődleges kulcsa, ezért a sorok nem szerkeszthetők.</string>
+    <string name="ddl_copy">DDL másolása</string>
+
+    <!-- Eredményrács -->
+    <string name="grid_limit_added">Automatikusan hozzáadott LIMIT 500.</string>
+    <string name="grid_truncated">Az első %1$d sor látszik.</string>
+
+    <!-- Query editor -->
+    <string name="query_title">Lekérdezés</string>
+    <string name="query_run">Futtatás</string>
+    <string name="query_cancel">Megszakítás</string>
+    <string name="query_row_limit">legfeljebb %1$d sor</string>
+    <string name="query_panel_result">Eredmény</string>
+    <string name="query_panel_history">Előzmények</string>
+    <string name="query_panel_favourites">Kedvencek</string>
+    <string name="query_favourite_add">Mentés kedvencként</string>
+    <string name="query_favourite_name">Név</string>
+    <string name="query_parameters_title">Paraméterek</string>
+    <string name="query_result_summary">%1$d sor · %2$d ms</string>
+    <string name="query_rows_changed">A művelet lefutott.</string>
+    <string name="query_no_result_yet">Futtass egy lekérdezést, az eredménye itt jelenik meg.</string>
+    <string name="query_history_empty">A lefuttatott lekérdezések itt jelennek meg, futásidővel és sorszámmal.</string>
+    <string name="query_favourites_empty">Ments el egy lekérdezést kedvencként, akár :paraméterekkel.</string>
+    <string name="query_no_session_title">Nincs élő kapcsolat</string>
+    <string name="error_read_only">Ez a kapcsolat csak olvasható. Állítsd át a kapcsolatszerkesztőben, vagy használj írásjogú felhasználót.</string>
+    <string name="error_unsupported_statement">Csak lekérdezések és sorszintű módosítások támogatottak, sémaváltoztatás nem.</string>
+
+    <!-- Rács, sorszerkesztés, export, beállítások, zárolás -->
+    <string name="grid_loading_more">További sorok betöltése…</string>
+    <string name="grid_loaded">%1$d sor betöltve.</string>
+    <string name="grid_loaded_of">%1$d / %2$d sor betöltve.</string>
+    <string name="cell_copy">Másolás</string>
+    <string name="cell_edit">Szerkesztés</string>
+    <string name="cell_set_null">Legyen NULL</string>
+    <string name="row_delete">Sor törlése</string>
+    <string name="confirm_update_title">Lefuttatod ezt a módosítást?</string>
+    <string name="confirm_delete_title">Törlöd ezt a sort?</string>
+    <string name="confirm_run">Futtatás</string>
+    <string name="confirm_type_table_name">Éles adatbázis. A megerősítéshez gépeld be a tábla nevét: %1$s</string>
+    <string name="edit_applied">A módosítás megtörtént.</string>
+    <string name="undo">Visszavonás</string>
+    <string name="export">Export</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_json">JSON</string>
+    <string name="settings_title">Beállítások</string>
+    <string name="settings_manage_keys">Kulcstár kezelése</string>
+    <string name="settings_default_limit">Alapértelmezett sorlimit</string>
+    <string name="settings_auto_lock">Automatikus zárolás</string>
+    <string name="settings_auto_lock_note">Zároláskor a kapcsolat bezárul, a betöltött eredmények törlődnek.</string>
+    <string name="settings_minutes">%1$d perc</string>
+    <string name="settings_theme">Téma</string>
+    <string name="settings_theme_system">Rendszer</string>
+    <string name="settings_theme_light">Világos</string>
+    <string name="settings_theme_dark">Sötét</string>
+    <string name="settings_grid_font">Betűméret a rácsban</string>
+    <string name="lock_title">A SQLPulse zárolva van</string>
+    <string name="lock_subtitle">Feloldás a folytatáshoz</string>
+    <string name="lock_body">Az app tétlenség miatt zárolta magát. A kapcsolat bezárult, a betöltött eredmények törlődtek.</string>
+    <string name="lock_unlock">Feloldás</string>
+
+    <string name="key_delete_title">Törlöd a kulcsot?</string>
+    <string name="key_delete_body">A(z) "%1$s" lekerül a telefonról. A szerver továbbra is elfogadja: a végleges visszavonáshoz ott kell kivenni a sorát az authorized_keys fájlból.</string>
+    <string name="error_key_delete_failed">A kulcsot nem sikerült törölni.</string>
+
+    <string name="key_generated_title">Kulcspár generálva</string>
+    <string name="key_imported_title">Kulcs importálva</string>
+    <string name="key_imported_body">Az alábbi publikus kulcs az importált privát kulcshoz tartozik — abból származtattuk, új kulcs nem készült. Vesd össze a szerver authorized_keys fájljában lévő sorral.</string>
+
+    <string name="query_switched_database">A lekérdezések mostantól a(z) "%1$s" adatbázison futnak.</string>
+
+    <string name="grid_sort_asc">"%1$s": növekvő sorrend</string>
+    <string name="grid_sort_desc">"%1$s": csökkenő sorrend</string>
+    <string name="grid_sort_none">Rendezés: "%1$s"</string>
+
+    <string name="ssh_use_tunnel">Az adatbázis elérése SSH szerveren át</string>
+    <string name="ssh_direct_note">SSH nélkül a telefon közvetlenül a MySQL-hez kapcsolódik. Ez csak ott működik, ahol az adatbázis portja elérhető a telefon aktuális hálózatáról.</string>
+    <string name="section_ssh_details">SSH kapcsolat</string>
+    <string name="db_host_direct">Adatbázis címe a telefon felől nézve</string>
+
+    <string name="filter_contains">Tartalmazza</string>
+
+    <string name="query_explain">EXPLAIN</string>
+    <string name="error_explain_read_only">Az EXPLAIN csak lekérdezésre értelmes.</string>
+
+    <string name="server_title">Szerver</string>
+    <string name="server_kill_title">Megszakítod a(z) %1$d kapcsolat utasítását?</string>
+    <string name="server_kill">Megszakítás</string>
+    <string name="server_process_privilege">Más felhasználók lekérdezéseinek látásához PROCESS jog kell a MySQL felhasználón.</string>
+
+    <string name="tls_mode">A MySQL kapcsolat titkosítása</string>
+    <string name="tls_disabled">Kikapcsolva</string>
+    <string name="tls_disabled_note">Csak SSH tunnelen át értelmes, ahol a tunnel titkosít.</string>
+    <string name="tls_required">Titkosított</string>
+    <string name="tls_required_note">TLS kötelező, tanúsítvány-ellenőrzés nélkül: a lehallgatás ellen véd, a megszemélyesítés ellen nem.</string>
+    <string name="tls_verify_ca">Titkosított, CA ellenőrzéssel</string>
+    <string name="tls_verify_ca_note">A szerver tanúsítványát az alább importált CA-nak kell aláírnia.</string>
+    <string name="tls_verify_identity">Titkosított, CA és hoszt ellenőrzéssel</string>
+    <string name="tls_verify_identity_note">Mint fentebb, és a tanúsítványnak illeszkednie kell ahhoz a hoszthoz, amihez kapcsolódsz. Közvetlen kapcsolatnál ez a biztonságos választás.</string>
+    <string name="tls_import_ca">CA tanúsítvány importálása</string>
+    <string name="tls_ca_required">Ehhez a módhoz kell a CA tanúsítvány, ami a szerver tanúsítványát aláírta.</string>
+    <string name="error_certificate_invalid">Ez a fájl nem tartalmaz PEM tanúsítványt.</string>
+
+    <string name="error_no_where_clause">Ennek az utasításnak nincs WHERE feltétele, tehát minden sort módosítana. Adj hozzá feltételt, vagy engedélyezd a Beállításokban.</string>
+    <string name="settings_block_unguarded_writes">WHERE nélküli UPDATE és DELETE elutasítása</string>
+
+    <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
+    <plurals name="key_in_use">
+        <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>
+        <item quantity="other">%d kapcsolat használja — előbb azokat töröld.</item>
+    </plurals>
+
+    <!-- Mit jelent az egyes kiszolgálóhibák, a szerver saját szövege fölött. -->
+    <string name="sql_error_authentication">A felhasználónevet vagy a jelszót nem fogadta el a kiszolgáló.</string>
+    <string name="sql_error_privilege">Ennek a felhasználónak nincs joga hozzá. Jogosultság kell erre az adatbázisra vagy táblára.</string>
+    <string name="sql_error_unknown_database">Nincs ilyen adatbázis, vagy ez a felhasználó nem látja.</string>
+    <string name="sql_error_unknown_object">Az utasítás olyan táblát vagy oszlopot nevez meg, ami nincs az adatbázisban.</string>
+    <string name="sql_error_syntax">A kiszolgáló nem tudta értelmezni ezt az utasítást.</string>
+    <string name="sql_error_tls">A titkosított kapcsolat nem jött létre. Nézd meg a TLS módot és a CA tanúsítványt.</string>
+    <string name="sql_error_unreachable">A kiszolgáló nem érhető el. Ellenőrizd a címet, a portot és a hálózatot.</string>
+    <string name="sql_error_timeout">Ez tovább tartott az időkorlátnál, ezért leállt.</string>
+    <string name="sql_error_connection_lost">A kapcsolat megszakadt futás közben. Kapcsolódj újra, és próbáld meg ismét.</string>
+    <string name="sql_error_lock">Egy másik tranzakció tartja ezeket a sorokat. Próbáld meg kicsit később.</string>
+    <string name="sql_error_duplicate_key">Ilyen kulccsal már van sor.</string>
+    <string name="sql_error_server_busy">A kiszolgáló elutasítja a kérést: csak olvasható, vagy elfogytak a szabad kapcsolatai.</string>
+    <string name="sql_error_code">MySQL hiba: %1$d</string>
+
+    <!-- Milyen objektumokat sorol fel a sémaböngésző. -->
+    <string name="schema_tables">Táblák</string>
+    <string name="schema_views">Nézetek</string>
+    <string name="schema_routines">Eljárások</string>
+    <string name="schema_triggers">Triggerek</string>
+    <string name="schema_events">Események</string>
+    <string name="schema_procedure">Eljárás</string>
+    <string name="schema_returns">Visszatérés: %1$s</string>
+    <string name="schema_routine_hidden">Ennek az eljárásnak a törzsét ez a felhasználó nem láthatja.</string>
+    <string name="schema_no_views_title">Nincs nézet</string>
+    <string name="schema_no_routines_title">Nincs eljárás vagy függvény</string>
+    <string name="schema_no_triggers_title">Nincs trigger</string>
+    <string name="schema_no_events_title">Nincs ütemezett esemény</string>
+
+    <!-- Belépés az SSH gépre. -->
+    <string name="ssh_auth_key">Kulcs</string>
+    <string name="ssh_auth_password">Jelszó</string>
+    <string name="ssh_password">SSH jelszó</string>
+    <string name="ssh_password_note">A kulcs biztonságosabb: nem kitalálható, és a kiszolgáló sosem látja. Jelszót csak ott használj, ahol a gép mást nem enged.</string>
+
+    <!-- Több utasításból álló script futtatása. -->
+    <string name="query_run_all">Mind futtatása</string>
+    <string name="query_run_selection">Kijelölt futtatása</string>
+    <string name="query_run_current">Ezt futtasd</string>
+    <string name="query_statement_failed">hiba</string>
+    <string name="query_statement_rows">%1$d sor</string>
+    <string name="query_statement_changed">%1$d módosult</string>
+
+    <!-- A szerkesztő szövegének rendezése és keresés benne. -->
+    <string name="query_format">Formázás</string>
+    <string name="query_find">Keresés</string>
+    <string name="query_replace">Csere erre</string>
+    <string name="query_replace_all">Mind cseréje</string>
+
+    <string name="query_edit">Lekérdezés szerkesztése</string>
+
+    <string name="settings_privacy">Adatvédelem</string>
+    <string name="settings_block_screenshots">Képernyőkép tiltása</string>
+    <string name="settings_block_screenshots_note">Üresen hagyja a képernyőképet és az alkalmazásváltó előnézetét. Kapcsold ki, ha képernyőképet szeretnél küldeni egy hibáról — a képernyőn lévő táblázat valódi adat.</string>
+
+    <!-- Valaki más ért oda előbb a sorhoz (§7.6). -->
+    <string name="conflict_title">A sor megváltozott</string>
+    <string name="conflict_body">Valaki más módosította ezt az értéket, mióta beolvastad. Most ez van benne: %1$s. A te módosításod nem futott le.</string>
+    <string name="conflict_row_gone">Valaki más törölte ezt a sort, mióta beolvastad, így nincs mit módosítani.</string>
+    <string name="conflict_overwrite">Felülírom mégis</string>
+
+    <!-- Kézi tranzakciók. -->
+    <string name="transaction_begin">Tranzakció</string>
+    <string name="transaction_open">Nyitott tranzakció — semmi nem íródik ki, amíg nem véglegesíted.</string>
+    <string name="transaction_commit">Véglegesítés</string>
+    <string name="transaction_rollback">Visszavonás</string>
+
+    <string name="cell_json">Formázott JSON</string>
+
+    <string name="cell_blob_preview">Belenézek</string>
+    <string name="cell_blob_truncated">Csak az első pár kilobájt látszik, a többi a kiszolgálón marad.</string>
+
+    <!-- Ami szembetűnik a végrehajtási tervben (§7.4). -->
+    <string name="explain_full_scan">A tábla minden sorát végigolvassa: nincs index, ami szűkítené.</string>
+    <string name="explain_index_scan">Egy teljes indexet bejár ahelyett, hogy keresne benne.</string>
+    <string name="explain_no_index">Ehhez a táblához nem használ indexet.</string>
+    <string name="explain_filesort">A sorokat beolvasás után rendezi.</string>
+    <string name="explain_temporary">Ideiglenes táblát épít a lekérdezéshez.</string>
+    <string name="explain_many_rows">A kiszolgáló sok sorral számol.</string>
+
+    <string name="export_tsv">TSV (tabulátoros)</string>
+    <string name="export_sql">SQL INSERT</string>
+
+    <!-- CSV fájl importálása táblába (a kutatási összefoglaló 1.2-es köre). -->
+    <string name="import_csv">CSV import</string>
+    <string name="import_title">Importálás ide: %1$s</string>
+    <string name="import_rows">%1$d sor kerül beszúrásra.</string>
+    <string name="import_columns">Kitöltött oszlopok: %1$s</string>
+    <string name="import_ignored">A táblában nincs ilyen oszlop, ezek kimaradnak: %1$s</string>
+    <string name="import_malformed">%1$d sorban más volt a mezők száma, ezek kimaradnak.</string>
+    <string name="import_no_columns">A fájl egyetlen oszlopa sem illik ehhez a táblához.</string>
+    <string name="import_blocking">Ezeket az oszlopokat a fájl nem tölti ki, a tábla viszont megköveteli: %1$s</string>
+    <string name="import_run">Importálás</string>
+
+    <string name="cell_true">Igen (1)</string>
+    <string name="cell_false">Nem (0)</string>
+    <string name="cell_today">Ma</string>
+    <string name="cell_now">Most</string>
+
+    <string name="ssh_jump_host">Ugrógép (nem kötelező)</string>
+    <string name="ssh_jump_note">Az SSH gépet ezen keresztül éri el. Mindkét lépés a fenti kulcsot vagy jelszót használja, és mindkettőnél ellenőrzi a tárolt gépkulcsot.</string>
+
+    <!-- A szerver képernyő négy kérdése (a kutatási összefoglaló 2.0-s köre). -->
+    <string name="server_panel_queries">Lekérdezések</string>
+    <string name="server_panel_transactions">Tranzakciók</string>
+    <string name="server_panel_locks">Zárolásra várók</string>
+    <string name="server_panel_replication">Replikáció</string>
+    <string name="server_no_queries">Most semmi nem fut.</string>
+    <string name="server_no_transactions">Nincs nyitott tranzakció.</string>
+    <string name="server_no_locks">Semmi nem vár zárolásra.</string>
+    <string name="server_no_replication">Ez a kiszolgáló nem jelez replikációt — vagy a felhasználó nem kérdezhet rá.</string>
+    <string name="server_nothing_body">Ezt válaszolta a kiszolgáló az imént; a frissítéssel újra megkérdezhető.</string>
+
+    <string name="server_panel_users">Felhasználók</string>
+    <string name="server_no_users">Ez a felhasználó nem lát fiókokat.</string>
+    <string name="server_no_grants">A kiszolgáló nem sorolt fel jogosultságot ehhez a fiókhoz.</string>
+
+    <!-- Environment and timeouts -->
+    <string name="connection_environment">Környezet</string>
+    <string name="environment_development">Fejlesztés</string>
+    <string name="environment_test">Teszt</string>
+    <string name="environment_production">Éles</string>
+    <string name="environment_unset">Nincs besorolva</string>
+    <string name="environment_development_short">Fejl.</string>
+    <string name="environment_test_short">Teszt</string>
+    <string name="environment_production_short">Éles</string>
+    <string name="environment_unset_short">Nincs</string>
+    <string name="environment_production_note">Élesnek jelölve. A listában külön áll, és a kártyáján is látszik.</string>
+    <string name="environment_production_writable_note">Élesnek jelölve, és írni is lehet rajta. Megnyitás előtt rákérdez.</string>
+    <string name="production_confirm_title">Éles adatbázis</string>
+    <string name="production_confirm_body">A(z) %1$s éles kiszolgálóra mutat (%2$s), és írni is lehet rajta. Megnyitod?</string>
+    <string name="production_confirm_open">Megnyitás</string>
+    <string name="section_timeouts">Időkorlátok</string>
+    <string name="timeout_connect">Kapcsolódás (mp)</string>
+    <string name="timeout_query">Lekérdezés (mp)</string>
+    <string name="timeout_note">Másodpercben, 1 és %1$d között. Az időt túllépő lekérdezést a kiszolgáló leállítja; a kapcsolódás az első szám után feladja.</string>
+
+    <!-- Pulse -->
+    <string name="pulse_title">Pulzus</string>
+    <string name="pulse_no_session">Nyiss meg egy kapcsolatot, és itt látszik a kiszolgáló pulzusa.</string>
+    <string name="pulse_waiting">Első mérés folyamatban. Egy számláló önmagában azt mondja meg, mennyi történt a kiszolgáló indulása óta, nem azt, hogy most mi történik — a képernyő a második mérésnél telik meg.</string>
+    <string name="pulse_interval_fast">1 mp</string>
+    <string name="pulse_interval_normal">5 mp</string>
+    <string name="pulse_interval_slow">15 mp</string>
+    <string name="pulse_queries">Lekérdezés</string>
+    <string name="pulse_threads_running">Futó szálak</string>
+    <string name="pulse_threads_connected">Kapcsolatok</string>
+    <string name="pulse_lock_waits">Sorzárra vár</string>
+    <string name="pulse_buffer_hit">Olvasás memóriából</string>
+    <string name="pulse_slow_queries">Lassú lekérdezés</string>
+    <string name="pulse_traffic_out">Kimenő forgalom</string>
+    <string name="pulse_replication_lag">Replikációs késés</string>
+    <string name="pulse_unit_per_second">másodpercenként</string>
+    <string name="pulse_unit_now">éppen most</string>
+    <string name="pulse_unit_window">az előző mérés óta</string>
+    <string name="pulse_unit_out">klienseknek küldve</string>
+    <string name="pulse_unit_behind">lemaradás a forrástól</string>
+
+    <!-- Schema map -->
+    <string name="map_title">Séma-térkép</string>
+    <string name="map_fit">Képernyőre igazítás</string>
+    <string name="map_no_session">Nyiss meg egy kapcsolatot és válassz adatbázist a térképhez.</string>
+    <string name="map_empty">Ebben az adatbázisban nincs kirajzolható tábla.</string>
+    <string name="map_references">%1$d táblára hivatkozik, %2$d tábla hivatkozik rá</string>
+    <string name="map_parents">Hivatkozik erre: %1$s</string>
+    <string name="map_children">Erre hivatkozik: %1$s</string>
+    <string name="map_open_table">Tábla megnyitása</string>
+    <string name="map_no_foreign_keys">Ebben az adatbázisban nincs idegen kulcs. A %1$d szaggatott kapcsolat az oszlopnevekből olvasható ki — valószínű, nem biztos.</string>
+    <string name="map_some_guessed">%1$d kapcsolat idegen kulcsból, %2$d szaggatott az oszlopnevekből kitalálva.</string>
+    <string name="map_guessed_link">oszlopnévből kitalálva</string>
+</resources>

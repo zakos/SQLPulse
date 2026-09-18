@@ -1,0 +1,129 @@
+name: Build
+
+# The installable build. It runs when work lands on main — which is what merging a pull request
+# does — and on request from the Actions tab. Ordinary commits are covered by check.yml.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Assemble, test and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # packages: '' because the action's default list still contains the retired "tools"
+      # package, which sdkmanager now refuses. The runner image already ships platform-tools.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      # The signing key lives in repository secrets, never in the repository. Without it the
+      # artifact could not replace an installed app, so a missing secret fails the build rather
+      # than quietly producing an APK signed with a throwaway key.
+      - name: Restore the signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::SIGNING_KEYSTORE_BASE64 is not set. See \"CI and installing the app\" in the README."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.bin"
+          # A JKS file starts with the magic feedfeed; a PKCS#12 one is DER, starting with 30 82.
+          # The extension is what tells Gradle which of the two it is.
+          MAGIC="$(head -c 4 "$RUNNER_TEMP/keystore.bin" | od -An -tx1 | tr -d ' \n')"
+          if [ "$MAGIC" = "feedfeed" ]; then
+            mv "$RUNNER_TEMP/keystore.bin" "$RUNNER_TEMP/signing.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/signing.jks" >> "$GITHUB_ENV"
+          else
+            mv "$RUNNER_TEMP/keystore.bin" "$RUNNER_TEMP/signing.p12"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/signing.p12" >> "$GITHUB_ENV"
+          fi
+
+      # The run number becomes the version code, so this APK installs over the previous one.
+      - name: Assemble debug
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ env.KEYSTORE_FILE }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          # Both optional: without an alias the keystore's only one is used, and without a key
+          # password the store password is tried, which is how PKCS#12 keystores are usually made.
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleDebug
+
+      # Prints the signer certificate, not the key: a quick way to confirm that every build is
+      # signed with the same certificate, which is what makes updates possible.
+      - name: Show the signing certificate
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/*.apk \
+            | grep -i "SHA-256 digest" || true
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/signing.* "$RUNNER_TEMP/keystore.bin"
+
+      - name: Android Lint
+        run: ./gradlew --no-daemon lintDebug
+
+      # Reports are what makes a red build diagnosable, so they are kept either way.
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlpulse-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarise the install
+        if: success()
+        run: |
+          {
+            echo "### SQLPulse debug build ${{ github.run_number }}"
+            echo
+            echo "Artifact: **sqlpulse-debug-${{ github.run_number }}** (version code ${{ github.run_number }})."
+            echo
+            echo "Download it, unzip, and open the APK on the phone to install over the existing app."
+            echo "Every build is signed with the key held in repository secrets, so updates replace each other."
+          } >> "$GITHUB_STEP_SUMMARY"

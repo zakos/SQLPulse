@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="app_name" translatable="false">SQLPulse</string>
+
+    <!-- Connections -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_empty_title">No connections yet</string>
+    <string name="connections_empty_body">A connection needs a database, and either an SSH host to reach it through or a directly reachable address.</string>
+    <string name="connections_empty_action">Create first connection</string>
+    <string name="connection_new">New connection</string>
+    <string name="connection_edit">Edit</string>
+    <string name="connection_duplicate">Duplicate</string>
+    <string name="connection_delete">Delete</string>
+    <string name="connection_test">Test connection</string>
+    <string name="connection_save">Save</string>
+    <string name="connection_name">Name</string>
+    <string name="connection_colour">Colour</string>
+    <string name="connection_production">Production database</string>
+    <string name="section_ssh">How to connect</string>
+    <string name="section_mysql">MySQL</string>
+    <string name="ssh_host">SSH host</string>
+    <string name="ssh_port">SSH port</string>
+    <string name="ssh_user">SSH user</string>
+    <string name="ssh_key">SSH key</string>
+    <string name="ssh_key_required">SSH needs a key: password logins are not supported. Pick one, or switch SSH off above.</string>
+    <string name="db_host">Database host (as seen from the SSH host)</string>
+    <string name="db_port">Port</string>
+    <string name="db_name">Database</string>
+    <string name="db_user">MySQL user</string>
+    <string name="db_password">MySQL password</string>
+    <string name="db_read_only">Read-only</string>
+    <string name="last_used">Last used %1$s</string>
+    <string name="never_used">Never used</string>
+
+    <!-- Tunnel states -->
+    <string name="state_disconnected">Disconnected</string>
+    <string name="state_unlocking">Unlocking</string>
+    <string name="state_connecting">Connecting</string>
+    <string name="state_active">Active</string>
+    <string name="state_paused">Paused</string>
+    <string name="state_error">Error</string>
+    <string name="step_key">Key</string>
+    <string name="step_ssh">SSH</string>
+    <string name="step_mysql">MySQL</string>
+    <string name="step_schema">Schema</string>
+
+    <!-- Key store -->
+    <string name="keys_title">Key store</string>
+    <string name="keys_empty_title">No keys stored</string>
+    <string name="keys_empty_body">Import an OpenSSH private key, or generate an Ed25519 pair on this device.</string>
+    <string name="keys_empty_action">Import key</string>
+    <string name="key_import_file">Import from file</string>
+    <string name="key_import_paste">Paste key</string>
+    <string name="key_generate">Generate on device</string>
+    <string name="key_name">Key name</string>
+    <string name="key_passphrase">Passphrase</string>
+    <string name="key_public_copy">Copy public key</string>
+    <string name="key_delete">Delete key</string>
+    <string name="key_clipboard_cleared">Key pasted, clipboard cleared.</string>
+    <string name="key_add_to_authorized_keys">Add this public key to the authorized_keys file of the SSH user you connect as.</string>
+
+    <!-- Host key -->
+    <string name="host_key_new_title">Unknown server fingerprint</string>
+    <string name="host_key_new_body">First connection to %1$s. Check this fingerprint against the server before accepting it — after that, a change will block the connection.</string>
+    <string name="host_key_accept">Accept and save</string>
+    <string name="host_key_reject">Cancel</string>
+    <string name="host_key_changed_title">The server fingerprint changed — connection blocked</string>
+    <string name="host_key_changed_body">Stored: %1$s\nOffered: %2$s\n\nThe server is identifying itself differently than last time. That happens when it is rebuilt or replaced — and it is also what someone intercepting the connection would look like. Unblock it in the connection editor only once you know which of the two it is.</string>
+
+    <!-- Errors -->
+    <string name="error_auth_rejected">The SSH server refused the key. Check that this key\'s public half is in the authorized_keys file of the SSH user you are connecting as.</string>
+    <string name="error_ssh_unreachable">The SSH host is not answering. Check the address and port, and whether you can reach that network right now.</string>
+    <string name="error_passphrase">Wrong passphrase.</string>
+    <string name="error_passphrase_backoff">Too many attempts. Try again in %1$d seconds.</string>
+    <string name="error_key_ppk">PuTTY .ppk keys are not supported. Convert it first: puttygen key.ppk -O private-openssh-new -o key</string>
+    <string name="error_key_dsa">DSA keys are rejected — the algorithm is obsolete. Use Ed25519 or RSA of at least 2048 bits.</string>
+    <string name="error_key_rsa_short">This RSA key is %1$d bits. At least 2048 bits are required.</string>
+    <string name="error_key_unreadable">This does not look like a private key in a supported format.</string>
+    <string name="error_no_device_credential">SQLPulse needs a screen lock (biometrics or PIN) to store keys. Set one up in system settings and start the app again.</string>
+    <string name="error_details">Details</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Tunnel service / biometrics -->
+    <string name="tunnel_notification_channel">SSH tunnel</string>
+    <string name="tunnel_notification_title">Tunnel active — %1$s</string>
+    <string name="tunnel_notification_body">127.0.0.1:%1$d → %2$s:%3$d</string>
+    <string name="tunnel_notification_stop">Disconnect</string>
+    <string name="unlock_title">Unlock SSH key</string>
+    <string name="unlock_subtitle">%1$s</string>
+    <string name="unlock_cancel">Cancel</string>
+    <!-- Schema browser -->
+    <string name="schema_title">Schema</string>
+    <string name="schema_search">Search tables</string>
+    <string name="schema_view">view</string>
+    <string name="schema_rows_approx">~%1$d rows</string>
+    <string name="schema_no_tables_title">Nothing to show</string>
+    <string name="schema_no_tables_body">No table in this database matches the filter.</string>
+    <string name="schema_clear_filter">Clear filter</string>
+    <string name="schema_no_session_title">No live connection</string>
+    <string name="schema_no_session_body">Open a connection on the start screen; the schema is only readable while a connection is live.</string>
+    <string name="refresh">Refresh</string>
+    <string name="connection_disconnect">Disconnect</string>
+
+    <!-- Table page -->
+    <string name="tab_data">Data</string>
+    <string name="tab_structure">Structure</string>
+    <string name="tab_ddl">DDL</string>
+    <string name="structure_indexes">Indexes</string>
+    <string name="structure_foreign_keys">Foreign keys</string>
+    <string name="structure_primary_key">PK</string>
+    <string name="structure_no_primary_key">This table has no primary key, so rows cannot be edited.</string>
+    <string name="ddl_copy">Copy DDL</string>
+
+    <!-- Result grid -->
+    <string name="grid_limit_added">LIMIT 500 added automatically.</string>
+    <string name="grid_truncated">First %1$d rows shown.</string>
+
+    <!-- Query editor -->
+    <string name="query_title">Query</string>
+    <string name="query_run">Run</string>
+    <string name="query_cancel">Cancel query</string>
+    <string name="query_row_limit">max %1$d rows</string>
+    <string name="query_panel_result">Result</string>
+    <string name="query_panel_history">History</string>
+    <string name="query_panel_favourites">Favourites</string>
+    <string name="query_favourite_add">Save as favourite</string>
+    <string name="query_favourite_name">Name</string>
+    <string name="query_parameters_title">Parameters</string>
+    <string name="query_result_summary">%1$d rows · %2$d ms</string>
+    <string name="query_rows_changed">Statement executed.</string>
+    <string name="query_no_result_yet">Run a query to see its result here.</string>
+    <string name="query_history_empty">Queries you run show up here, with their duration and row count.</string>
+    <string name="query_favourites_empty">Save a query as a favourite to keep it, with :parameters if it needs them.</string>
+    <string name="query_no_session_title">No live connection</string>
+    <string name="error_read_only">This connection is read-only. Change it in the connection editor, or use a user that may write.</string>
+    <string name="error_unsupported_statement">Only queries and row edits are supported; schema changes are not.</string>
+
+    <!-- Grid, row editing, export, settings, lock -->
+    <string name="grid_loading_more">Loading more…</string>
+    <string name="grid_loaded">%1$d rows loaded.</string>
+    <string name="grid_loaded_of">%1$d of %2$d rows loaded.</string>
+    <string name="cell_copy">Copy</string>
+    <string name="cell_edit">Edit</string>
+    <string name="cell_set_null">Set to NULL</string>
+    <string name="row_delete">Delete row</string>
+    <string name="confirm_update_title">Run this update?</string>
+    <string name="confirm_delete_title">Delete this row?</string>
+    <string name="confirm_run">Run</string>
+    <string name="confirm_type_table_name">Production database. Type the table name to confirm: %1$s</string>
+    <string name="edit_applied">Change applied.</string>
+    <string name="undo">Undo</string>
+    <string name="export">Export</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_json">JSON</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_manage_keys">Manage keys</string>
+    <string name="settings_default_limit">Default row limit</string>
+    <string name="settings_auto_lock">Automatic lock</string>
+    <string name="settings_auto_lock_note">On locking, the connection is closed and the loaded results are discarded.</string>
+    <string name="settings_minutes">%1$d minutes</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_grid_font">Grid font size</string>
+    <string name="lock_title">SQLPulse is locked</string>
+    <string name="lock_subtitle">Unlock to continue</string>
+    <string name="lock_body">The app locked itself after a period of inactivity. The connection was closed and the loaded results were discarded.</string>
+    <string name="lock_unlock">Unlock</string>
+
+    <string name="key_delete_title">Delete key?</string>
+    <string name="key_delete_body">"%1$s" is removed from this phone. The server still accepts it: to withdraw it for good, remove its line from authorized_keys there.</string>
+    <string name="error_key_delete_failed">The key could not be deleted.</string>
+
+    <string name="key_generated_title">Key pair generated</string>
+    <string name="key_imported_title">Key imported</string>
+    <string name="key_imported_body">The public key below belongs to the private key you imported — it was derived from it, nothing new was generated. Compare it with the line in the server\'s authorized_keys file.</string>
+
+    <string name="query_switched_database">Now running against "%1$s".</string>
+
+    <string name="grid_sort_asc">"%1$s": sorted ascending</string>
+    <string name="grid_sort_desc">"%1$s": sorted descending</string>
+    <string name="grid_sort_none">Sort by "%1$s"</string>
+
+    <string name="ssh_use_tunnel">Reach the database through an SSH host</string>
+    <string name="ssh_direct_note">Without SSH, this phone connects to MySQL directly. That only works where the database port is reachable from the phone\'s current network.</string>
+    <string name="section_ssh_details">SSH connection</string>
+    <string name="db_host_direct">Database host (as seen from this phone)</string>
+
+    <string name="filter_contains">Contains</string>
+
+    <string name="query_explain">EXPLAIN</string>
+    <string name="error_explain_read_only">EXPLAIN only makes sense for a query.</string>
+
+    <string name="server_title">Server</string>
+    <string name="server_kill_title">End statement on connection %1$d?</string>
+    <string name="server_kill">End statement</string>
+    <string name="server_process_privilege">Seeing other users\' queries needs the PROCESS privilege on the MySQL user.</string>
+
+    <string name="tls_mode">MySQL connection encryption</string>
+    <string name="tls_disabled">Off</string>
+    <string name="tls_disabled_note">Only sensible through an SSH tunnel, where the tunnel does the encrypting.</string>
+    <string name="tls_required">Encrypted</string>
+    <string name="tls_required_note">TLS required, certificate not checked: stops listening, not impersonation.</string>
+    <string name="tls_verify_ca">Encrypted, CA checked</string>
+    <string name="tls_verify_ca_note">The server certificate has to be signed by the CA you import below.</string>
+    <string name="tls_verify_identity">Encrypted, CA and host checked</string>
+    <string name="tls_verify_identity_note">As above, and the certificate has to match the host you are connecting to. The safe choice for a direct connection.</string>
+    <string name="tls_import_ca">Import CA certificate</string>
+    <string name="tls_ca_required">This mode needs the CA certificate that signed the server certificate.</string>
+    <string name="error_certificate_invalid">That file does not contain a PEM certificate.</string>
+
+    <string name="error_no_where_clause">This statement has no WHERE clause, so it would change every row. Add a condition, or allow it in Settings.</string>
+    <string name="settings_block_unguarded_writes">Refuse UPDATE and DELETE without WHERE</string>
+
+    <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
+    <plurals name="key_in_use">
+        <item quantity="one">Used by one connection — delete that first.</item>
+        <item quantity="other">Used by %d connections — delete those first.</item>
+    </plurals>
+
+    <!-- What each kind of server error means, shown above the server's own wording. -->
+    <string name="sql_error_authentication">The user name or password was not accepted.</string>
+    <string name="sql_error_privilege">This user is not allowed to do that. It needs a grant on this database or table.</string>
+    <string name="sql_error_unknown_database">There is no such database, or this user cannot see it.</string>
+    <string name="sql_error_unknown_object">The statement names a table or column the database does not have.</string>
+    <string name="sql_error_syntax">The server could not parse this statement.</string>
+    <string name="sql_error_tls">The encrypted connection could not be established. Check the TLS mode and the CA certificate.</string>
+    <string name="sql_error_unreachable">The server could not be reached. Check the host, the port, and whether the network is up.</string>
+    <string name="sql_error_timeout">This took longer than the time limit and was stopped.</string>
+    <string name="sql_error_connection_lost">The connection dropped while the statement was running. Reconnect and try again.</string>
+    <string name="sql_error_lock">Another transaction holds these rows. Try again in a moment.</string>
+    <string name="sql_error_duplicate_key">A row with this key already exists.</string>
+    <string name="sql_error_server_busy">The server is refusing the request: it is read-only, or it has no free connections.</string>
+    <string name="sql_error_code">MySQL error %1$d</string>
+
+    <!-- The kinds of object the schema browser lists. -->
+    <string name="schema_tables">Tables</string>
+    <string name="schema_views">Views</string>
+    <string name="schema_routines">Routines</string>
+    <string name="schema_triggers">Triggers</string>
+    <string name="schema_events">Events</string>
+    <string name="schema_procedure">Procedure</string>
+    <string name="schema_returns">Returns %1$s</string>
+    <string name="schema_routine_hidden">The body of this routine is not visible to this user.</string>
+    <string name="schema_no_views_title">No views</string>
+    <string name="schema_no_routines_title">No procedures or functions</string>
+    <string name="schema_no_triggers_title">No triggers</string>
+    <string name="schema_no_events_title">No scheduled events</string>
+
+    <!-- Entering the SSH host. -->
+    <string name="ssh_auth_key">Key</string>
+    <string name="ssh_auth_password">Password</string>
+    <string name="ssh_password">SSH password</string>
+    <string name="ssh_password_note">A key is safer: it cannot be guessed, and the server never sees it. Use a password only where the host allows nothing else.</string>
+
+    <!-- Running a script of several statements. -->
+    <string name="query_run_all">Run all</string>
+    <string name="query_run_selection">Run selection</string>
+    <string name="query_run_current">Run this one</string>
+    <string name="query_statement_failed">failed</string>
+    <string name="query_statement_rows">%1$d rows</string>
+    <string name="query_statement_changed">%1$d changed</string>
+
+    <!-- Tidying and searching the editor's text. -->
+    <string name="query_format">Format</string>
+    <string name="query_find">Find</string>
+    <string name="query_replace">Replace with</string>
+    <string name="query_replace_all">Replace all</string>
+
+    <string name="query_edit">Edit the query</string>
+
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_block_screenshots">Block screenshots</string>
+    <string name="settings_block_screenshots_note">Keeps screenshots and the app switcher preview blank. Turn it off to send a screenshot of a problem — a result grid on screen is real data.</string>
+
+    <!-- Somebody else got to the row first (§7.6). -->
+    <string name="conflict_title">The row has changed</string>
+    <string name="conflict_body">Someone else changed this value since you read it. It now holds: %1$s. Your edit was not applied.</string>
+    <string name="conflict_row_gone">Someone else deleted this row since you read it, so there is nothing left to change.</string>
+    <string name="conflict_overwrite">Overwrite anyway</string>
+
+    <!-- Manual transactions. -->
+    <string name="transaction_begin">Transaction</string>
+    <string name="transaction_open">Transaction open — nothing is written until you commit.</string>
+    <string name="transaction_commit">Commit</string>
+    <string name="transaction_rollback">Roll back</string>
+
+    <string name="cell_json">Formatted JSON</string>
+
+    <string name="cell_blob_preview">Look inside</string>
+    <string name="cell_blob_truncated">Only the first few kilobytes are shown; the rest stays on the server.</string>
+
+    <!-- What stands out in a query plan (§7.4). -->
+    <string name="explain_full_scan">Reads every row of the table: no index narrows it down.</string>
+    <string name="explain_index_scan">Walks a whole index rather than looking up in it.</string>
+    <string name="explain_no_index">No index is used for this table.</string>
+    <string name="explain_filesort">The rows are sorted after being read.</string>
+    <string name="explain_temporary">An intermediate table is built for this query.</string>
+    <string name="explain_many_rows">The server expects to touch a lot of rows.</string>
+
+    <string name="export_tsv">TSV (tabbed)</string>
+    <string name="export_sql">SQL INSERT</string>
+
+    <!-- Importing a CSV file into a table (§1.2 of the research summary). -->
+    <string name="import_csv">Import CSV</string>
+    <string name="import_title">Import into %1$s</string>
+    <string name="import_rows">%1$d rows will be inserted.</string>
+    <string name="import_columns">Columns filled: %1$s</string>
+    <string name="import_ignored">The table has no such columns, so these are ignored: %1$s</string>
+    <string name="import_malformed">%1$d lines had a different number of fields and are skipped.</string>
+    <string name="import_no_columns">None of the file\'s columns match this table.</string>
+    <string name="import_blocking">The file does not fill these columns, and the table requires them: %1$s</string>
+    <string name="import_run">Import</string>
+
+    <string name="cell_true">Yes (1)</string>
+    <string name="cell_false">No (0)</string>
+    <string name="cell_today">Today</string>
+    <string name="cell_now">Now</string>
+
+    <string name="ssh_jump_host">Jump host (optional)</string>
+    <string name="ssh_jump_note">The SSH host is reached through this one. Both hops use the key or password above, and both are checked against their stored host key.</string>
+
+    <!-- The server screen's four questions (§2.0 of the research summary). -->
+    <string name="server_panel_queries">Queries</string>
+    <string name="server_panel_transactions">Transactions</string>
+    <string name="server_panel_locks">Lock waits</string>
+    <string name="server_panel_replication">Replication</string>
+    <string name="server_no_queries">Nothing is running right now.</string>
+    <string name="server_no_transactions">No open transactions.</string>
+    <string name="server_no_locks">Nothing is waiting for a lock.</string>
+    <string name="server_no_replication">This server reports no replication — or the user may not ask about it.</string>
+    <string name="server_nothing_body">This is what the server answered a moment ago; refresh to ask again.</string>
+
+    <string name="server_panel_users">Users</string>
+    <string name="server_no_users">No accounts visible to this user.</string>
+    <string name="server_no_grants">The server listed no grants for this account.</string>
+
+    <!-- Environment and timeouts -->
+    <string name="connection_environment">Environment</string>
+    <string name="environment_development">Development</string>
+    <string name="environment_test">Test</string>
+    <string name="environment_production">Production</string>
+    <string name="environment_unset">Not classified</string>
+    <string name="environment_development_short">Dev</string>
+    <string name="environment_test_short">Test</string>
+    <string name="environment_production_short">Prod</string>
+    <string name="environment_unset_short">Unset</string>
+    <string name="environment_production_note">Marked as production. The list keeps it apart, and the card says so.</string>
+    <string name="environment_production_writable_note">Marked as production and writes are allowed. Opening it will ask first.</string>
+    <string name="production_confirm_title">Production database</string>
+    <string name="production_confirm_body">%1$s points at a production server (%2$s) and writes are allowed on it. Open it?</string>
+    <string name="production_confirm_open">Open</string>
+    <string name="section_timeouts">Timeouts</string>
+    <string name="timeout_connect">Connect (s)</string>
+    <string name="timeout_query">Query (s)</string>
+    <string name="timeout_note">Seconds, 1 to %1$d. A query over its time is killed on the server; connecting gives up after the first number.</string>
+
+    <!-- Pulse -->
+    <string name="pulse_title">Pulse</string>
+    <string name="pulse_no_session">Open a connection and the server\'s pulse shows up here.</string>
+    <string name="pulse_waiting">Taking the first reading. A counter on its own says how much has happened since the server started, not what is happening now — so the screen fills on the second one.</string>
+    <string name="pulse_interval_fast">1s</string>
+    <string name="pulse_interval_normal">5s</string>
+    <string name="pulse_interval_slow">15s</string>
+    <string name="pulse_queries">Queries</string>
+    <string name="pulse_threads_running">Running threads</string>
+    <string name="pulse_threads_connected">Connections</string>
+    <string name="pulse_lock_waits">Waiting for a row lock</string>
+    <string name="pulse_buffer_hit">Reads from memory</string>
+    <string name="pulse_slow_queries">Slow queries</string>
+    <string name="pulse_traffic_out">Traffic out</string>
+    <string name="pulse_replication_lag">Replication lag</string>
+    <string name="pulse_unit_per_second">per second</string>
+    <string name="pulse_unit_now">right now</string>
+    <string name="pulse_unit_window">since the last reading</string>
+    <string name="pulse_unit_out">sent to clients</string>
+    <string name="pulse_unit_behind">behind the source</string>
+
+    <!-- Schema map -->
+    <string name="map_title">Schema map</string>
+    <string name="map_fit">Fit to screen</string>
+    <string name="map_no_session">Open a connection and pick a database to see its map.</string>
+    <string name="map_empty">This database has no tables to draw.</string>
+    <string name="map_references">References %1$d, referenced by %2$d</string>
+    <string name="map_parents">Points at: %1$s</string>
+    <string name="map_children">Pointed at by: %1$s</string>
+    <string name="map_open_table">Open table</string>
+    <string name="map_no_foreign_keys">This database declares no foreign keys. The %1$d dashed links are read off the column names — likely, not certain.</string>
+    <string name="map_some_guessed">%1$d links from foreign keys, %2$d dashed ones guessed from column names.</string>
+    <string name="map_guessed_link">guessed from the column name</string>
+</resources>
