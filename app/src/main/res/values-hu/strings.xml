@@ -323,4 +323,8 @@
     <string name="server_no_locks">Semmi nem vár zárolásra.</string>
     <string name="server_no_replication">Ez a kiszolgáló nem jelez replikációt — vagy a felhasználó nem kérdezhet rá.</string>
     <string name="server_nothing_body">Ezt válaszolta a kiszolgáló az imént; a frissítéssel újra megkérdezhető.</string>
+
+    <string name="server_panel_users">Felhasználók</string>
+    <string name="server_no_users">Ez a felhasználó nem lát fiókokat.</string>
+    <string name="server_no_grants">A kiszolgáló nem sorolt fel jogosultságot ehhez a fiókhoz.</string>
 </resources>

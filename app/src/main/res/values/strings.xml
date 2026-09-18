@@ -331,4 +331,8 @@
     <string name="server_no_locks">Nothing is waiting for a lock.</string>
     <string name="server_no_replication">This server reports no replication — or the user may not ask about it.</string>
     <string name="server_nothing_body">This is what the server answered a moment ago; refresh to ask again.</string>
+
+    <string name="server_panel_users">Users</string>
+    <string name="server_no_users">No accounts visible to this user.</string>
+    <string name="server_no_grants">The server listed no grants for this account.</string>
 </resources>

@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /** What the server screen is showing. Each is a question a DBA asks separately. */
-enum class ServerPanel { QUERIES, TRANSACTIONS, LOCKS, REPLICATION }
+enum class ServerPanel { QUERIES, TRANSACTIONS, LOCKS, REPLICATION, USERS }
 
 data class ServerUiState(
     val facts: List<ServerFact> = emptyList(),
@@ -31,6 +31,9 @@ data class ServerUiState(
     val transactions: ResultTable? = null,
     val lockWaits: ResultTable? = null,
     val replication: ResultTable? = null,
+    val users: ResultTable? = null,
+    /** The account whose grants are on screen, with what the server said about it. */
+    val grants: AccountGrants? = null,
     val loading: Boolean = false,
     val error: String? = null,
     val connected: Boolean = false,
@@ -41,8 +44,12 @@ data class ServerUiState(
             ServerPanel.TRANSACTIONS -> transactions
             ServerPanel.LOCKS -> lockWaits
             ServerPanel.REPLICATION -> replication
+            ServerPanel.USERS -> users
         }
 }
+
+/** One account and its GRANT lines, as MySQL words them. */
+data class AccountGrants(val account: String, val lines: List<String>)
 
 /** The running queries and a short server overview (§3, DBA role). */
 @HiltViewModel
@@ -68,6 +75,7 @@ class ServerViewModel @Inject constructor(
                         transactions = null,
                         lockWaits = null,
                         replication = null,
+                        users = null,
                     )
                 }
             }
@@ -96,6 +104,7 @@ class ServerViewModel @Inject constructor(
                     ServerPanel.TRANSACTIONS -> state.copy(transactions = server.transactions())
                     ServerPanel.LOCKS -> state.copy(lockWaits = server.lockWaits())
                     ServerPanel.REPLICATION -> state.copy(replication = server.replication())
+                    ServerPanel.USERS -> state.copy(users = server.users())
                 }
                 // The overview is optional: a user without those variables still gets the list.
                 val facts = runCatching { server.overview() }.getOrDefault(emptyList())
@@ -108,6 +117,23 @@ class ServerViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /** Asks the server what one account may do. Read-only, like everything on this screen. */
+    fun showGrants(account: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(
+                    grants = AccountGrants(account, server.grants(account)),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = describe(e))
+            }
+        }
+    }
+
+    fun dismissGrants() {
+        _uiState.value = _uiState.value.copy(grants = null)
     }
 
     fun kill(processId: Long) {

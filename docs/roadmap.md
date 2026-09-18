@@ -42,6 +42,7 @@ megnézhető.
 | WHERE nélküli UPDATE és DELETE megtagadása | ugyanott |
 | Futó lekérdezések listája, lekérdezés megszakítása | `ui/server/ServerScreen.kt` |
 | Nyitott tranzakciók, zárolásra várók, replikáció állapota | `data/schema/ServerRepository.kt` |
+| Felhasználók listája és jogosultságaik (csak olvasás) | ugyanott |
 
 ### Eredmény és szerkesztés
 
@@ -71,10 +72,9 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 2.0
 
-2. **Felhasználók és jogosultságok megtekintése.**
-3. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+2. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-4. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+3. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

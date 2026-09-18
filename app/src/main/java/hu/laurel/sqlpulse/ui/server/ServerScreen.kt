@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -164,15 +165,42 @@ fun ServerScreen(
                 else -> ResultGrid(
                     table = table,
                     modifier = Modifier.fillMaxSize(),
-                    // A thread id is a thread id on every panel but replication, which has none.
                     onCellClick = { selection ->
-                        if (state.panel != ServerPanel.REPLICATION) {
-                            killTarget = selection.toKillTarget(table)
+                        when (state.panel) {
+                            // Replication has no thread to end and no account to look up.
+                            ServerPanel.REPLICATION -> Unit
+                            ServerPanel.USERS -> viewModel.showGrants(selection.value.asText())
+                            else -> killTarget = selection.toKillTarget(table)
                         }
                     },
                 )
             }
         }
+    }
+
+    state.grants?.let { grants ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissGrants,
+            title = { Text(grants.account) },
+            text = {
+                Text(
+                    // Exactly as the server words them: a GRANT line is what gets pasted
+                    // somewhere else, and rewording it would make that useless.
+                    text = grants.lines.joinToString("\n\n").ifBlank {
+                        stringResource(R.string.server_no_grants)
+                    },
+                    style = MonoStyles.cell,
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissGrants) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     killTarget?.let { (id, info) ->
@@ -229,6 +257,7 @@ private fun ServerPanel.labelRes(): Int = when (this) {
     ServerPanel.TRANSACTIONS -> R.string.server_panel_transactions
     ServerPanel.LOCKS -> R.string.server_panel_locks
     ServerPanel.REPLICATION -> R.string.server_panel_replication
+    ServerPanel.USERS -> R.string.server_panel_users
 }
 
 /** What an empty panel means, which is different for each of them. */
@@ -238,4 +267,5 @@ private fun ServerPanel.emptyRes(): Int = when (this) {
     ServerPanel.TRANSACTIONS -> R.string.server_no_transactions
     ServerPanel.LOCKS -> R.string.server_no_locks
     ServerPanel.REPLICATION -> R.string.server_no_replication
+    ServerPanel.USERS -> R.string.server_no_users
 }

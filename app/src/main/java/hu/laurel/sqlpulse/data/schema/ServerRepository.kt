@@ -121,6 +121,59 @@ class ServerRepository @Inject constructor(
         } ?: ResultTable.EMPTY
     }
 
+    /**
+     * The server's accounts (research summary, §2.0).
+     *
+     * `mysql.user` is the full answer and needs a grant on that table; without it,
+     * `information_schema.user_privileges` still lists who exists, which is what the screen is
+     * for. Neither shows a password, and nothing here can change an account.
+     */
+    suspend fun users(): ResultTable = sessions.withConnection { connection ->
+        val queries = listOf(
+            """
+            SELECT CONCAT(user, '@', host) AS Account,
+                   plugin AS Plugin,
+                   account_locked AS Locked,
+                   password_expired AS Expired
+            FROM mysql.user
+            ORDER BY user, host
+            """.trimIndent(),
+            """
+            SELECT DISTINCT grantee AS Account
+            FROM information_schema.user_privileges
+            ORDER BY grantee
+            """.trimIndent(),
+        )
+        queries.firstNotNullOfOrNull { sql ->
+            runCatching {
+                connection.createStatement().use { statement ->
+                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
+                }
+            }.getOrNull()
+        } ?: ResultTable.EMPTY
+    }
+
+    /**
+     * What one account may do, as the server itself words it.
+     *
+     * `SHOW GRANTS` takes no parameters, so the account is quoted into the statement; it comes
+     * from the server's own answer above rather than from anything typed, and it is quoted anyway.
+     * The output is left exactly as MySQL writes it — a GRANT line is what would be pasted
+     * somewhere else, and rewording it would make that useless.
+     */
+    suspend fun grants(account: String): List<String> = sessions.withConnection { connection ->
+        val (user, host) = account.substringBeforeLast('@') to account.substringAfterLast('@', "%")
+        val sql = "SHOW GRANTS FOR ${quoteStringLiteral(user.trim('\''))}@" +
+            quoteStringLiteral(host.trim('\''))
+        connection.createStatement().use { statement ->
+            statement.executeQuery(sql).use { rows ->
+                buildList {
+                    while (rows.next()) add(rows.getString(1).orEmpty())
+                }
+            }
+        }
+    }
+
     /** A handful of variables worth seeing at a glance. */
     suspend fun overview(): List<ServerFact> = sessions.withConnection { connection ->
         val facts = mutableListOf<ServerFact>()

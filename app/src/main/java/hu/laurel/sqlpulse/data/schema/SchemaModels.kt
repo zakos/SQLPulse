@@ -110,5 +110,12 @@ data class TableStructure(
     val primaryKey: List<String> get() = columns.filter { it.isPrimaryKey }.map { it.name }
 }
 
+/**
+ * Single-quotes a value for a statement that cannot take a parameter — `SHOW GRANTS FOR 'u'@'h'`
+ * being the one that matters. A quote and a backslash are escaped; anything else is copied.
+ */
+fun quoteStringLiteral(value: String): String =
+    "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
 /** Backtick-quotes an identifier. MySQL escapes a backtick by doubling it. */
 fun quoteIdentifier(name: String): String = "`" + name.replace("`", "``") + "`"
