@@ -1,4 +1,4 @@
-package hu.laurel.sqlpulse.data.`import`
+package hu.laurel.sqlpulse.data.csv
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

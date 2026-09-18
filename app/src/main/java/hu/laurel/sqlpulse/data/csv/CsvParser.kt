@@ -1,4 +1,4 @@
-package hu.laurel.sqlpulse.data.`import`
+package hu.laurel.sqlpulse.data.csv
 
 /** What a file turned out to contain. [rows] excludes the header. */
 data class CsvTable(

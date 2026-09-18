@@ -55,7 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
-import hu.laurel.sqlpulse.data.`import`.ImportPlan
+import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.SchemaColumn

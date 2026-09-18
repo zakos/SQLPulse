@@ -10,8 +10,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
-import hu.laurel.sqlpulse.data.`import`.CsvImporter
-import hu.laurel.sqlpulse.data.`import`.ImportPlan
+import hu.laurel.sqlpulse.data.csv.CsvImporter
+import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableStructure
 import hu.laurel.sqlpulse.data.sql.BlobPreview

@@ -1,4 +1,4 @@
-package hu.laurel.sqlpulse.data.`import`
+package hu.laurel.sqlpulse.data.csv
 
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.sql.PreparedSql
