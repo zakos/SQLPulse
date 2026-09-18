@@ -309,4 +309,7 @@
     <string name="cell_false">Nem (0)</string>
     <string name="cell_today">Ma</string>
     <string name="cell_now">Most</string>
+
+    <string name="ssh_jump_host">Ugrógép (nem kötelező)</string>
+    <string name="ssh_jump_note">Az SSH gépet ezen keresztül éri el. Mindkét lépés a fenti kulcsot vagy jelszót használja, és mindkettőnél ellenőrzi a tárolt gépkulcsot.</string>
 </resources>

@@ -42,6 +42,10 @@ data class ConnectionForm(
     val sshKeyId: Long? = null,
     val sshPassword: String = "",
     val sshPasswordTouched: Boolean = false,
+    /** Optional first hop; empty means the SSH host is dialled directly. */
+    val jumpHost: String = "",
+    val jumpPort: String = "22",
+    val jumpUser: String = "",
     val dbHost: String = "localhost",
     val dbPort: String = "3306",
     val database: String = "",
@@ -68,9 +72,17 @@ data class ConnectionForm(
                     sshHost.isNotBlank() &&
                         sshUser.isNotBlank() &&
                         sshPort.toIntOrNull() != null &&
-                        hasSshCredential
+                        hasSshCredential &&
+                        jumpIsComplete
                     )
                 )
+
+    /**
+     * A jump host is either left out entirely or filled in: a host with no user is a connection
+     * that would fail at the first hop, and there is no sensible default for a user name.
+     */
+    private val jumpIsComplete: Boolean
+        get() = jumpHost.isBlank() || (jumpUser.isNotBlank() && jumpPort.toIntOrNull() != null)
 
     private val hasSshCredential: Boolean
         get() = when (sshAuthMethod) {
@@ -204,6 +216,9 @@ class ConnectionEditorViewModel @Inject constructor(
         sshPort = sshPort.toIntOrNull() ?: 22,
         sshUser = sshUser.trim(),
         sshAuthMethod = sshAuthMethod.name,
+        sshJumpHost = jumpHost.trim().takeIf { it.isNotBlank() },
+        sshJumpPort = jumpPort.toIntOrNull() ?: 22,
+        sshJumpUser = jumpUser.trim().takeIf { it.isNotBlank() },
         // Kept rather than cleared when the tunnel or the method changes, so going back is painless.
         sshKeyId = sshKeyId,
         dbHost = dbHost.trim(),
@@ -224,6 +239,9 @@ class ConnectionEditorViewModel @Inject constructor(
         sshPort = sshPort.toString(),
         sshUser = sshUser,
         sshAuthMethod = SshAuthMethod.fromName(sshAuthMethod),
+        jumpHost = sshJumpHost.orEmpty(),
+        jumpPort = sshJumpPort.toString(),
+        jumpUser = sshJumpUser.orEmpty(),
         sshKeyId = sshKeyId,
         sshPassword = if (hasSshPassword) PLACEHOLDER_PASSWORD else "",
         sshPasswordTouched = false,

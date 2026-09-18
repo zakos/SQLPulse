@@ -82,6 +82,14 @@ data class ConnectionEntity(
     val sshAuthMethod: String = "KEY",
     /** Null unless the SSH host is entered with a key; a key tunnel without one is refused (§5). */
     val sshKeyId: Long?,
+    /**
+     * A first SSH host to reach [sshHost] through, where the database's own SSH host is not
+     * reachable from outside. Null for the ordinary single-hop case; the same credential is used
+     * for both hops.
+     */
+    val sshJumpHost: String? = null,
+    val sshJumpPort: Int = 22,
+    val sshJumpUser: String? = null,
     /** With a tunnel, as seen from the SSH host; without one, as seen from the phone. */
     val dbHost: String,
     val dbPort: Int = 3306,

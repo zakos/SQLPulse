@@ -368,4 +368,7 @@ fun ConnectionEntity.toTunnelConfig() = TunnelConfig(
     sshUser = sshUser,
     dbHost = dbHost,
     dbPort = dbPort,
+    jumpHost = sshJumpHost,
+    jumpPort = sshJumpPort,
+    jumpUser = sshJumpUser,
 )

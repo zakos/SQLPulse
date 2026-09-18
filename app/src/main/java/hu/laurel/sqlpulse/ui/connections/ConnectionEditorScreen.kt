@@ -176,6 +176,42 @@ fun ConnectionEditorScreen(
                     )
                 }
 
+                // The optional first hop, for a network where the SSH host is not reachable from
+                // outside. Left empty, nothing about the connection changes.
+                OutlinedTextField(
+                    value = form.jumpHost,
+                    onValueChange = { value -> viewModel.update { it.copy(jumpHost = value) } },
+                    label = { Text(stringResource(R.string.ssh_jump_host)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (form.jumpHost.isNotBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                        OutlinedTextField(
+                            value = form.jumpPort,
+                            onValueChange = { value -> viewModel.update { it.copy(jumpPort = value) } },
+                            label = { Text(stringResource(R.string.ssh_port)) },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = form.jumpUser,
+                            onValueChange = { value -> viewModel.update { it.copy(jumpUser = value) } },
+                            label = { Text(stringResource(R.string.ssh_user)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(2f),
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.ssh_jump_note),
+                        color = semantic.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     SshAuthMethod.entries.forEachIndexed { index, method ->
                         SegmentedButton(

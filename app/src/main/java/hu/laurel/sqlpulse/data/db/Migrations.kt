@@ -109,5 +109,14 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    /** v6: a connection can reach its SSH host through a first one. */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpHost` TEXT")
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpPort` INTEGER NOT NULL DEFAULT 22")
+            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpUser` TEXT")
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

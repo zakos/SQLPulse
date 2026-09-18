@@ -317,4 +317,7 @@
     <string name="cell_false">No (0)</string>
     <string name="cell_today">Today</string>
     <string name="cell_now">Now</string>
+
+    <string name="ssh_jump_host">Jump host (optional)</string>
+    <string name="ssh_jump_note">The SSH host is reached through this one. Both hops use the key or password above, and both are checked against their stored host key.</string>
 </resources>

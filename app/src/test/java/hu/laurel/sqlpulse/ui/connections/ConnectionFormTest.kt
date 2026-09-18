@@ -60,4 +60,15 @@ class ConnectionFormTest {
     fun `read only is the default`() {
         assertTrue(ConnectionForm().readOnly)
     }
+
+    @Test
+    fun `a jump host is either left out or filled in`() {
+        assertTrue(valid.copy(jumpHost = "", jumpUser = "").canSave)
+        assertTrue(valid.copy(jumpHost = "edge.internal", jumpUser = "andras").canSave)
+        // A host with nobody to log in as would fail at the first hop.
+        assertFalse(valid.copy(jumpHost = "edge.internal", jumpUser = "").canSave)
+        assertFalse(
+            valid.copy(jumpHost = "edge.internal", jumpUser = "andras", jumpPort = "-").canSave,
+        )
+    }
 }
