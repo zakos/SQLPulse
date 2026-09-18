@@ -253,4 +253,12 @@
     <string name="ssh_auth_password">Password</string>
     <string name="ssh_password">SSH password</string>
     <string name="ssh_password_note">A key is safer: it cannot be guessed, and the server never sees it. Use a password only where the host allows nothing else.</string>
+
+    <!-- Running a script of several statements. -->
+    <string name="query_run_all">Run all</string>
+    <string name="query_run_selection">Run selection</string>
+    <string name="query_run_current">Run this one</string>
+    <string name="query_statement_failed">failed</string>
+    <string name="query_statement_rows">%1$d rows</string>
+    <string name="query_statement_changed">%1$d changed</string>
 </resources>

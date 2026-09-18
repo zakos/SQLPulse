@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -53,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -171,11 +174,22 @@ fun QueryEditorScreen(
                 }
             }
 
+            // TextFieldValue rather than a plain String: the selection is what decides whether
+            // "run" means the whole script or only the part the user marked.
+            var field by remember { mutableStateOf(TextFieldValue(state.sql)) }
+            LaunchedEffect(state.sql) {
+                // The text can also change from outside the field: a favourite, or the key row.
+                if (field.text != state.sql) {
+                    field = TextFieldValue(state.sql, TextRange(state.sql.length))
+                }
+            }
             OutlinedTextField(
-                value = state.sql,
-                onValueChange = { text ->
-                    viewModel.setSql(text)
-                    viewModel.suggest(text.takeLastWhile { it.isLetterOrDigit() || it == '_' })
+                value = field,
+                onValueChange = { value ->
+                    field = value
+                    viewModel.setSql(value.text)
+                    viewModel.setSelection(value.selection.min, value.selection.max)
+                    viewModel.suggest(value.text.take(value.selection.min).takeLastWhile { it.isLetterOrDigit() || it == '_' })
                 },
                 textStyle = MonoStyles.editor,
                 visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
@@ -233,9 +247,23 @@ fun QueryEditorScreen(
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Text(
-                            stringResource(R.string.query_run),
+                            // The label says what pressing it will actually do.
+                            stringResource(
+                                when {
+                                    state.hasSelection -> R.string.query_run_selection
+                                    state.isScript -> R.string.query_run_all
+                                    else -> R.string.query_run
+                                },
+                            ),
                             modifier = Modifier.padding(start = Spacing.s),
                         )
+                    }
+                    if (state.isScript && !state.hasSelection) {
+                        OutlinedButton(
+                            onClick = { viewModel.runCurrent() },
+                            enabled = state.connectionName != null,
+                            shape = Shapes.button,
+                        ) { Text(stringResource(R.string.query_run_current)) }
                     }
                     OutlinedButton(
                         onClick = viewModel::explain,
@@ -279,6 +307,21 @@ fun QueryEditorScreen(
                             )
                         },
                     )
+                }
+            }
+
+            if (state.statements.size > 1) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = Spacing.l),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                ) {
+                    itemsIndexed(state.statements) { index, run ->
+                        FilterChip(
+                            selected = index == state.selectedStatement,
+                            onClick = { viewModel.selectStatement(index) },
+                            label = { Text(statementLabel(index, run)) },
+                        )
+                    }
                 }
             }
 
@@ -532,3 +575,23 @@ private fun NoSessionState(onBack: () -> Unit) {
     )
 }
 
+
+/**
+ * What a statement's chip says: its number, and how it ended.
+ *
+ * The number comes first, because after a failure the first question is which statement it was.
+ */
+@Composable
+private fun statementLabel(index: Int, run: StatementRun): String {
+    val position = "${index + 1}"
+    return when {
+        run.error != null -> "$position · " + stringResource(R.string.query_statement_failed)
+        run.switchedTo != null -> "$position · ${run.switchedTo}"
+        run.updateCount != null ->
+            "$position · " + stringResource(R.string.query_statement_changed, run.updateCount)
+
+        run.table != null ->
+            "$position · " + stringResource(R.string.query_statement_rows, run.table.rowCount)
+        else -> position
+    }
+}

@@ -19,6 +19,7 @@ import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlGuards
+import hu.laurel.sqlpulse.data.sql.SqlScript
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.data.sql.StatementKind
@@ -43,6 +44,20 @@ import kotlinx.coroutines.launch
 
 enum class QueryPanel { RESULT, HISTORY, FAVOURITES }
 
+/**
+ * One statement of a script that has been run.
+ *
+ * The table is kept per statement rather than only for the last one: a script whose first query
+ * answered the question and whose third failed should still show the first answer.
+ */
+data class StatementRun(
+    val sql: String,
+    val table: ResultTable? = null,
+    val updateCount: Int? = null,
+    val switchedTo: String? = null,
+    val error: String? = null,
+)
+
 data class QueryEditorUiState(
     val sql: String = "",
     val panel: QueryPanel = QueryPanel.RESULT,
@@ -64,8 +79,20 @@ data class QueryEditorUiState(
     val switchedTo: String? = null,
     /** Sort applied to the loaded result; a query result cannot be re-ordered by the server. */
     val resultSort: ColumnSort? = null,
+    /** Every statement of the last run, in order. One entry for an ordinary single query. */
+    val statements: List<StatementRun> = emptyList(),
+    val selectedStatement: Int = 0,
+    /** Where the cursor is, or what is selected, in the editor. */
+    val selectionStart: Int = 0,
+    val selectionEnd: Int = 0,
     val shareIntent: Intent? = null,
-)
+) {
+    /** True when the editor holds more than one statement, so "run" means "run all of them". */
+    val isScript: Boolean get() = SqlScript.split(sql).size > 1
+
+    /** True when part of the editor is selected, so "run" means "run only that". */
+    val hasSelection: Boolean get() = selectionEnd > selectionStart
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -129,6 +156,30 @@ class QueryEditorViewModel @Inject constructor(
 
     fun selectDatabase(database: String) = sessions.selectDatabase(database)
 
+    fun setSelection(start: Int, end: Int) {
+        _uiState.value = _uiState.value.copy(selectionStart = start, selectionEnd = end)
+    }
+
+    fun selectStatement(index: Int) {
+        val state = _uiState.value
+        val run = state.statements.getOrNull(index) ?: return
+        _uiState.value = state.copy(
+            selectedStatement = index,
+            result = run.table,
+            updateCount = run.updateCount,
+            switchedTo = run.switchedTo,
+            error = run.error,
+            resultSort = null,
+        )
+    }
+
+    /** Runs only the statement the cursor is in, leaving the rest of the script alone. */
+    fun runCurrent(parameters: Map<String, String> = emptyMap()) {
+        val state = _uiState.value
+        val statement = SqlScript.statementAt(state.sql, state.selectionStart) ?: return
+        execute(listOf(statement.sql), parameters)
+    }
+
     fun setSql(sql: String) {
         _uiState.value = _uiState.value.copy(sql = sql, error = null)
     }
@@ -161,15 +212,34 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /**
-     * Runs the current statement. A query with `:parameters` asks for their values first, rather
-     * than sending an empty string to the server.
+     * Runs what the editor holds: the selection if there is one, otherwise every statement in it.
+     * A query with `:parameters` asks for their values first, rather than sending an empty string
+     * to the server.
      */
     fun run(parameters: Map<String, String> = emptyMap()) {
         val state = _uiState.value
-        val id = connectionId.value
-        if (state.sql.isBlank() || id == 0L || state.running) return
+        // A selection means "run this much of it", which is how a long script is worked through.
+        val selected = state.sql.substring(
+            state.selectionStart.coerceIn(0, state.sql.length),
+            state.selectionEnd.coerceIn(0, state.sql.length),
+        )
+        val text = selected.takeIf { it.isNotBlank() } ?: state.sql
+        execute(SqlScript.split(text).map { it.sql }, parameters)
+    }
 
-        val needed = SqlGuards.parameters(state.sql)
+    /**
+     * Runs the statements one after another, stopping at the first failure.
+     *
+     * Stopping is the safe default: the statements of a script usually depend on each other, and
+     * carrying on after an error would apply the rest to a state nobody planned for. What ran
+     * before the failure stays on screen, with its results.
+     */
+    private fun execute(statements: List<String>, parameters: Map<String, String>) {
+        val state = _uiState.value
+        val id = connectionId.value
+        if (statements.isEmpty() || id == 0L || state.running) return
+
+        val needed = statements.flatMap { SqlGuards.parameters(it) }.distinct()
         if (needed.isNotEmpty() && !parameters.keys.containsAll(needed)) {
             _uiState.value = state.copy(pendingParameters = needed)
             return
@@ -183,34 +253,44 @@ class QueryEditorViewModel @Inject constructor(
                 switchedTo = null,
                 pendingParameters = emptyList(),
                 panel = QueryPanel.RESULT,
+                statements = emptyList(),
+                selectedStatement = 0,
+                result = null,
+                updateCount = null,
+                resultSort = null,
             )
-            try {
-                val outcome = executor.run(
-                    connectionId = id,
-                    sql = state.sql,
-                    parameters = parameters,
-                    rowLimit = state.rowLimit,
-                    readOnly = state.readOnly,
-                )
-                _uiState.value = _uiState.value.copy(
-                    running = false,
-                    // A USE changes nothing on screen except where the next query will run.
-                    result = if (outcome.switchedDatabase != null) {
-                        _uiState.value.result
-                    } else {
-                        outcome.table
-                    },
-                    updateCount = outcome.updateCount,
-                    switchedTo = outcome.switchedDatabase,
-                    resultSort = null,
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    running = false,
-                    error = describe(e),
-                    errorDetail = e.toString(),
-                )
+
+            val runs = mutableListOf<StatementRun>()
+            for (sql in statements) {
+                try {
+                    val outcome = executor.run(
+                        connectionId = id,
+                        sql = sql,
+                        parameters = parameters,
+                        rowLimit = _uiState.value.rowLimit,
+                        readOnly = _uiState.value.readOnly,
+                    )
+                    runs += StatementRun(
+                        sql = sql,
+                        // A USE changes nothing on screen except where the next query will run.
+                        table = outcome.table.takeIf { outcome.switchedDatabase == null },
+                        updateCount = outcome.updateCount,
+                        switchedTo = outcome.switchedDatabase,
+                    )
+                } catch (e: Exception) {
+                    runs += StatementRun(sql = sql, error = describe(e))
+                    _uiState.value = _uiState.value.copy(errorDetail = e.toString())
+                    break
+                }
             }
+
+            // Show the last statement that produced something, or the failure if there was one.
+            val shown = runs.indexOfLast { it.error != null }
+                .takeIf { it >= 0 }
+                ?: runs.indexOfLast { it.table != null }.takeIf { it >= 0 }
+                ?: runs.lastIndex
+            _uiState.value = _uiState.value.copy(running = false, statements = runs)
+            selectStatement(shown.coerceAtLeast(0))
         }
     }
 
