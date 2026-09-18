@@ -96,19 +96,6 @@ object SqlFailures {
         }.joinToString(" — ")
     }
 
-    /**
-     * True when the server turned the connection down over the character set or collation.
-     *
-     * Worth retrying with an older encoding; anything else — a wrong password, an unreachable
-     * host — is the caller's to hear about straight away.
-     */
-    fun isCharacterSetRefusal(error: Throwable): Boolean {
-        val message = fullMessage(error).lowercase()
-        return message.contains("unknown character set") ||
-            message.contains("unknown collation") ||
-            message.contains("initialization command")
-    }
-
     fun classify(errorCode: Int, sqlState: String?, message: String): SqlFailureKind {
         byErrorCode(errorCode)?.let { return it }
         bySqlState(sqlState)?.let { return it }

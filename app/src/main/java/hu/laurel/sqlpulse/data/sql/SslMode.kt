@@ -37,7 +37,7 @@ enum class SslMode {
     }
 }
 
-/** Maps a mode onto MariaDB Connector/J connection properties. */
+/** Maps a mode onto MariaDB Connector/J 2.7 connection properties. */
 object SslProperties {
 
     /**
@@ -46,20 +46,30 @@ object SslProperties {
      *   certificate is usually signed by an internal CA that no public store knows.
      */
     fun propertiesFor(mode: SslMode, caCertificatePath: String?): Map<String, String> = when (mode) {
-        SslMode.DISABLED -> mapOf("sslMode" to "disable")
-        SslMode.REQUIRED -> mapOf("sslMode" to "trust")
-        SslMode.VERIFY_CA -> verifying("verify-ca", caCertificatePath)
-        SslMode.VERIFY_IDENTITY -> verifying("verify-full", caCertificatePath)
+        SslMode.DISABLED -> mapOf("useSsl" to "false")
+
+        // Encrypted but unverified: the driver trusts whatever certificate it is shown.
+        SslMode.REQUIRED -> mapOf("useSsl" to "true", "trustServerCertificate" to "true")
+
+        // The certificate must be signed by the configured CA, but may name another host — which
+        // is what a server reached through a tunnel or by IP address looks like.
+        SslMode.VERIFY_CA -> verifying(caCertificatePath) +
+            mapOf("disableSslHostnameVerification" to "true")
+
+        SslMode.VERIFY_IDENTITY -> verifying(caCertificatePath) +
+            mapOf("disableSslHostnameVerification" to "false")
     }
 
     /** True when the mode needs a CA file that has not been configured. */
     fun missingCertificate(mode: SslMode, caCertificatePath: String?): Boolean =
         mode.verifiesCertificate && caCertificatePath.isNullOrBlank()
 
-    private fun verifying(driverMode: String, caCertificatePath: String?): Map<String, String> {
-        require(!caCertificatePath.isNullOrBlank()) {
-            "$driverMode needs a CA certificate"
-        }
-        return mapOf("sslMode" to driverMode, "serverSslCert" to caCertificatePath)
+    private fun verifying(caCertificatePath: String?): Map<String, String> {
+        require(!caCertificatePath.isNullOrBlank()) { "verification needs a CA certificate" }
+        return mapOf(
+            "useSsl" to "true",
+            "trustServerCertificate" to "false",
+            "serverSslCert" to caCertificatePath,
+        )
     }
 }

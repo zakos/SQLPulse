@@ -11,19 +11,29 @@ class SslPropertiesTest {
     @Test
     fun `each mode maps onto the driver's own vocabulary`() {
         assertEquals(
-            mapOf("sslMode" to "disable"),
+            mapOf("useSsl" to "false"),
             SslProperties.propertiesFor(SslMode.DISABLED, null),
         )
         assertEquals(
-            mapOf("sslMode" to "trust"),
+            mapOf("useSsl" to "true", "trustServerCertificate" to "true"),
             SslProperties.propertiesFor(SslMode.REQUIRED, null),
         )
         assertEquals(
-            mapOf("sslMode" to "verify-ca", "serverSslCert" to "/ca/db.pem"),
+            mapOf(
+                "useSsl" to "true",
+                "trustServerCertificate" to "false",
+                "serverSslCert" to "/ca/db.pem",
+                "disableSslHostnameVerification" to "true",
+            ),
             SslProperties.propertiesFor(SslMode.VERIFY_CA, "/ca/db.pem"),
         )
         assertEquals(
-            mapOf("sslMode" to "verify-full", "serverSslCert" to "/ca/db.pem"),
+            mapOf(
+                "useSsl" to "true",
+                "trustServerCertificate" to "false",
+                "serverSslCert" to "/ca/db.pem",
+                "disableSslHostnameVerification" to "false",
+            ),
             SslProperties.propertiesFor(SslMode.VERIFY_IDENTITY, "/ca/db.pem"),
         )
     }
@@ -32,6 +42,18 @@ class SslPropertiesTest {
     fun `a certificate left over from another mode is not passed on`() {
         // Switching back to REQUIRED must actually stop verifying, not verify quietly.
         assertNull(SslProperties.propertiesFor(SslMode.REQUIRED, "/ca/db.pem")["serverSslCert"])
+    }
+
+    @Test
+    fun `only the identity check separates the two verifying modes`() {
+        val ca = SslProperties.propertiesFor(SslMode.VERIFY_CA, "/ca/db.pem")
+        val identity = SslProperties.propertiesFor(SslMode.VERIFY_IDENTITY, "/ca/db.pem")
+        assertEquals(
+            ca - "disableSslHostnameVerification",
+            identity - "disableSslHostnameVerification",
+        )
+        assertEquals("true", ca["disableSslHostnameVerification"])
+        assertEquals("false", identity["disableSslHostnameVerification"])
     }
 
     @Test

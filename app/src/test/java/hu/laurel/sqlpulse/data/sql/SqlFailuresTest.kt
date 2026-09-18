@@ -100,25 +100,6 @@ class SqlFailuresTest {
     }
 
     @Test
-    fun `a character set the server does not know is worth another encoding`() {
-        val refusal = SQLException(
-            "(conn=1) Initialization command fail",
-            "08000",
-            0,
-            SQLException("(conn=1) Unknown character set: 'utf8mb4'"),
-        )
-        assertTrue(SqlFailures.isCharacterSetRefusal(refusal))
-        assertTrue(SqlFailures.isCharacterSetRefusal(SQLException("Unknown collation: 'utf8mb4_0900_ai_ci'")))
-    }
-
-    @Test
-    fun `a wrong password is not retried with another encoding`() {
-        val denied = SQLException("Access denied for user 'app'@'10.0.0.5'", "28000", 1045)
-        assertFalse(SqlFailures.isCharacterSetRefusal(denied))
-        assertFalse(SqlFailures.isCharacterSetRefusal(SQLException("Socket fail to connect")))
-    }
-
-    @Test
     fun `the exception's own fields are carried through`() {
         val failure = SqlFailures.of(SQLException("Unknown database 'shop'", "42000", 1049))
         assertEquals(SqlFailureKind.UNKNOWN_DATABASE, failure.kind)

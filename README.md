@@ -23,7 +23,7 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | On-device Ed25519 key generation, public key export | done |
 | SSH tunnel with local port forward, host key TOFU + pinning, foreground service | done |
 | Connection list and editor, connection test | done |
-| JDBC over the tunnel (MariaDB Connector/J, pool of 3, read-only enforcement) | done |
+| JDBC over the tunnel (MariaDB Connector/J 2.7, pool of 3, read-only enforcement) | done |
 | Schema browser: databases, tables, columns, indexes, foreign keys, DDL | done |
 | Query editor: highlighting, key row, completion, history, favourites, :parameters | done |
 | Result grid: sticky header and first column, draggable widths, scroll paging, row detail | done |
@@ -35,6 +35,11 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | Server errors classified into what to do about them, with the server's own wording kept | done |
 | Views, routines, triggers and events in the browser; engine and size per table | done |
 | SSH password authentication beside key authentication | done |
+
+The driver is the 2.7 line rather than 3.x on purpose: 3.x sends `SET NAMES utf8mb4` on every
+connection, which a server older than MySQL 5.5.3 rejects outright, while 2.7 negotiates the
+character set with the server and still carries the plugins for MySQL 8 and for the pre-4.1
+password hash.
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.

@@ -3,7 +3,6 @@ package hu.laurel.sqlpulse.data.sql
 import java.io.Closeable
 import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.SQLException
 import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -112,25 +111,11 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
                 .forEach { (key, value) -> setProperty(key, value) }
         }
         val url = "jdbc:mariadb://${config.host}:${config.port}/${config.database}"
-
-        // utf8mb4 first, because it is the only one that can hold every character MySQL stores.
-        // A server older than 5.5.3 has never heard of it and rejects the whole session setup, so
-        // the three-byte utf8 is tried next rather than refusing to talk to an old database.
-        var refusal: SQLException? = null
-        for (collation in COLLATIONS) {
-            properties.setProperty("connectionCollation", collation)
-            try {
-                return DriverManager.getConnection(url, properties).apply {
-                    // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
-                    isReadOnly = config.readOnly
-                    autoCommit = true
-                }
-            } catch (e: SQLException) {
-                if (!SqlFailures.isCharacterSetRefusal(e)) throw e
-                refusal = e
-            }
+        return DriverManager.getConnection(url, properties).apply {
+            // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
+            isReadOnly = config.readOnly
+            autoCommit = true
         }
-        throw checkNotNull(refusal)
     }
 
     override fun close() {
@@ -143,9 +128,6 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
     }
 
     companion object {
-        /** Tried in order: utf8mb4 where it exists, then the utf8 of older servers. */
-        private val COLLATIONS = listOf("utf8mb4_general_ci", "utf8_general_ci")
-
         /** §4: one pool per connection, at most three JDBC connections. */
         const val MAX_CONNECTIONS = 3
         private const val VALIDATION_TIMEOUT_SECONDS = 2
