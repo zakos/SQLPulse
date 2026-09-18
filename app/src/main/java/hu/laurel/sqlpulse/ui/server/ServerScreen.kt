@@ -1,15 +1,19 @@
 package hu.laurel.sqlpulse.ui.server
 
+import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
@@ -18,6 +22,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -109,6 +114,21 @@ fun ServerScreen(
                 }
             }
 
+            // One row of tabs, because these are four separate questions and each one costs a
+            // query against a server that may be busy.
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = Spacing.l),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                items(ServerPanel.entries) { panel ->
+                    FilterChip(
+                        selected = panel == state.panel,
+                        onClick = { viewModel.selectPanel(panel) },
+                        label = { Text(stringResource(panel.labelRes())) },
+                    )
+                }
+            }
+
             state.error?.let { message ->
                 Text(
                     text = message,
@@ -130,11 +150,26 @@ fun ServerScreen(
                 }
             }
 
-            state.processes?.let { processes ->
-                ResultGrid(
-                    table = processes,
+            val table = state.table
+            when {
+                table == null -> Unit
+                table.rows.isEmpty() && !state.loading -> EmptyState(
+                    title = stringResource(state.panel.emptyRes()),
+                    body = stringResource(R.string.server_nothing_body),
+                    actionLabel = stringResource(R.string.refresh),
+                    onAction = viewModel::refresh,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                else -> ResultGrid(
+                    table = table,
                     modifier = Modifier.fillMaxSize(),
-                    onCellClick = { selection -> killTarget = selection.toKillTarget(processes) },
+                    // A thread id is a thread id on every panel but replication, which has none.
+                    onCellClick = { selection ->
+                        if (state.panel != ServerPanel.REPLICATION) {
+                            killTarget = selection.toKillTarget(table)
+                        }
+                    },
                 )
             }
         }
@@ -170,7 +205,14 @@ private fun CellSelection.toKillTarget(
     processes: hu.laurel.sqlpulse.data.sql.ResultTable,
 ): Pair<Long, String>? {
     val row = processes.rows.getOrNull(rowIndex) ?: return null
-    val idIndex = processes.columns.indexOfFirst { it.label.equals("Id", ignoreCase = true) }
+    // The tapped column when it is itself a thread id — on the lock-wait panel that is how the
+    // blocking session, rather than the waiting one, gets ended. Otherwise the row's own Id.
+    val tapped = processes.columns.indexOfFirst { it.label == column.label }
+    val idIndex = tapped.takeIf {
+        it >= 0 &&
+            processes.columns[it].label.endsWith("id", ignoreCase = true) &&
+            row.getOrNull(it)?.asText()?.toLongOrNull() != null
+    } ?: processes.columns.indexOfFirst { it.label.equals("Id", ignoreCase = true) }
     if (idIndex < 0) return null
     val id = row.getOrNull(idIndex)?.asText()?.toLongOrNull() ?: return null
     val info = processes.columns.indices
@@ -179,4 +221,21 @@ private fun CellSelection.toKillTarget(
             "${processes.columns[index].label}: ${row.getOrNull(index)?.asText().orEmpty()}"
         }
     return id to info
+}
+
+@StringRes
+private fun ServerPanel.labelRes(): Int = when (this) {
+    ServerPanel.QUERIES -> R.string.server_panel_queries
+    ServerPanel.TRANSACTIONS -> R.string.server_panel_transactions
+    ServerPanel.LOCKS -> R.string.server_panel_locks
+    ServerPanel.REPLICATION -> R.string.server_panel_replication
+}
+
+/** What an empty panel means, which is different for each of them. */
+@StringRes
+private fun ServerPanel.emptyRes(): Int = when (this) {
+    ServerPanel.QUERIES -> R.string.server_no_queries
+    ServerPanel.TRANSACTIONS -> R.string.server_no_transactions
+    ServerPanel.LOCKS -> R.string.server_no_locks
+    ServerPanel.REPLICATION -> R.string.server_no_replication
 }

@@ -40,6 +40,87 @@ class ServerRepository @Inject constructor(
         Unit
     }
 
+    /**
+     * Open transactions, oldest first (research summary, §2.0).
+     *
+     * A transaction that has been open for minutes is usually somebody's forgotten session, and it
+     * is what other queries are waiting behind. The thread id is the same one `KILL QUERY` takes,
+     * so what is found here can be acted on from the same screen.
+     */
+    suspend fun transactions(): ResultTable = sessions.withConnection { connection ->
+        connection.createStatement().use { statement ->
+            statement.executeQuery(
+                """
+                SELECT trx_mysql_thread_id AS Id,
+                       trx_state AS State,
+                       TIMESTAMPDIFF(SECOND, trx_started, NOW()) AS Seconds,
+                       trx_rows_locked AS RowsLocked,
+                       trx_rows_modified AS RowsModified,
+                       trx_query AS Query
+                FROM information_schema.INNODB_TRX
+                ORDER BY trx_started
+                """.trimIndent(),
+            ).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
+        }
+    }
+
+    /**
+     * Who is waiting for whom.
+     *
+     * The tables moved in MySQL 8.0: the old `INNODB_LOCK_WAITS` became
+     * `performance_schema.data_lock_waits`, and asking for the wrong one is an error rather than
+     * an empty answer. The modern one is tried first, the old one second, and a server that has
+     * neither — or a user without the grant — gets an empty table rather than a failure, because
+     * "no lock waits" is also what an idle server looks like.
+     */
+    suspend fun lockWaits(): ResultTable = sessions.withConnection { connection ->
+        val queries = listOf(
+            """
+            SELECT r.trx_mysql_thread_id AS WaitingId,
+                   r.trx_query AS WaitingQuery,
+                   b.trx_mysql_thread_id AS BlockingId,
+                   b.trx_query AS BlockingQuery
+            FROM performance_schema.data_lock_waits w
+            JOIN information_schema.INNODB_TRX r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+            JOIN information_schema.INNODB_TRX b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+            """.trimIndent(),
+            """
+            SELECT r.trx_mysql_thread_id AS WaitingId,
+                   r.trx_query AS WaitingQuery,
+                   b.trx_mysql_thread_id AS BlockingId,
+                   b.trx_query AS BlockingQuery
+            FROM information_schema.INNODB_LOCK_WAITS w
+            JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id
+            JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id
+            """.trimIndent(),
+        )
+        queries.firstNotNullOfOrNull { sql ->
+            runCatching {
+                connection.createStatement().use { statement ->
+                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
+                }
+            }.getOrNull()
+        } ?: ResultTable.EMPTY
+    }
+
+    /**
+     * Replication, as this server sees it.
+     *
+     * `SHOW REPLICA STATUS` is the 8.0.22 name and `SHOW SLAVE STATUS` the older one; both need a
+     * grant that plenty of read-only users do not have. A server that is not a replica answers
+     * with no rows at all, which is the same empty table as "not allowed to ask" — so the screen
+     * says "nothing to show" rather than claiming the server is not replicating.
+     */
+    suspend fun replication(): ResultTable = sessions.withConnection { connection ->
+        listOf("SHOW REPLICA STATUS", "SHOW SLAVE STATUS").firstNotNullOfOrNull { sql ->
+            runCatching {
+                connection.createStatement().use { statement ->
+                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, 10) }
+                }
+            }.getOrNull()
+        } ?: ResultTable.EMPTY
+    }
+
     /** A handful of variables worth seeing at a glance. */
     suspend fun overview(): List<ServerFact> = sessions.withConnection { connection ->
         val facts = mutableListOf<ServerFact>()

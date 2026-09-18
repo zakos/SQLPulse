@@ -312,4 +312,15 @@
 
     <string name="ssh_jump_host">Ugrógép (nem kötelező)</string>
     <string name="ssh_jump_note">Az SSH gépet ezen keresztül éri el. Mindkét lépés a fenti kulcsot vagy jelszót használja, és mindkettőnél ellenőrzi a tárolt gépkulcsot.</string>
+
+    <!-- A szerver képernyő négy kérdése (a kutatási összefoglaló 2.0-s köre). -->
+    <string name="server_panel_queries">Lekérdezések</string>
+    <string name="server_panel_transactions">Tranzakciók</string>
+    <string name="server_panel_locks">Zárolásra várók</string>
+    <string name="server_panel_replication">Replikáció</string>
+    <string name="server_no_queries">Most semmi nem fut.</string>
+    <string name="server_no_transactions">Nincs nyitott tranzakció.</string>
+    <string name="server_no_locks">Semmi nem vár zárolásra.</string>
+    <string name="server_no_replication">Ez a kiszolgáló nem jelez replikációt — vagy a felhasználó nem kérdezhet rá.</string>
+    <string name="server_nothing_body">Ezt válaszolta a kiszolgáló az imént; a frissítéssel újra megkérdezhető.</string>
 </resources>

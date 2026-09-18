@@ -320,4 +320,15 @@
 
     <string name="ssh_jump_host">Jump host (optional)</string>
     <string name="ssh_jump_note">The SSH host is reached through this one. Both hops use the key or password above, and both are checked against their stored host key.</string>
+
+    <!-- The server screen's four questions (§2.0 of the research summary). -->
+    <string name="server_panel_queries">Queries</string>
+    <string name="server_panel_transactions">Transactions</string>
+    <string name="server_panel_locks">Lock waits</string>
+    <string name="server_panel_replication">Replication</string>
+    <string name="server_no_queries">Nothing is running right now.</string>
+    <string name="server_no_transactions">No open transactions.</string>
+    <string name="server_no_locks">Nothing is waiting for a lock.</string>
+    <string name="server_no_replication">This server reports no replication — or the user may not ask about it.</string>
+    <string name="server_nothing_body">This is what the server answered a moment ago; refresh to ask again.</string>
 </resources>
