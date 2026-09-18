@@ -52,9 +52,9 @@ class NetworkWatcher @Inject constructor(
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                // handle() is stable per network, so a Wi-Fi to mobile hand-over arrives as a new
-                // value instead of looking like nothing happened.
-                trySend(NetworkStatus.Available(network.handle()))
+                // networkHandle is stable per network, so a Wi-Fi to mobile hand-over arrives as
+                // a new value instead of looking like nothing happened.
+                trySend(NetworkStatus.Available(network.networkHandle))
             }
 
             override fun onLost(network: Network) {
