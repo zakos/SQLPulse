@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
+import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.di.IoDispatcher
@@ -149,6 +150,17 @@ class SqlSessionManager @Inject constructor(
         _database.value = name
     }
 
+    /**
+     * How long a single statement on this connection may run, in seconds.
+     *
+     * Per connection rather than one number for the app: the same query that is a runaway on a
+     * production server is a legitimate report on a development one.
+     */
+    fun queryTimeoutSeconds(): Int = ConnectionTimeouts.sane(
+        currentConnection()?.queryTimeoutSeconds ?: ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
+        ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
+    )
+
     /** Which driver the live session opened with, or null when there is no session. */
     fun driverInUse(): JdbcDriverKind? = session?.settled
 
@@ -181,6 +193,8 @@ class SqlSessionManager @Inject constructor(
                     sslMode = SslMode.fromName(entity.sslMode),
                     caCertificatePath = entity.caCertificate
                         ?.let { certificates.pathFor(it) },
+                    connectTimeoutMs = ConnectionTimeouts.connectMillis(entity.connectTimeoutSeconds),
+                    socketTimeoutMs = ConnectionTimeouts.socketMillis(entity.queryTimeoutSeconds),
                 ),
             )
             val version = withContext(io) {

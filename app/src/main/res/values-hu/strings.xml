@@ -327,4 +327,24 @@
     <string name="server_panel_users">Felhasználók</string>
     <string name="server_no_users">Ez a felhasználó nem lát fiókokat.</string>
     <string name="server_no_grants">A kiszolgáló nem sorolt fel jogosultságot ehhez a fiókhoz.</string>
+
+    <!-- Environment and timeouts -->
+    <string name="connection_environment">Környezet</string>
+    <string name="environment_development">Fejlesztés</string>
+    <string name="environment_test">Teszt</string>
+    <string name="environment_production">Éles</string>
+    <string name="environment_unset">Nincs besorolva</string>
+    <string name="environment_development_short">Fejl.</string>
+    <string name="environment_test_short">Teszt</string>
+    <string name="environment_production_short">Éles</string>
+    <string name="environment_unset_short">Nincs</string>
+    <string name="environment_production_note">Élesnek jelölve. A listában külön áll, és a kártyáján is látszik.</string>
+    <string name="environment_production_writable_note">Élesnek jelölve, és írni is lehet rajta. Megnyitás előtt rákérdez.</string>
+    <string name="production_confirm_title">Éles adatbázis</string>
+    <string name="production_confirm_body">A(z) %1$s éles kiszolgálóra mutat (%2$s), és írni is lehet rajta. Megnyitod?</string>
+    <string name="production_confirm_open">Megnyitás</string>
+    <string name="section_timeouts">Időkorlátok</string>
+    <string name="timeout_connect">Kapcsolódás (mp)</string>
+    <string name="timeout_query">Lekérdezés (mp)</string>
+    <string name="timeout_note">Másodpercben, 1 és %1$d között. Az időt túllépő lekérdezést a kiszolgáló leállítja; a kapcsolódás az első szám után feladja.</string>
 </resources>

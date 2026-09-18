@@ -335,4 +335,24 @@
     <string name="server_panel_users">Users</string>
     <string name="server_no_users">No accounts visible to this user.</string>
     <string name="server_no_grants">The server listed no grants for this account.</string>
+
+    <!-- Environment and timeouts -->
+    <string name="connection_environment">Environment</string>
+    <string name="environment_development">Development</string>
+    <string name="environment_test">Test</string>
+    <string name="environment_production">Production</string>
+    <string name="environment_unset">Not classified</string>
+    <string name="environment_development_short">Dev</string>
+    <string name="environment_test_short">Test</string>
+    <string name="environment_production_short">Prod</string>
+    <string name="environment_unset_short">Unset</string>
+    <string name="environment_production_note">Marked as production. The list keeps it apart, and the card says so.</string>
+    <string name="environment_production_writable_note">Marked as production and writes are allowed. Opening it will ask first.</string>
+    <string name="production_confirm_title">Production database</string>
+    <string name="production_confirm_body">%1$s points at a production server (%2$s) and writes are allowed on it. Open it?</string>
+    <string name="production_confirm_open">Open</string>
+    <string name="section_timeouts">Timeouts</string>
+    <string name="timeout_connect">Connect (s)</string>
+    <string name="timeout_query">Query (s)</string>
+    <string name="timeout_note">Seconds, 1 to %1$d. A query over its time is killed on the server; connecting gives up after the first number.</string>
 </resources>

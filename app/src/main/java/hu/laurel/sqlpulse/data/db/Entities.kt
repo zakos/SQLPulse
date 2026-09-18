@@ -96,6 +96,17 @@ data class ConnectionEntity(
     val database: String,
     val dbUser: String,
     val readOnly: Boolean = true,
+    /**
+     * Name of a ConnectionEnvironment entry: development, test, production, or never said.
+     *
+     * It changes nothing about how the connection is made; it groups the list and makes a
+     * production connection announce itself before it opens.
+     */
+    val environment: String = "UNSET",
+    /** Seconds to wait for the database to accept the connection. */
+    val connectTimeoutSeconds: Int = 10,
+    /** Seconds a single statement may run before it is killed. */
+    val queryTimeoutSeconds: Int = 30,
     /** Name of an SslMode entry: how the MySQL connection itself is protected. */
     val sslMode: String = "DISABLED",
     /** File name under the app's `ca` directory holding the CA that signs the server cert. */

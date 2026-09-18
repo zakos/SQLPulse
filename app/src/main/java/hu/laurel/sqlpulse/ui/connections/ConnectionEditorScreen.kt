@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -46,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
@@ -122,6 +125,36 @@ fun ConnectionEditorScreen(
                         stringResource(R.string.connection_production),
                         color = semantic.production,
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                Text(
+                    stringResource(R.string.connection_environment),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ConnectionEnvironment.ORDER.forEachIndexed { index, candidate ->
+                        SegmentedButton(
+                            selected = form.environment == candidate,
+                            onClick = { viewModel.update { it.copy(environment = candidate) } },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = ConnectionEnvironment.ORDER.size,
+                            ),
+                        ) { Text(stringResource(candidate.shortLabel())) }
+                    }
+                }
+                if (form.environment.isProduction) {
+                    Text(
+                        stringResource(
+                            if (form.readOnly) {
+                                R.string.environment_production_note
+                            } else {
+                                R.string.environment_production_writable_note
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (form.readOnly) semantic.textSecondary else semantic.warning,
                     )
                 }
             }
@@ -338,6 +371,38 @@ fun ConnectionEditorScreen(
                     onMode = { value -> viewModel.update { it.copy(sslMode = value) } },
                     onImport = viewModel::importCertificate,
                     onClear = viewModel::clearCertificate,
+                )
+            }
+
+            Section(stringResource(R.string.section_timeouts)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    OutlinedTextField(
+                        value = form.connectTimeout,
+                        onValueChange = { value ->
+                            viewModel.update { it.copy(connectTimeout = value.filter(Char::isDigit)) }
+                        },
+                        label = { Text(stringResource(R.string.timeout_connect)) },
+                        isError = !ConnectionTimeouts.isValid(form.connectTimeout),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = form.queryTimeout,
+                        onValueChange = { value ->
+                            viewModel.update { it.copy(queryTimeout = value.filter(Char::isDigit)) }
+                        },
+                        label = { Text(stringResource(R.string.timeout_query)) },
+                        isError = !ConnectionTimeouts.isValid(form.queryTimeout),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    stringResource(R.string.timeout_note, ConnectionTimeouts.MAX_SECONDS),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
                 )
             }
 

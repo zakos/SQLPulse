@@ -118,5 +118,29 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+    /**
+     * v7: a connection says which environment it belongs to, and carries its own timeouts.
+     *
+     * Existing rows become UNSET rather than PRODUCTION: the app has no way to know, and a wrong
+     * guess either cries wolf on every connection or stays quiet on the one that matters. The
+     * timeouts default to what the whole app used until now, so nothing changes until they are
+     * edited.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE `connection` ADD COLUMN `environment` TEXT NOT NULL DEFAULT 'UNSET'",
+            )
+            db.execSQL(
+                "ALTER TABLE `connection` ADD COLUMN `connectTimeoutSeconds` INTEGER NOT NULL DEFAULT 10",
+            )
+            db.execSQL(
+                "ALTER TABLE `connection` ADD COLUMN `queryTimeoutSeconds` INTEGER NOT NULL DEFAULT 30",
+            )
+        }
+    }
+
+    val ALL = arrayOf(
+        MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+    )
 }

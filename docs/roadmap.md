@@ -21,6 +21,9 @@ megnézhető.
 | Saját CA tanúsítvány importálása és tárolása | `data/connection/CertificateStore.kt` |
 | A kiépült kapcsolat TLS verziója és titkosítója látszik | `data/schema/ServerRepository.kt` |
 | Kulcstár: import, jelszavas kulcs, ujjlenyomatos feloldás | `ui/keys/KeyStoreScreen.kt` |
+| Kapcsolatok csoportosítása: fejlesztés, teszt, éles | `data/connection/ConnectionEnvironment.kt` |
+| Éles kapcsolat megjelölése, és rákérdezés megnyitás előtt, ha írni is lehet rajta | `ui/connections/ConnectionListScreen.kt` |
+| Kapcsolatonkénti időkorlát: kapcsolódásra és lekérdezésre külön | `data/connection/ConnectionTimeouts.kt` |
 | Jelszavak és kulcsok Android Keystore mögött, SQLCipher adatbázisban | `data/crypto/` |
 | Automatikus zárolás tétlenség után, az alagút bontásával | `security/LockManager.kt` |
 
@@ -72,9 +75,7 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 2.0
 
-2. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
-   kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-3. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+2. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

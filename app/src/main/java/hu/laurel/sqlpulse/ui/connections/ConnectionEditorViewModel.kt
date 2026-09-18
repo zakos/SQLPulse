@@ -11,7 +11,9 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.data.sql.SslProperties
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
+import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
@@ -53,6 +55,11 @@ data class ConnectionForm(
     val password: String = "",
     val passwordTouched: Boolean = false,
     val readOnly: Boolean = true,
+    /** Development, test, production, or left unsaid. Groups the list and warns before opening. */
+    val environment: ConnectionEnvironment = ConnectionEnvironment.UNSET,
+    /** Seconds, as typed: kept as text so a half-deleted number does not become a default. */
+    val connectTimeout: String = ConnectionTimeouts.DEFAULT_CONNECT_SECONDS.toString(),
+    val queryTimeout: String = ConnectionTimeouts.DEFAULT_QUERY_SECONDS.toString(),
     /** How the MySQL connection itself is protected, independently of the SSH tunnel. */
     val sslMode: SslMode = SslMode.DISABLED,
     val caCertificate: String? = null,
@@ -67,6 +74,8 @@ data class ConnectionForm(
             dbPort.toIntOrNull() != null &&
             // A verifying TLS mode without a CA file would fail at connect time, not at save.
             !SslProperties.missingCertificate(sslMode, caCertificate) &&
+            ConnectionTimeouts.isValid(connectTimeout) &&
+            ConnectionTimeouts.isValid(queryTimeout) &&
             (
                 !useSsh || (
                     sshHost.isNotBlank() &&
@@ -226,6 +235,11 @@ class ConnectionEditorViewModel @Inject constructor(
         database = database.trim(),
         dbUser = dbUser.trim(),
         readOnly = readOnly,
+        environment = environment.name,
+        connectTimeoutSeconds = ConnectionTimeouts.parse(connectTimeout)
+            ?: ConnectionTimeouts.DEFAULT_CONNECT_SECONDS,
+        queryTimeoutSeconds = ConnectionTimeouts.parse(queryTimeout)
+            ?: ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
         sslMode = sslMode.name,
         caCertificate = caCertificate,
     )
@@ -252,6 +266,11 @@ class ConnectionEditorViewModel @Inject constructor(
         password = if (hasPassword) PLACEHOLDER_PASSWORD else "",
         passwordTouched = false,
         readOnly = readOnly,
+        environment = ConnectionEnvironment.fromName(environment),
+        connectTimeout = ConnectionTimeouts
+            .sane(connectTimeoutSeconds, ConnectionTimeouts.DEFAULT_CONNECT_SECONDS).toString(),
+        queryTimeout = ConnectionTimeouts
+            .sane(queryTimeoutSeconds, ConnectionTimeouts.DEFAULT_QUERY_SECONDS).toString(),
         sslMode = SslMode.fromName(sslMode),
         caCertificate = caCertificate,
     )

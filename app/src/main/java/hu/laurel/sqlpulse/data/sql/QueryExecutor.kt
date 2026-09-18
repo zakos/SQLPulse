@@ -82,7 +82,7 @@ class QueryExecutor @Inject constructor(
                     // Values arrive as text; MySQL coerces them against the column type.
                     statement.setString(index + 1, parameters[name] ?: "")
                 }
-                statement.queryTimeout = QUERY_TIMEOUT_SECONDS
+                statement.queryTimeout = sessions.queryTimeoutSeconds()
                 running = statement
                 try {
                     if (statement.execute()) {
@@ -129,10 +129,5 @@ class QueryExecutor @Inject constructor(
     suspend fun cancel() = withContext(io) {
         runCatching { running?.cancel() }
         Unit
-    }
-
-    private companion object {
-        /** §11: a query is offered up for cancellation after 30 seconds. */
-        const val QUERY_TIMEOUT_SECONDS = 30
     }
 }

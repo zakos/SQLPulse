@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -36,9 +37,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.ssh.ConnectStep
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
@@ -51,6 +54,7 @@ import hu.laurel.sqlpulse.ui.components.StepIndicator
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
+import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
@@ -71,6 +75,7 @@ fun ConnectionListScreen(
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val confirming by viewModel.confirming.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -117,31 +122,51 @@ fun ConnectionListScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.l),
                     verticalArrangement = Arrangement.spacedBy(Spacing.m),
                 ) {
-                    items(state.connections, key = { it.id }) { connection ->
-                        ConnectionCard(
-                            connection = connection,
-                            tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
-                            onClick = {
-                                // An already open connection goes straight to the schema;
-                                // disconnecting lives in the long-press menu and the notification.
-                                if (state.tunnel.connectionId == connection.id &&
-                                    state.tunnel is TunnelState.Active
-                                ) {
-                                    onOpenSchema()
-                                } else {
-                                    viewModel.connect(connection)
-                                }
-                            },
-                            connected = state.tunnel.connectionId == connection.id &&
-                                state.tunnel is TunnelState.Active,
-                            onDisconnect = viewModel::disconnect,
-                            onEdit = { onEdit(connection.id) },
-                            onDuplicate = { viewModel.duplicate(connection) },
-                            onDelete = { viewModel.delete(connection) },
-                        )
+                    state.groups.forEach { (environment, connections) ->
+                        if (state.showsGroupHeadings) {
+                            item(key = "group-${environment.name}") {
+                                Text(
+                                    stringResource(environment.label()),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = LocalSemanticColors.current.textSecondary,
+                                    modifier = Modifier.padding(top = Spacing.s),
+                                )
+                            }
+                        }
+                        items(connections, key = { it.id }) { connection ->
+                            ConnectionCard(
+                                connection = connection,
+                                tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
+                                onClick = {
+                                    // An already open connection goes straight to the schema;
+                                    // disconnecting lives in the long-press menu and the notification.
+                                    if (state.tunnel.connectionId == connection.id &&
+                                        state.tunnel is TunnelState.Active
+                                    ) {
+                                        onOpenSchema()
+                                    } else {
+                                        viewModel.connect(connection)
+                                    }
+                                },
+                                connected = state.tunnel.connectionId == connection.id &&
+                                    state.tunnel is TunnelState.Active,
+                                onDisconnect = viewModel::disconnect,
+                                onEdit = { onEdit(connection.id) },
+                                onDuplicate = { viewModel.duplicate(connection) },
+                                onDelete = { viewModel.delete(connection) },
+                            )
+                        }
                     }
                 }
             }
+        }
+
+        confirming?.let { connection ->
+            ProductionConfirmDialog(
+                connection = connection,
+                onConfirm = viewModel::confirmConnect,
+                onCancel = viewModel::cancelConnect,
+            )
         }
 
         state.hostKeyPrompt?.let { prompt ->
@@ -169,6 +194,7 @@ private fun ConnectionCard(
     var menuOpen by remember { mutableStateOf(false) }
     val semantic = LocalSemanticColors.current
     val color = ConnectionColor.fromName(connection.color)
+    val environment = ConnectionEnvironment.fromName(connection.environment)
 
     HairlineCard {
         Row(
@@ -185,7 +211,30 @@ private fun ConnectionCard(
                     .padding(Spacing.l),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                Text(connection.name, style = MaterialTheme.typography.titleMedium)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                ) {
+                    Text(connection.name, style = MaterialTheme.typography.titleMedium)
+                    // Only production is worth a badge: it is the one that has to be noticed
+                    // before a statement is typed, and the others would only be noise.
+                    if (environment.isProduction) {
+                        Surface(
+                            color = semantic.production.copy(alpha = 0.16f),
+                            shape = Shapes.chip,
+                        ) {
+                            Text(
+                                stringResource(environment.shortLabel()),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = semantic.production,
+                                modifier = Modifier.padding(
+                                    horizontal = Spacing.s,
+                                    vertical = 2.dp,
+                                ),
+                            )
+                        }
+                    }
+                }
                 Text(
                     // Without a tunnel there is no SSH host to name.
                     if (connection.useSshTunnel) {
@@ -292,6 +341,41 @@ private fun StepProgress(tunnel: TunnelState, tunnelled: Boolean) {
             }
         },
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+    )
+}
+
+/**
+ * Asked once before a production connection that is allowed to write is opened.
+ *
+ * Not a lock — the user can say yes — but the moment where "which database am I on" gets answered
+ * before the first statement rather than after it.
+ */
+@Composable
+private fun ProductionConfirmDialog(
+    connection: ConnectionEntity,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.production_confirm_title)) },
+        text = {
+            Text(
+                stringResource(
+                    R.string.production_confirm_body,
+                    connection.name,
+                    "${connection.dbHost}:${connection.dbPort}/${connection.database}",
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.production_confirm_open))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+        },
     )
 }
 
