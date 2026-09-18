@@ -1,11 +1,16 @@
 package hu.laurel.sqlpulse.data.export
 
+import hu.laurel.sqlpulse.data.schema.quoteIdentifier
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
 
 enum class ExportFormat(val extension: String, val mimeType: String) {
     CSV("csv", "text/csv"),
+    /** Tabs instead of commas: what spreadsheets paste cleanly and shells cut easily. */
+    TSV("tsv", "text/tab-separated-values"),
     JSON("json", "application/json"),
+    /** INSERT statements, to carry a handful of rows to another database. */
+    SQL("sql", "application/sql"),
 }
 
 /**
@@ -16,10 +21,13 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
  */
 object ResultSerializer {
 
-    fun serialize(table: ResultTable, format: ExportFormat): String = when (format) {
-        ExportFormat.CSV -> toCsv(table)
-        ExportFormat.JSON -> toJson(table)
-    }
+    fun serialize(table: ResultTable, format: ExportFormat, tableName: String? = null): String =
+        when (format) {
+            ExportFormat.CSV -> toCsv(table)
+            ExportFormat.TSV -> toTsv(table)
+            ExportFormat.JSON -> toJson(table)
+            ExportFormat.SQL -> toSqlInserts(table, tableName)
+        }
 
     /** RFC 4180: comma separated, quotes doubled, CRLF line endings. */
     fun toCsv(table: ResultTable): String = buildString {
@@ -28,6 +36,44 @@ object ResultSerializer {
         table.rows.forEach { row ->
             append(row.joinToString(",") { csvField(plainText(it)) })
             append("\r\n")
+        }
+    }
+
+    /**
+     * Tab separated, one row per line.
+     *
+     * A tab, a newline or a backslash inside a value is escaped the way MySQL's own
+     * `SELECT ... INTO OUTFILE` does it, so a value containing a tab cannot silently become two
+     * columns. NULL is `\N`, again as MySQL writes it.
+     */
+    fun toTsv(table: ResultTable): String = buildString {
+        append(table.columns.joinToString("\t") { tsvField(it.label) })
+        append("\n")
+        table.rows.forEach { row ->
+            append(row.joinToString("\t") { tsvField(plainText(it)) })
+            append("\n")
+        }
+    }
+
+    /**
+     * One INSERT per row, for moving a few rows somewhere else.
+     *
+     * The table name comes from the caller — a query result can come from several tables or none,
+     * and guessing would produce statements that look right and are not. Values are written as
+     * literals, because a file of prepared statements would need the parameters beside it;
+     * everything is escaped for MySQL, and a BLOB is refused rather than exported as its size,
+     * which would insert nonsense.
+     */
+    fun toSqlInserts(table: ResultTable, tableName: String?): String {
+        val target = tableName?.takeIf { it.isNotBlank() }
+            ?: table.columns.firstNotNullOfOrNull { it.table }
+            ?: "table_name"
+        val columns = table.columns.joinToString(", ") { quoteIdentifier(it.label) }
+        return table.rows.joinToString("\n") { row ->
+            val values = table.columns.indices.joinToString(", ") { index ->
+                sqlLiteral(row.getOrNull(index))
+            }
+            "INSERT INTO ${quoteIdentifier(target)} ($columns) VALUES ($values);"
         }
     }
 
@@ -59,6 +105,30 @@ object ResultSerializer {
         is CellValue.Bool -> if (value.value) "1" else "0"
         is CellValue.Blob -> "[BLOB ${value.sizeBytes} B]"
     }
+
+    private fun tsvField(value: String?): String {
+        if (value == null) return "\\N"
+        return value
+            .replace("\\", "\\\\")
+            .replace("\t", "\\t")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+    }
+
+    /** MySQL string literal. A BLOB has no contents here, so it becomes NULL rather than a lie. */
+    private fun sqlLiteral(value: CellValue?): String = when (value) {
+        null, is CellValue.Null, is CellValue.Blob -> "NULL"
+        is CellValue.Number -> value.value.takeIf { it.isFiniteNumber() } ?: quote(value.value)
+        is CellValue.Bool -> if (value.value) "1" else "0"
+        else -> quote(plainText(value).orEmpty())
+    }
+
+    private fun quote(value: String): String = "'" + value
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\u0000", "\\0") + "'"
 
     private fun csvField(value: String?): String {
         if (value == null) return ""

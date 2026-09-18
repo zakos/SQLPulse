@@ -24,14 +24,20 @@ class ExportManager @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
+    /**
+     * @param tableName the table INSERT statements should name; null lets the serializer fall back
+     *   to what the driver said the columns came from. The file's name is not it: "query" is a
+     *   good file name and a terrible table name.
+     */
     suspend fun shareIntent(
         table: ResultTable,
         format: ExportFormat,
         baseName: String,
+        tableName: String? = null,
     ): Intent = withContext(io) {
         val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
         val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
-        file.writeText(ResultSerializer.serialize(table, format))
+        file.writeText(ResultSerializer.serialize(table, format, tableName))
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
         Intent(Intent.ACTION_SEND).apply {

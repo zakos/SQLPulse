@@ -313,7 +313,7 @@ class TableDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
-                    shareIntent = exports.shareIntent(rows, format, "$database-$table"),
+                    shareIntent = exports.shareIntent(rows, format, "$database-$table", table),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = describe(e))

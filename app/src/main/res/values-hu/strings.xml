@@ -290,4 +290,7 @@
     <string name="explain_filesort">A sorokat beolvasás után rendezi.</string>
     <string name="explain_temporary">Ideiglenes táblát épít a lekérdezéshez.</string>
     <string name="explain_many_rows">A kiszolgáló sok sorral számol.</string>
+
+    <string name="export_tsv">TSV (tabulátoros)</string>
+    <string name="export_sql">SQL INSERT</string>
 </resources>

@@ -52,7 +52,9 @@ megnézhető.
 | A végrehajtandó SQL megmutatása mentés előtt | `data/sql/RowSqlBuilder.kt` |
 | Optimista zárolás: ütközés esetén szól, nem ír felül csendben | `data/sql/RowEditor.kt` |
 | Kézi tranzakció: COMMIT és ROLLBACK a lekérdező képernyőn | `data/sql/SqlSessionManager.kt` |
-| Export CSV és JSON formátumban | `data/export/` |
+| Export CSV, TSV, JSON és SQL INSERT formátumban | `data/export/` |
+| JSON cella formázva, BLOB belenézés (szöveg vagy hex) | `data/sql/JsonFormatter.kt`, `BlobPreview.kt` |
+| EXPLAIN: mi szúr szemet a tervben | `data/sql/ExplainAdvice.kt` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
 ## Ami hiányzik
@@ -66,18 +68,16 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-2. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
-3. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
-4. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
-   beállításával.
+2. **CSV import.** Az export már négy formátumot tud, a beolvasás hiányzik.
+3. **Típus szerinti cellaszerkesztők** (dátumválasztó, felsorolás listából).
 
 ### 2.0
 
-5. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-6. **Felhasználók és jogosultságok megtekintése.**
-7. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+4. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+5. **Felhasználók és jogosultságok megtekintése.**
+6. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-8. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+7. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

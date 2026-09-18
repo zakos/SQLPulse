@@ -298,4 +298,7 @@
     <string name="explain_filesort">The rows are sorted after being read.</string>
     <string name="explain_temporary">An intermediate table is built for this query.</string>
     <string name="explain_many_rows">The server expects to touch a lot of rows.</string>
+
+    <string name="export_tsv">TSV (tabbed)</string>
+    <string name="export_sql">SQL INSERT</string>
 </resources>

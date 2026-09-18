@@ -67,6 +67,7 @@ import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.grid.RowDetailSheet
 import hu.laurel.sqlpulse.ui.grid.asText
+import hu.laurel.sqlpulse.ui.labelRes
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -139,20 +140,17 @@ fun TableDetailScreen(
                                 expanded = exportMenuOpen,
                                 onDismissRequest = { exportMenuOpen = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.export_csv)) },
-                                    onClick = {
-                                        exportMenuOpen = false
-                                        viewModel.export(ExportFormat.CSV)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.export_json)) },
-                                    onClick = {
-                                        exportMenuOpen = false
-                                        viewModel.export(ExportFormat.JSON)
-                                    },
-                                )
+                                // One entry per format, in the order they are reached for:
+                                // a spreadsheet, a shell, a program, another database.
+                                ExportFormat.entries.forEach { format ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(format.labelRes())) },
+                                        onClick = {
+                                            exportMenuOpen = false
+                                            viewModel.export(format)
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
