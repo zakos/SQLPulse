@@ -8,22 +8,25 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
+import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
-import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.query.QueryRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
+import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.ResultTable
-import hu.laurel.sqlpulse.data.sql.ColumnSort
+import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlGuards
-import hu.laurel.sqlpulse.data.sql.StatementKind
-import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.StatementKind
+import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.UnguardedWriteException
 import hu.laurel.sqlpulse.data.sql.UnsupportedStatementException
+import hu.laurel.sqlpulse.ui.explain
+import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -259,7 +262,7 @@ class QueryEditorViewModel @Inject constructor(
                     shareIntent = exports.shareIntent(result, format, "query"),
                 )
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message ?: e.toString())
+                _uiState.value = _uiState.value.copy(error = describe(e))
             }
         }
     }
@@ -311,7 +314,8 @@ class QueryEditorViewModel @Inject constructor(
         is ReadOnlyConnectionException -> context.getString(R.string.error_read_only)
         is UnsupportedStatementException -> context.getString(R.string.error_unsupported_statement)
         is UnguardedWriteException -> context.getString(R.string.error_no_where_clause)
-        // §11: a MySQL error is shown as the server worded it.
+        // §11: the server's own wording, with a sentence about what it usually means.
+        is SQLException -> context.explain(SqlFailures.of(e))
         else -> e.message ?: e.toString()
     }
 

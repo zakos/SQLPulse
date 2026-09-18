@@ -24,7 +24,12 @@ sealed interface SqlSessionState {
     data object Closed : SqlSessionState
     data object Opening : SqlSessionState
     data class Ready(val connection: ConnectionEntity, val serverVersion: String?) : SqlSessionState
-    data class Failed(val message: String, val detail: String? = null) : SqlSessionState
+    /** [failure] is present when the driver reported a server error we could classify. */
+    data class Failed(
+        val message: String,
+        val detail: String? = null,
+        val failure: SqlFailure? = null,
+    ) : SqlSessionState
 }
 
 /** No live session: the caller asked for data while the tunnel was down. */
@@ -131,6 +136,7 @@ class SqlSessionManager @Inject constructor(
             _state.value = SqlSessionState.Failed(
                 message = "${e.errorCode}: ${e.message}",
                 detail = e.toString(),
+                failure = SqlFailures.of(e),
             )
         } catch (e: Exception) {
             _state.value = SqlSessionState.Failed(e.message.orEmpty(), e.toString())

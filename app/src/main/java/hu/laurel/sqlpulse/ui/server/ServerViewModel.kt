@@ -1,13 +1,18 @@
 package hu.laurel.sqlpulse.ui.server
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.ServerFact
 import hu.laurel.sqlpulse.data.schema.ServerRepository
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.ui.explain
+import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +32,7 @@ data class ServerUiState(
 /** The running queries and a short server overview (§3, DBA role). */
 @HiltViewModel
 class ServerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val server: ServerRepository,
     sessions: SqlSessionManager,
 ) : ViewModel() {
@@ -60,7 +66,7 @@ class ServerViewModel @Inject constructor(
                 // Usually "Access denied": seeing other users' queries needs the PROCESS grant (§3).
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    error = e.message ?: e.toString(),
+                    error = describe(e),
                 )
             }
         }
@@ -72,9 +78,14 @@ class ServerViewModel @Inject constructor(
                 server.killQuery(processId)
                 refresh()
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message ?: e.toString())
+                _uiState.value = _uiState.value.copy(error = describe(e))
             }
         }
+    }
+
+    private fun describe(e: Exception): String = when (e) {
+        is SQLException -> context.explain(SqlFailures.of(e))
+        else -> e.message ?: e.toString()
     }
 
     fun dismissError() {

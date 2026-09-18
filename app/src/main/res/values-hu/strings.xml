@@ -210,4 +210,19 @@
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>
         <item quantity="other">%d kapcsolat használja — előbb azokat töröld.</item>
     </plurals>
+
+    <!-- Mit jelent az egyes kiszolgálóhibák, a szerver saját szövege fölött. -->
+    <string name="sql_error_authentication">A felhasználónevet vagy a jelszót nem fogadta el a kiszolgáló.</string>
+    <string name="sql_error_privilege">Ennek a felhasználónak nincs joga hozzá. Jogosultság kell erre az adatbázisra vagy táblára.</string>
+    <string name="sql_error_unknown_database">Nincs ilyen adatbázis, vagy ez a felhasználó nem látja.</string>
+    <string name="sql_error_unknown_object">Az utasítás olyan táblát vagy oszlopot nevez meg, ami nincs az adatbázisban.</string>
+    <string name="sql_error_syntax">A kiszolgáló nem tudta értelmezni ezt az utasítást.</string>
+    <string name="sql_error_tls">A titkosított kapcsolat nem jött létre. Nézd meg a TLS módot és a CA tanúsítványt.</string>
+    <string name="sql_error_unreachable">A kiszolgáló nem érhető el. Ellenőrizd a címet, a portot és a hálózatot.</string>
+    <string name="sql_error_timeout">Ez tovább tartott az időkorlátnál, ezért leállt.</string>
+    <string name="sql_error_connection_lost">A kapcsolat megszakadt futás közben. Kapcsolódj újra, és próbáld meg ismét.</string>
+    <string name="sql_error_lock">Egy másik tranzakció tartja ezeket a sorokat. Próbáld meg kicsit később.</string>
+    <string name="sql_error_duplicate_key">Ilyen kulccsal már van sor.</string>
+    <string name="sql_error_server_busy">A kiszolgáló elutasítja a kérést: csak olvasható, vagy elfogytak a szabad kapcsolatai.</string>
+    <string name="sql_error_code">MySQL hiba: %1$d</string>
 </resources>

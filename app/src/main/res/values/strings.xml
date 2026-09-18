@@ -218,4 +218,19 @@
         <item quantity="one">Used by one connection — delete that first.</item>
         <item quantity="other">Used by %d connections — delete those first.</item>
     </plurals>
+
+    <!-- What each kind of server error means, shown above the server's own wording. -->
+    <string name="sql_error_authentication">The user name or password was not accepted.</string>
+    <string name="sql_error_privilege">This user is not allowed to do that. It needs a grant on this database or table.</string>
+    <string name="sql_error_unknown_database">There is no such database, or this user cannot see it.</string>
+    <string name="sql_error_unknown_object">The statement names a table or column the database does not have.</string>
+    <string name="sql_error_syntax">The server could not parse this statement.</string>
+    <string name="sql_error_tls">The encrypted connection could not be established. Check the TLS mode and the CA certificate.</string>
+    <string name="sql_error_unreachable">The server could not be reached. Check the host, the port, and whether the network is up.</string>
+    <string name="sql_error_timeout">This took longer than the time limit and was stopped.</string>
+    <string name="sql_error_connection_lost">The connection dropped while the statement was running. Reconnect and try again.</string>
+    <string name="sql_error_lock">Another transaction holds these rows. Try again in a moment.</string>
+    <string name="sql_error_duplicate_key">A row with this key already exists.</string>
+    <string name="sql_error_server_busy">The server is refusing the request: it is read-only, or it has no free connections.</string>
+    <string name="sql_error_code">MySQL error %1$d</string>
 </resources>

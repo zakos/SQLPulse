@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +41,7 @@ import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.explain
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -199,7 +201,7 @@ private fun SessionPlaceholder(session: SqlSessionState, onBack: () -> Unit) {
 
         is SqlSessionState.Failed -> EmptyState(
             title = stringResource(R.string.schema_no_session_title),
-            body = session.message,
+            body = session.failure?.let { LocalContext.current.explain(it) } ?: session.message,
             actionLabel = stringResource(R.string.cancel),
             onAction = onBack,
             modifier = Modifier.fillMaxSize(),

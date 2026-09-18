@@ -1,13 +1,18 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.sql.NoSqlSessionException
+import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.ui.explain
+import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +42,7 @@ data class SchemaBrowserUiState(
 
 @HiltViewModel
 class SchemaBrowserViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
 ) : ViewModel() {
@@ -119,6 +125,7 @@ class SchemaBrowserViewModel @Inject constructor(
 
     private fun describe(e: Exception): String = when (e) {
         is NoSqlSessionException -> ""
+        is SQLException -> context.explain(SqlFailures.of(e))
         else -> e.message ?: e.toString()
     }
 }

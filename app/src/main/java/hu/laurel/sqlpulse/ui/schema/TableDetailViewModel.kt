@@ -1,11 +1,13 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
@@ -13,15 +15,18 @@ import hu.laurel.sqlpulse.data.schema.TableStructure
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.ColumnSort
-import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.NoPrimaryKeyException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEdit
 import hu.laurel.sqlpulse.data.sql.RowEditor
+import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.TableQuery
+import hu.laurel.sqlpulse.ui.explain
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
+import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -63,6 +68,7 @@ enum class EditBlock { READ_ONLY, NO_PRIMARY_KEY }
 @HiltViewModel
 class TableDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context,
     private val schema: SchemaRepository,
     private val rowEditor: RowEditor,
     private val exports: ExportManager,
@@ -321,7 +327,10 @@ class TableDetailViewModel @Inject constructor(
         return if (cell is CellValue.Null) null else cell.asText()
     }
 
-    private fun describe(e: Exception): String = e.message ?: e.toString()
+    private fun describe(e: Exception): String = when (e) {
+        is SQLException -> context.explain(SqlFailures.of(e))
+        else -> e.message ?: e.toString()
+    }
 
     private companion object {
         const val PAGE_SIZE = 100
