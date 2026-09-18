@@ -20,6 +20,7 @@ import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
+import hu.laurel.sqlpulse.data.sql.WritesLockedException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlFormatter
@@ -211,6 +212,12 @@ class QueryEditorViewModel @Inject constructor(
             .onEach { open -> _uiState.value = _uiState.value.copy(inTransaction = open) }
             .launchIn(viewModelScope)
     }
+
+    /** The session itself, for the bar that appears when the network moves under it. */
+    val sessionState: StateFlow<SqlSessionState> = sessions.state
+
+    /** Asked for by the bar's button; the automatic path is the session manager's own. */
+    fun reconnect() = sessions.reconnect()
 
     fun selectDatabase(database: String) = sessions.selectDatabase(database)
 
@@ -623,6 +630,7 @@ class QueryEditorViewModel @Inject constructor(
 
     private fun describe(e: Exception): String = when (e) {
         is ReadOnlyConnectionException -> context.getString(R.string.error_read_only)
+        is WritesLockedException -> context.getString(R.string.error_writes_locked)
         is UnsupportedStatementException -> context.getString(R.string.error_unsupported_statement)
         is UnguardedWriteException -> context.getString(R.string.error_no_where_clause)
         // §11: the server's own wording, with a sentence about what it usually means.

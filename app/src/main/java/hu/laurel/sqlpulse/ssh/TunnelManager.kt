@@ -5,6 +5,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.db.ConnectionDao
+import hu.laurel.sqlpulse.data.connection.JumpCredential
+import hu.laurel.sqlpulse.data.connection.JumpHostCredentials
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.KnownHostDao
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
@@ -211,9 +213,24 @@ class TunnelManager @Inject constructor(
             return
         }
 
+        // The first hop's own credential, where it has one. Unlocked in the same breath as the
+        // second one's, so a two-hop connection still asks for authentication once.
+        val jumpCredential: SshCredential? = try {
+            jumpCredentialFor(connection)
+        } catch (e: UnlockCancelledException) {
+            _state.value = TunnelState.Disconnected
+            return
+        } catch (e: Exception) {
+            _state.value = TunnelState.Failed(
+                connectionId,
+                TunnelFailure(FailureLayer.KEY, keyFailureMessage(e), e.toString()),
+            )
+            return
+        }
+
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.SSH)
         val verifier = PinningHostKeyVerifier(knownHosts, ::askAboutHostKey)
-        val fresh = SshTunnel(connection.toTunnelConfig(), credential, verifier)
+        val fresh = SshTunnel(connection.toTunnelConfig(), credential, verifier, jumpCredential)
         tunnel = fresh
 
         val port = try {
@@ -385,6 +402,37 @@ class TunnelManager @Inject constructor(
         tunnel = null
         TunnelService.stop(context)
         _state.value = TunnelState.Failed(id, networkDropFailure(change))
+    }
+
+    /**
+     * The credential for the first hop, or null when it shares the second one's.
+     *
+     * Null is the answer for every connection saved before the jump host could have its own, and
+     * for every one-hop connection — [SshTunnel] then authenticates both hops the way it always
+     * did.
+     */
+    private suspend fun jumpCredentialFor(connection: ConnectionEntity): SshCredential? {
+        if (connection.sshJumpHost.isNullOrBlank()) return null
+        return when (
+            val jump = JumpHostCredentials.resolve(
+                connection.sshJumpAuthMethod,
+                connection.sshJumpKeyId,
+            )
+        ) {
+            JumpCredential.SameAsSshHost -> null
+
+            is JumpCredential.Key -> {
+                val key = withContext(io) { keys.byId(jump.keyId) }
+                    ?: throw IllegalStateException("the jump host references a key that is gone")
+                SshCredential.Key(keys.unlockKeyPair(key))
+            }
+
+            JumpCredential.Password -> {
+                val password = secrets.jumpSshPassword(connection.id, connection.name)
+                    ?: throw IllegalStateException("no password stored for the jump host")
+                SshCredential.Password(password)
+            }
+        }
     }
 
     private inline fun withTunnel(block: (SshTunnel) -> Unit) {

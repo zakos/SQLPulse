@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.WriteAccess
+import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
@@ -22,6 +25,14 @@ class UnsupportedStatementException : Exception("only queries and row edits are 
 /** An UPDATE or DELETE with no WHERE clause, refused by the setting that is on by default. */
 class UnguardedWriteException : Exception("this statement has no WHERE clause")
 
+/**
+ * A write on a production connection that has not been unlocked, or whose unlock has run out.
+ *
+ * Separate from [ReadOnlyConnectionException] because the answer is different: this one is undone
+ * by unlocking writes for fifteen minutes on the connection card, not by editing the connection.
+ */
+class WritesLockedException(val access: WriteAccess) : Exception("writes are locked on this connection")
+
 data class QueryOutcome(
     val table: ResultTable,
     /** Rows changed, for statements that return no result set. */
@@ -43,6 +54,7 @@ class QueryExecutor @Inject constructor(
     private val sessions: SqlSessionManager,
     private val history: QueryHistoryDao,
     private val settings: SettingsRepository,
+    private val writeUnlock: WriteUnlockStore,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -70,6 +82,18 @@ class QueryExecutor @Inject constructor(
         val kind = SqlGuards.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()
+        if (kind == StatementKind.WRITE) {
+            // The production policy, checked where the statement actually runs rather than only in
+            // the dialog that offers to run it — the editor is not the only caller.
+            val access = writeUnlock.writeAccess(
+                connectionId = connectionId,
+                environment = ConnectionEnvironment.fromName(
+                    sessions.currentConnection()?.environment,
+                ),
+                readOnly = readOnly,
+            )
+            if (!access.allowed) throw WritesLockedException(access)
+        }
         if (settings.settings.first().blockWritesWithoutWhere && SqlGuards.isUnguardedWrite(sql)) {
             throw UnguardedWriteException()
         }
@@ -104,6 +128,10 @@ class QueryExecutor @Inject constructor(
                 }
             }
         }
+
+        // A session that has written is never reconnected to automatically: the server rolled the
+        // work back and silently picking the connection up again would hide that.
+        if (kind == StatementKind.WRITE) sessions.noteWrite()
 
         val duration = System.currentTimeMillis() - started
         withContext(io) {

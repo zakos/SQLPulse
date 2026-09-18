@@ -23,4 +23,5 @@
     <string name="ssh_jump_separate_note">Az első ugrás külön lép be; a második marad a fenti belépésnél.</string>
     <string name="ssh_jump_key">Ugróhoszt kulcsa</string>
     <string name="ssh_jump_password">Ugróhoszt jelszava</string>
+    <string name="error_writes_locked">Ezen az éles kapcsolaton az írás zárolva van. A kapcsolat kártyájáról oldható fel tizenöt percre.</string>
 </resources>

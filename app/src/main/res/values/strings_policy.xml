@@ -31,4 +31,5 @@
     <string name="ssh_jump_separate_note">The first hop is entered on its own; the second keeps the credential above.</string>
     <string name="ssh_jump_key">Jump host key</string>
     <string name="ssh_jump_password">Jump host password</string>
+    <string name="error_writes_locked">Writes are locked on this production connection. Unlock them for fifteen minutes from the connection card.</string>
 </resources>

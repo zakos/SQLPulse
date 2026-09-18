@@ -90,6 +90,7 @@ import hu.laurel.sqlpulse.data.sql.ExplainAdvice
 import hu.laurel.sqlpulse.data.sql.ExplainNote
 import hu.laurel.sqlpulse.data.sql.ParameterType
 import hu.laurel.sqlpulse.data.sql.ParameterValue
+import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.components.isWideWindow
@@ -253,6 +254,7 @@ fun QueryEditorScreen(
         },
     ) { padding ->
         val wide = isWideWindow()
+        val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
 
         // Two columns where there is room for two: on a tablet the result no longer has to share
         // the height with the editor, and neither has to be scrolled to reach the other.
@@ -509,23 +511,32 @@ fun QueryEditorScreen(
                 }
         }
 
+        // Above both layouts: whatever is being read or typed stays on screen underneath it.
+        val lostBanner: @Composable () -> Unit = {
+            ConnectionLostBanner(state = sessionState, onReconnect = viewModel::reconnect)
+        }
+
         if (wide) {
-            Row(modifier = Modifier.fillMaxSize().padding(padding)) {
-                Column(
-                    modifier = Modifier
-                        .weight(EDITOR_PANE_WEIGHT)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    content = editorPane,
-                )
-                VerticalDivider()
-                Column(
-                    modifier = Modifier.weight(1f - EDITOR_PANE_WEIGHT).fillMaxHeight(),
-                    content = outputPane,
-                )
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                lostBanner()
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .weight(EDITOR_PANE_WEIGHT)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        content = editorPane,
+                    )
+                    VerticalDivider()
+                    Column(
+                        modifier = Modifier.weight(1f - EDITOR_PANE_WEIGHT).fillMaxHeight(),
+                        content = outputPane,
+                    )
+                }
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                lostBanner()
                 editorPane()
                 outputPane()
             }

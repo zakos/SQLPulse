@@ -2,7 +2,9 @@ package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
+import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.di.IoDispatcher
@@ -244,10 +246,19 @@ class SqlSessionManager @Inject constructor(
      * Per connection rather than one number for the app: the same query that is a runaway on a
      * production server is a legitimate report on a development one.
      */
-    fun queryTimeoutSeconds(): Int = ConnectionTimeouts.sane(
-        currentConnection()?.queryTimeoutSeconds ?: ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
-        ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
-    )
+    fun queryTimeoutSeconds(): Int {
+        val connection = currentConnection()
+        val stored = ConnectionTimeouts.sane(
+            connection?.queryTimeoutSeconds ?: ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
+            ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
+        )
+        // A production connection saved before the policy existed can carry an hour-long timeout;
+        // capping it here covers those rows without rewriting anything the user saved.
+        return ProductionPolicy.cappedQueryTimeoutSeconds(
+            ConnectionEnvironment.fromName(connection?.environment),
+            stored,
+        )
+    }
 
     /** Which driver the live session opened with, or null when there is no session. */
     fun driverInUse(): JdbcDriverKind? = session?.settled
