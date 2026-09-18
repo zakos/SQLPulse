@@ -18,6 +18,7 @@ import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.NoPrimaryKeyException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEdit
+import hu.laurel.sqlpulse.data.sql.RowChangedException
 import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -36,6 +37,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class TableTab { DATA, STRUCTURE, DDL }
+
+/**
+ * An edit that did not happen because the row had moved on.
+ *
+ * [currentValue] is what the column holds now; a missing row means somebody deleted it, and then
+ * there is nothing to overwrite.
+ */
+data class EditConflict(
+    val edit: RowEdit,
+    val currentValue: String?,
+    val rowExists: Boolean,
+)
 
 data class TableDetailUiState(
     val database: String = "",
@@ -57,6 +70,8 @@ data class TableDetailUiState(
     val editBlockedReason: EditBlock? = null,
     /** Set while a statement waits for confirmation. */
     val pendingEdit: RowEdit? = null,
+    /** Set when the row changed between being read and being written (§7.6). */
+    val conflict: EditConflict? = null,
     /** Set for ten seconds after a successful edit, while it can still be taken back (§7.6). */
     val undoable: RowEdit? = null,
     val isProduction: Boolean = false,
@@ -201,14 +216,40 @@ class TableDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(pendingEdit = null, loading = true)
             try {
-                rowEditor.execute(edit.statement)
+                rowEditor.execute(edit)
                 _uiState.value = _uiState.value.copy(loading = false, undoable = edit.takeIf { it.undo != null })
                 startUndoWindow()
+                reload()
+            } catch (e: RowChangedException) {
+                // Not an error: the edit simply did not happen, and the user decides what now.
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    conflict = EditConflict(edit, e.currentValue, e.rowExists),
+                )
                 reload()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(loading = false, error = describe(e))
             }
         }
+    }
+
+    /** Writes the value anyway, now that the user has seen what they are overwriting. */
+    fun overwriteConflict() {
+        val conflict = _uiState.value.conflict ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(conflict = null, loading = true)
+            try {
+                rowEditor.overwrite(conflict.edit)
+                _uiState.value = _uiState.value.copy(loading = false)
+                reload()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(loading = false, error = describe(e))
+            }
+        }
+    }
+
+    fun dismissConflict() {
+        _uiState.value = _uiState.value.copy(conflict = null)
     }
 
     fun dismissEdit() {

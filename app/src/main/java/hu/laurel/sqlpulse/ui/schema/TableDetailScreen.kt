@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,6 +37,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -336,6 +339,38 @@ fun TableDetailScreen(
             requireTableName = state.table.takeIf { destructive && state.isProduction },
             onConfirm = viewModel::confirmEdit,
             onDismiss = viewModel::dismissEdit,
+        )
+    }
+
+    state.conflict?.let { conflict ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissConflict,
+            title = { Text(stringResource(R.string.conflict_title)) },
+            text = {
+                Text(
+                    if (conflict.rowExists) {
+                        stringResource(
+                            R.string.conflict_body,
+                            conflict.currentValue ?: "NULL",
+                        )
+                    } else {
+                        stringResource(R.string.conflict_row_gone)
+                    },
+                )
+            },
+            confirmButton = {
+                // Only offered while there is still a row to write to.
+                if (conflict.rowExists) {
+                    Button(onClick = viewModel::overwriteConflict) {
+                        Text(stringResource(R.string.conflict_overwrite))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissConflict) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }

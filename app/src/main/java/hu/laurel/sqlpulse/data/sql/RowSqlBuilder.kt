@@ -9,6 +9,20 @@ data class PreparedSql(val sql: String, val parameters: List<String?>)
 class NoPrimaryKeyException : Exception("this table has no primary key")
 
 /**
+ * The value a column is expected to still hold, or the decision not to check.
+ *
+ * A nullable String cannot say the difference between "expected NULL" and "do not check", and
+ * those two mean opposite things here.
+ */
+data class Expected(val value: String?, val checked: Boolean) {
+    companion object {
+        fun of(value: String?) = Expected(value, checked = true)
+
+        fun none() = Expected(null, checked = false)
+    }
+}
+
+/**
  * Builds the row-level statements of §7.6.
  *
  * Values are always bound, never interpolated: [render] exists only to show the user what will
@@ -20,6 +34,10 @@ object RowSqlBuilder {
     /**
      * @param key the primary key columns and their current values; a NULL there would make the
      *   WHERE match nothing, so it is refused.
+     * @param expectedValue what the column held when the row was read. Named in the WHERE clause
+     *   with the NULL-safe `<=>`, so the update does nothing at all if somebody else has changed
+     *   the value in the meantime — a lost update is silent, and this is what makes it audible.
+     *   Null means no such check; [Expected.none] says so at the call site.
      */
     fun update(
         database: String,
@@ -27,14 +45,31 @@ object RowSqlBuilder {
         key: Map<String, String?>,
         column: String,
         newValue: String?,
+        expectedValue: Expected = Expected.none(),
     ): PreparedSql {
         requireKey(key)
         val sql = buildString {
             append("UPDATE ").append(qualified(database, table))
             append(" SET ").append(quoteIdentifier(column)).append(" = ?")
             append(whereClause(key))
+            if (expectedValue.checked) append(" AND ").append(quoteIdentifier(column)).append(" <=> ?")
         }
-        return PreparedSql(sql, listOf(newValue) + key.values.toList())
+        val parameters = listOf(newValue) + key.values.toList() +
+            if (expectedValue.checked) listOf(expectedValue.value) else emptyList()
+        return PreparedSql(sql, parameters)
+    }
+
+    /** Reads one column of one row, to say what it holds now after an update changed nothing. */
+    fun selectValue(
+        database: String,
+        table: String,
+        key: Map<String, String?>,
+        column: String,
+    ): PreparedSql {
+        requireKey(key)
+        val sql = "SELECT ${quoteIdentifier(column)} FROM ${qualified(database, table)}" +
+            whereClause(key)
+        return PreparedSql(sql, key.values.toList())
     }
 
     fun delete(database: String, table: String, key: Map<String, String?>): PreparedSql {

@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -95,5 +96,51 @@ class RowSqlBuilderTest {
             "UPDATE `shop`.`orders` SET `note` = 'why?' WHERE `id` = '42'",
             RowSqlBuilder.render(prepared),
         )
+    }
+
+    @Test
+    fun `an update can insist that the value is still the one that was read`() {
+        val sql = RowSqlBuilder.update(
+            database = "shop",
+            table = "orders",
+            key = mapOf("id" to "7"),
+            column = "status",
+            newValue = "paid",
+            expectedValue = Expected.of("pending"),
+        )
+        assertEquals(
+            "UPDATE `shop`.`orders` SET `status` = ? WHERE `id` = ? AND `status` <=> ?",
+            sql.sql,
+        )
+        assertEquals(listOf("paid", "7", "pending"), sql.parameters)
+    }
+
+    @Test
+    fun `the guard uses NULL-safe equality, so a column that was NULL can be guarded too`() {
+        val sql = RowSqlBuilder.update(
+            database = "shop",
+            table = "orders",
+            key = mapOf("id" to "7"),
+            column = "note",
+            newValue = "x",
+            expectedValue = Expected.of(null),
+        )
+        // "= NULL" would match nothing; "<=> NULL" matches a NULL.
+        assertTrue(sql.sql, sql.sql.endsWith("`note` <=> ?"))
+        assertEquals(listOf("x", "7", null), sql.parameters)
+    }
+
+    @Test
+    fun `without a guard the statement is the plain one`() {
+        val sql = RowSqlBuilder.update("shop", "orders", mapOf("id" to "7"), "status", "paid")
+        assertEquals("UPDATE `shop`.`orders` SET `status` = ? WHERE `id` = ?", sql.sql)
+        assertEquals(listOf("paid", "7"), sql.parameters)
+    }
+
+    @Test
+    fun `the conflict probe reads back the one column of the one row`() {
+        val sql = RowSqlBuilder.selectValue("shop", "orders", mapOf("id" to "7"), "status")
+        assertEquals("SELECT `status` FROM `shop`.`orders` WHERE `id` = ?", sql.sql)
+        assertEquals(listOf("7"), sql.parameters)
     }
 }

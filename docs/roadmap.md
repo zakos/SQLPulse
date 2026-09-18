@@ -48,6 +48,7 @@ megnézhető.
 | Rendezés oszlopfejlécből növekvő, csökkenő és alapállapot között | ugyanott |
 | Sor szerkesztése, beszúrása, törlése kulcs alapján | `data/sql/RowEditor.kt` |
 | A végrehajtandó SQL megmutatása mentés előtt | `data/sql/RowSqlBuilder.kt` |
+| Optimista zárolás: ütközés esetén szól, nem ír felül csendben | `data/sql/RowEditor.kt` |
 | Export CSV és JSON formátumban | `data/export/` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
@@ -64,13 +65,10 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-4. **Optimista zárolás a soroknál.** Ma az eredeti kulcs alapján ír vissza; ha közben
-   más módosította a sort, az ütközés észrevétlen marad. A mentés előtt össze kell
-   vetni a kiolvasott értékekkel, és több sor esetén megmutatni a különbséget.
-5. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
-6. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
-7. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
-8. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
+4. **Kézi COMMIT és ROLLBACK mód.** Írás előtt a tranzakció kézben tartása.
+5. **BLOB előnézet és típus szerinti szerkesztők** (dátum, felsorolás, JSON).
+6. **`EXPLAIN FORMAT=JSON` megjelenítése** olvasható formában.
+7. **CSV import, és export SQL INSERT meg TSV formátumban**, elválasztó és fejléc
    beállításával.
 
 ### 2.0

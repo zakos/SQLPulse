@@ -15,6 +15,17 @@ data class RowEdit(
     /** The statement with its values written in, for the confirmation dialog. Display only. */
     val preview: String,
     val kind: EditKind,
+    /**
+     * The same statement without the "and the value is still what I saw" condition.
+     *
+     * Kept so that an edit refused because someone else got there first can still be carried out,
+     * once the user has been told what they would be overwriting.
+     */
+    val unguarded: PreparedSql? = null,
+    /** Reads the column back, to say what it holds now. */
+    val conflictProbe: PreparedSql? = null,
+    /** What the update is trying to write, so an already-written value is not read as a conflict. */
+    val newValue: String? = null,
 )
 
 enum class EditKind { UPDATE, DELETE, INSERT }
@@ -22,6 +33,15 @@ enum class EditKind { UPDATE, DELETE, INSERT }
 /** More or fewer rows changed than the single row that was being edited. */
 class UnexpectedRowCountException(val affected: Int) :
     Exception("the statement affected $affected rows")
+
+/**
+ * The row changed between being read and being written (§7.6).
+ *
+ * @param currentValue what the column holds now, or null when the row is gone entirely.
+ * @param rowExists false when someone deleted the row rather than changing it.
+ */
+class RowChangedException(val currentValue: String?, val rowExists: Boolean) :
+    Exception("the row changed since it was read")
 
 /**
  * Runs row edits inside a transaction (§7.6). Nothing here decides whether an edit is allowed —
@@ -33,6 +53,12 @@ class RowEditor @Inject constructor(
     private val sessions: SqlSessionManager,
 ) {
 
+    /**
+     * An UPDATE that only applies while the column still holds [oldValue].
+     *
+     * The preview shows the plain statement: the guard is not part of what the user asked for, and
+     * a WHERE clause naming the old value twice would only make the dialog harder to read.
+     */
     fun prepareUpdate(
         database: String,
         table: String,
@@ -41,12 +67,30 @@ class RowEditor @Inject constructor(
         oldValue: String?,
         newValue: String?,
     ): RowEdit {
-        val statement = RowSqlBuilder.update(database, table, key, column, newValue)
+        val plain = RowSqlBuilder.update(database, table, key, column, newValue)
         return RowEdit(
-            statement = statement,
-            undo = RowSqlBuilder.update(database, table, key, column, oldValue),
-            preview = RowSqlBuilder.render(statement),
+            statement = RowSqlBuilder.update(
+                database = database,
+                table = table,
+                key = key,
+                column = column,
+                newValue = newValue,
+                expectedValue = Expected.of(oldValue),
+            ),
+            // The undo only applies while the value is still the one we wrote, for the same reason.
+            undo = RowSqlBuilder.update(
+                database = database,
+                table = table,
+                key = key,
+                column = column,
+                newValue = oldValue,
+                expectedValue = Expected.of(newValue),
+            ),
+            preview = RowSqlBuilder.render(plain),
             kind = EditKind.UPDATE,
+            unguarded = plain,
+            conflictProbe = RowSqlBuilder.selectValue(database, table, key, column),
+            newValue = newValue,
         )
     }
 
@@ -74,6 +118,42 @@ class RowEditor @Inject constructor(
             kind = EditKind.INSERT,
         )
     }
+
+    /**
+     * Runs an edit, and works out what happened when nothing did.
+     *
+     * A guarded UPDATE that changes no rows means the row moved underneath us: either somebody
+     * else wrote to it, or it is gone. Both are worth saying out loud, with what the column holds
+     * now, rather than reporting "0 rows changed" and leaving the user to guess.
+     */
+    suspend fun execute(edit: RowEdit): Int {
+        try {
+            return execute(edit.statement)
+        } catch (e: UnexpectedRowCountException) {
+            if (e.affected != 0 || edit.conflictProbe == null) throw e
+            val current = readValue(edit.conflictProbe)
+            // Somebody may have written exactly what we were about to write, and a driver that
+            // counts changed rather than matched rows reports that as nothing done. The column
+            // holds what was asked for, so there is nothing to complain about.
+            if (current.rowExists && current.value == edit.newValue) return 0
+            throw RowChangedException(currentValue = current.value, rowExists = current.rowExists)
+        }
+    }
+
+    /** Reruns an edit without its "the value is still what I saw" condition. */
+    suspend fun overwrite(edit: RowEdit): Int =
+        execute(edit.unguarded ?: edit.statement)
+
+    private suspend fun readValue(probe: PreparedSql): ProbeResult = sessions.withConnection { connection ->
+        connection.prepareStatement(probe.sql).use { prepared ->
+            probe.parameters.forEachIndexed { index, value -> prepared.setString(index + 1, value) }
+            prepared.executeQuery().use { rows ->
+                if (rows.next()) ProbeResult(rows.getString(1), rowExists = true) else ProbeResult(null, false)
+            }
+        }
+    }
+
+    private data class ProbeResult(val value: String?, val rowExists: Boolean)
 
     /**
      * Runs [statement] in a transaction and rolls back unless exactly one row changed. A typo in a

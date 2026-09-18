@@ -273,4 +273,10 @@
     <string name="settings_privacy">Privacy</string>
     <string name="settings_block_screenshots">Block screenshots</string>
     <string name="settings_block_screenshots_note">Keeps screenshots and the app switcher preview blank. Turn it off to send a screenshot of a problem — a result grid on screen is real data.</string>
+
+    <!-- Somebody else got to the row first (§7.6). -->
+    <string name="conflict_title">The row has changed</string>
+    <string name="conflict_body">Someone else changed this value since you read it. It now holds: %1$s. Your edit was not applied.</string>
+    <string name="conflict_row_gone">Someone else deleted this row since you read it, so there is nothing left to change.</string>
+    <string name="conflict_overwrite">Overwrite anyway</string>
 </resources>

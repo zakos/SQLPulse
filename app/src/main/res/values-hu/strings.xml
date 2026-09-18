@@ -265,4 +265,10 @@
     <string name="settings_privacy">Adatvédelem</string>
     <string name="settings_block_screenshots">Képernyőkép tiltása</string>
     <string name="settings_block_screenshots_note">Üresen hagyja a képernyőképet és az alkalmazásváltó előnézetét. Kapcsold ki, ha képernyőképet szeretnél küldeni egy hibáról — a képernyőn lévő táblázat valódi adat.</string>
+
+    <!-- Valaki más ért oda előbb a sorhoz (§7.6). -->
+    <string name="conflict_title">A sor megváltozott</string>
+    <string name="conflict_body">Valaki más módosította ezt az értéket, mióta beolvastad. Most ez van benne: %1$s. A te módosításod nem futott le.</string>
+    <string name="conflict_row_gone">Valaki más törölte ezt a sort, mióta beolvastad, így nincs mit módosítani.</string>
+    <string name="conflict_overwrite">Felülírom mégis</string>
 </resources>
