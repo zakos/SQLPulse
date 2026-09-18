@@ -261,4 +261,10 @@
     <string name="query_statement_failed">failed</string>
     <string name="query_statement_rows">%1$d rows</string>
     <string name="query_statement_changed">%1$d changed</string>
+
+    <!-- Tidying and searching the editor's text. -->
+    <string name="query_format">Format</string>
+    <string name="query_find">Find</string>
+    <string name="query_replace">Replace with</string>
+    <string name="query_replace_all">Replace all</string>
 </resources>

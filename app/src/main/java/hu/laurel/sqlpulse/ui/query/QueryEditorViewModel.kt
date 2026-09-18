@@ -18,6 +18,7 @@ import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlFailures
+import hu.laurel.sqlpulse.data.sql.SqlFormatter
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.SqlScript
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -189,6 +190,31 @@ class QueryEditorViewModel @Inject constructor(
         val current = _uiState.value.sql
         val separator = if (current.isEmpty() || current.endsWith(" ")) "" else " "
         setSql(current + separator + text)
+    }
+
+    /**
+     * Lays the editor's text out over several lines.
+     *
+     * The selection is formatted alone when there is one, so one statement of a long script can be
+     * tidied without disturbing the rest.
+     */
+    fun format() {
+        val state = _uiState.value
+        if (state.sql.isBlank()) return
+        if (state.hasSelection) {
+            val start = state.selectionStart.coerceIn(0, state.sql.length)
+            val end = state.selectionEnd.coerceIn(start, state.sql.length)
+            val formatted = SqlFormatter.format(state.sql.substring(start, end))
+            setSql(state.sql.substring(0, start) + formatted + state.sql.substring(end))
+        } else {
+            setSql(SqlScript.split(state.sql).joinToString(";\n\n") { SqlFormatter.format(it.sql) } + ";")
+        }
+    }
+
+    /** Replaces every occurrence of [find] in the editor. Case-insensitive, like SQL itself. */
+    fun replaceAll(find: String, replacement: String) {
+        if (find.isEmpty()) return
+        setSql(_uiState.value.sql.replace(find, replacement, ignoreCase = true))
     }
 
     fun selectPanel(panel: QueryPanel) {

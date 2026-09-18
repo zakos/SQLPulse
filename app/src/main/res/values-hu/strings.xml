@@ -253,4 +253,10 @@
     <string name="query_statement_failed">hiba</string>
     <string name="query_statement_rows">%1$d sor</string>
     <string name="query_statement_changed">%1$d módosult</string>
+
+    <!-- A szerkesztő szövegének rendezése és keresés benne. -->
+    <string name="query_format">Formázás</string>
+    <string name="query_find">Keresés</string>
+    <string name="query_replace">Csere erre</string>
+    <string name="query_replace_all">Mind cseréje</string>
 </resources>

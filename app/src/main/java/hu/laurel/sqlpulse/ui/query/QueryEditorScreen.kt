@@ -17,8 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
@@ -92,6 +96,7 @@ fun QueryEditorScreen(
     val context = LocalContext.current
     var favouriteDialogOpen by remember { mutableStateOf(false) }
     var exportMenuOpen by remember { mutableStateOf(false) }
+    var findOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
@@ -121,6 +126,21 @@ fun QueryEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.format() },
+                        enabled = state.sql.isNotBlank(),
+                    ) {
+                        Icon(
+                            Icons.Default.FormatAlignLeft,
+                            contentDescription = stringResource(R.string.query_format),
+                        )
+                    }
+                    IconButton(onClick = { findOpen = !findOpen }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = stringResource(R.string.query_find),
+                        )
+                    }
                     IconButton(
                         onClick = { favouriteDialogOpen = true },
                         enabled = state.sql.isNotBlank(),
@@ -172,6 +192,13 @@ fun QueryEditorScreen(
                         )
                     }
                 }
+            }
+
+            if (findOpen) {
+                FindReplaceBar(
+                    onReplaceAll = { find, replacement -> viewModel.replaceAll(find, replacement) },
+                    onClose = { findOpen = false },
+                )
             }
 
             // TextFieldValue rather than a plain String: the selection is what decides whether
@@ -593,5 +620,46 @@ private fun statementLabel(index: Int, run: StatementRun): String {
         run.table != null ->
             "$position · " + stringResource(R.string.query_statement_rows, run.table.rowCount)
         else -> position
+    }
+}
+
+/**
+ * Find and replace over the editor's text.
+ *
+ * Replace-all only: stepping through matches would need the editor to scroll and select, and on a
+ * phone the text is short enough that replacing everything and looking at the result is quicker.
+ * The match is case-insensitive, like SQL's own keywords and identifiers.
+ */
+@Composable
+private fun FindReplaceBar(onReplaceAll: (String, String) -> Unit, onClose: () -> Unit) {
+    var find by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        OutlinedTextField(
+            value = find,
+            onValueChange = { find = it },
+            label = { Text(stringResource(R.string.query_find)) },
+            singleLine = true,
+            textStyle = MonoStyles.cell,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = replacement,
+            onValueChange = { replacement = it },
+            label = { Text(stringResource(R.string.query_replace)) },
+            singleLine = true,
+            textStyle = MonoStyles.cell,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = { onReplaceAll(find, replacement) }, enabled = find.isNotEmpty()) {
+            Icon(Icons.Default.Check, contentDescription = stringResource(R.string.query_replace_all))
+        }
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel))
+        }
     }
 }
