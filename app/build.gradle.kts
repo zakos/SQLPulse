@@ -32,7 +32,14 @@ val commitSha = System.getenv("GITHUB_SHA")?.take(7)
  */
 val signingKeystorePath: String? = System.getenv("SIGNING_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 val signingKeystorePassword: String? = System.getenv("SIGNING_KEYSTORE_PASSWORD")
-val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
+    ?.takeIf { it.isNotBlank() }
+
+/**
+ * A PKCS#12 keystore protects its key with the store password, and an unset secret arrives as an
+ * empty string rather than as nothing — hence the blank check, without which the key is opened
+ * with no password at all and the build fails on a padding error.
+ */
+val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() }
     ?: signingKeystorePassword
 
 /**
