@@ -16,6 +16,7 @@ megnézhető.
 | --- | --- |
 | SSH alagút kulcsos belépéssel, gépkulcs rögzítéssel | `ssh/SshTunnel.kt`, `ssh/PinningHostKeyVerifier.kt` |
 | Alagút nélküli, közvetlen kapcsolat (az SSH kapcsolható) | `ui/connections/ConnectionEditorScreen.kt` |
+| SSH belépés kulccsal vagy jelszóval (password és keyboard-interactive) | `ssh/SshAuthMethod.kt`, `ssh/SshTunnel.kt` |
 | TLS négy módban: kikapcsolva, kötelező, CA ellenőrzés, teljes ellenőrzés | `data/sql/SslMode.kt` |
 | Saját CA tanúsítvány importálása és tárolása | `data/connection/CertificateStore.kt` |
 | A kiépült kapcsolat TLS verziója és titkosítója látszik | `data/schema/ServerRepository.kt` |
@@ -28,6 +29,8 @@ megnézhető.
 | Funkció | Hol |
 | --- | --- |
 | Adatbázisok és táblák listája, tábla szerkezete és indexei | `ui/schema/` |
+| Nézetek, eljárások, triggerek, események külön füleken | `data/schema/SchemaRepository.kt` |
+| Tábla motorja, karakterkészlete és mérete | `data/schema/SchemaModels.kt` |
 | Adatbázis váltás menet közben, `USE` paranccsal is | `data/sql/QueryExecutor.kt` |
 | Adatbázis megadása nélküli kapcsolat (több adatbázisra kérdező lekérdezésekhez) | ugyanott |
 | SQL szerkesztő kiemeléssel, előzményekkel, mentett lekérdezésekkel | `ui/query/` |
@@ -46,6 +49,7 @@ megnézhető.
 | Sor szerkesztése, beszúrása, törlése kulcs alapján | `data/sql/RowEditor.kt` |
 | A végrehajtandó SQL megmutatása mentés előtt | `data/sql/RowSqlBuilder.kt` |
 | Export CSV és JSON formátumban | `data/export/` |
+| Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
 ## Ami hiányzik
 
@@ -53,16 +57,10 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.1 — a következő kör
 
-1. **SSH jelszavas belépés és ugrógép.** Ma csak kulcsos belépés van, egyetlen SSH
-   géppel. Sok helyen a belépés jelszavas, és a szerver egy második gépen át érhető el.
-2. **Nézetek, tárolt eljárások, triggerek, események böngészése.** Ma csak táblák
-   látszanak. Ide tartozik a tábla motorja, karakterkészlete és mérete is.
-3. **Hibaüzenetek osztályozása.** Ma a driver saját szövege jelenik meg. Külön kell
-   szólni arról, ha a név nem oldható fel, ha időtúllépés van, ha a TLS vagy az SSH
-   hiúsult meg, ha a belépés rossz, és ha a jogosultság hiányzik — mert a teendő
-   mindegyiknél más.
-4. **Több utasítás egy futtatásban, kijelölés futtatása, és több eredményhalmaz.**
-5. **Keresés és csere a szerkesztőben, SQL formázás.**
+1. **Ugrógép.** A belépés már kulccsal és jelszóval is megy, de csak egyetlen SSH
+   géppel. Sok helyen a szerver egy második gépen át érhető el.
+2. **Több utasítás egy futtatásban, kijelölés futtatása, és több eredményhalmaz.**
+3. **Keresés és csere a szerkesztőben, SQL formázás.**
 
 ### 1.2
 
