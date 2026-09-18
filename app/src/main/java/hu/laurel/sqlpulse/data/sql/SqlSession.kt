@@ -2,12 +2,12 @@ package hu.laurel.sqlpulse.data.sql
 
 import java.io.Closeable
 import java.sql.Connection
-import java.sql.SQLException
 import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import org.mariadb.jdbc.Driver
+import org.mariadb.jdbc.MariaDbConnection
+import org.mariadb.jdbc.UrlParser
 
 data class JdbcConfig(
     /** Loopback for a tunnelled connection, the database's own address for a direct one. */
@@ -112,11 +112,17 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
                 .forEach { (key, value) -> setProperty(key, value) }
         }
         val url = "jdbc:mariadb://${config.host}:${config.port}/${config.database}"
-        // The driver is used directly rather than through DriverManager: its service declaration
-        // in META-INF is not always found on Android, and "No suitable driver found" is a poor
-        // way to learn that. Naming the class leaves nothing to discover.
-        return (DRIVER.connect(url, properties)
-            ?: throw SQLException("the driver did not accept $url")).apply {
+
+        // Neither DriverManager nor the driver's own Driver class can be used here. The 2.7
+        // driver registers itself with DriverManager.registerDriver(Driver, DriverAction), and
+        // java.sql.DriverAction is JDBC 4.2, which Android does not have — merely loading that
+        // class throws NoClassDefFoundError, which is also why the service lookup came back
+        // empty. Its DataSource is out too: it implements javax.sql.XADataSource.
+        //
+        // What is left is what the DataSource itself calls, and that is enough: parse the URL,
+        // open the connection. It is internal API, so the driver version is pinned.
+        val parser = UrlParser.parse(url, properties)
+        return MariaDbConnection.newConnection(parser, null).apply {
             // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
             isReadOnly = config.readOnly
             autoCommit = true
@@ -133,8 +139,6 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
     }
 
     companion object {
-        private val DRIVER = Driver()
-
         /** §4: one pool per connection, at most three JDBC connections. */
         const val MAX_CONNECTIONS = 3
         private const val VALIDATION_TIMEOUT_SECONDS = 2
