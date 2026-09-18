@@ -277,4 +277,6 @@
     <string name="transaction_open">Nyitott tranzakció — semmi nem íródik ki, amíg nem véglegesíted.</string>
     <string name="transaction_commit">Véglegesítés</string>
     <string name="transaction_rollback">Visszavonás</string>
+
+    <string name="cell_json">Formázott JSON</string>
 </resources>

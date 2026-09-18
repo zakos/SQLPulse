@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.grid
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -17,12 +19,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
+import hu.laurel.sqlpulse.data.sql.JsonFormatter
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -59,13 +67,30 @@ fun CellSheet(
             Text(column.label, style = MaterialTheme.typography.titleMedium)
             Text(column.typeName, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
 
+            val raw = value.asText()
+            // Only offered when the text really parses as JSON, so the toggle never promises a
+            // structure the value does not have.
+            val formatted = remember(raw) { JsonFormatter.pretty(raw) }
+            var showFormatted by remember(raw) { mutableStateOf(formatted != null) }
+
+            if (formatted != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(
+                        selected = showFormatted,
+                        onClick = { showFormatted = !showFormatted },
+                        label = { Text(stringResource(R.string.cell_json)) },
+                    )
+                }
+            }
+
             Text(
-                text = value.asText(),
+                text = if (showFormatted && formatted != null) formatted else raw,
                 style = MonoStyles.cell,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 240.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState()),
             )
 
             editBlockedReason?.takeIf { !canEdit }?.let {
@@ -73,7 +98,11 @@ fun CellSheet(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                OutlinedButton(onClick = { onCopy(value.asText()) }, shape = Shapes.button) {
+                // Copies what is on screen: someone reading the formatted version wants that one.
+                OutlinedButton(
+                    onClick = { onCopy(if (showFormatted && formatted != null) formatted else raw) },
+                    shape = Shapes.button,
+                ) {
                     Text(stringResource(R.string.cell_copy))
                 }
                 if (canEdit) {

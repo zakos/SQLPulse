@@ -285,4 +285,6 @@
     <string name="transaction_open">Transaction open — nothing is written until you commit.</string>
     <string name="transaction_commit">Commit</string>
     <string name="transaction_rollback">Roll back</string>
+
+    <string name="cell_json">Formatted JSON</string>
 </resources>
