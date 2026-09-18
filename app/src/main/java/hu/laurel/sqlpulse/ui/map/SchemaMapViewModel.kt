@@ -3,6 +3,8 @@ package hu.laurel.sqlpulse.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import hu.laurel.sqlpulse.data.schema.GraphEdge
+import hu.laurel.sqlpulse.data.schema.LinkGuesser
 import hu.laurel.sqlpulse.data.schema.SchemaGraph
 import hu.laurel.sqlpulse.data.schema.SchemaLayout
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
@@ -20,7 +22,15 @@ data class SchemaMapUiState(
     val selected: String? = null,
     val loading: Boolean = false,
     val error: String? = null,
-)
+    /** True while links read off the column names are being drawn as well. */
+    val showGuesses: Boolean = true,
+    /** How many links the server itself reported, and how many were only guessed at. */
+    val declaredCount: Int = 0,
+    val guessedCount: Int = 0,
+) {
+    /** A schema with no foreign keys at all — old, or built before InnoDB was the default. */
+    val hasNoDeclaredLinks: Boolean get() = declaredCount == 0
+}
 
 /**
  * The map of one database: its tables, and the foreign keys between them.
@@ -51,15 +61,25 @@ class SchemaMapViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val tables = schema.tables(database).filter { it.kind == TableKind.TABLE }
-                val links = schema.links(database)
+                val names = tables.map { it.name }.toSet()
+                declared = schema.links(database)
+                // Only worth asking for the columns where the names are all there is to go on.
+                guessed = if (declared.isEmpty()) {
+                    LinkGuesser.infer(
+                        tables = schema.columnNames(database).filter { it.table in names },
+                        known = declared,
+                    )
+                } else {
+                    emptyList()
+                }
+                rowCounts = tables.associate { it.name to it.approximateRows }
+                tableNames = tables.map { it.name }
                 _uiState.value = _uiState.value.copy(
-                    graph = SchemaLayout.build(
-                        tables = tables.map { it.name },
-                        edges = links,
-                        rows = tables.associate { it.name to it.approximateRows },
-                    ),
+                    declaredCount = declared.size,
+                    guessedCount = guessed.size,
                     loading = false,
                 )
+                rebuild()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(loading = false, error = e.message)
             }
@@ -69,4 +89,21 @@ class SchemaMapViewModel @Inject constructor(
     fun select(table: String?) {
         _uiState.value = _uiState.value.copy(selected = table)
     }
+
+    fun setShowGuesses(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showGuesses = show)
+        rebuild()
+    }
+
+    private fun rebuild() {
+        val edges = declared + if (_uiState.value.showGuesses) guessed else emptyList()
+        _uiState.value = _uiState.value.copy(
+            graph = SchemaLayout.build(tableNames, edges, rowCounts),
+        )
+    }
+
+    private var declared: List<GraphEdge> = emptyList()
+    private var guessed: List<GraphEdge> = emptyList()
+    private var tableNames: List<String> = emptyList()
+    private var rowCounts: Map<String, Long?> = emptyMap()
 }

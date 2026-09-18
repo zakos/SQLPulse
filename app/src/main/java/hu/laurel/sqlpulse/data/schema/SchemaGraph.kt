@@ -8,6 +8,13 @@ data class GraphEdge(
     val from: String,
     val to: String,
     val columns: List<String> = emptyList(),
+    /**
+     * True when no foreign key says this link exists and it was read off the column names
+     * instead. Drawn dashed, and never presented as fact: plenty of older schemas — MyISAM, or
+     * anything built before InnoDB was the default — have no foreign keys at all, and a map of
+     * such a database would otherwise be a wall of unconnected boxes.
+     */
+    val guessed: Boolean = false,
 ) {
     /** A table referencing itself — a parent id, a tree. Drawn, but it cannot rank anything. */
     val isSelfReference: Boolean get() = from == to
@@ -50,8 +57,22 @@ data class SchemaGraph(
  */
 object SchemaLayout {
 
-    /** Tables nothing references are laid out below the graph, this many to a row. */
-    const val ISOLATED_PER_ROW = 4
+    /** Tables nothing references are laid out below the graph, in a squarish block. */
+    const val MIN_ISOLATED_COLUMNS = 3
+    const val MAX_ISOLATED_COLUMNS = 8
+
+    /**
+     * How wide the block of unconnected tables should be.
+     *
+     * Roughly square, so a schema of a hundred unlinked tables is a block that fits the screen
+     * rather than a column twenty-five rows tall that has to be zoomed out until the names are
+     * unreadable — which is exactly what a real, older schema looks like.
+     */
+    fun isolatedColumns(count: Int): Int {
+        if (count <= 0) return MIN_ISOLATED_COLUMNS
+        val square = Math.ceil(Math.sqrt(count.toDouble())).toInt()
+        return square.coerceIn(MIN_ISOLATED_COLUMNS, MAX_ISOLATED_COLUMNS)
+    }
 
     /**
      * @param tables every table in the database, in any order.
@@ -84,11 +105,12 @@ object SchemaLayout {
         // The rest go underneath in a plain grid: they have no relationship to draw, but leaving
         // them off would make the map look like half the schema does not exist.
         val firstFreeLevel = (nodes.maxOfOrNull { it.level } ?: -1) + 1
+        val perRow = isolatedColumns(isolated.size)
         isolated.forEachIndexed { index, table ->
             nodes += GraphNode(
                 table = table,
-                level = firstFreeLevel + index / ISOLATED_PER_ROW,
-                order = index % ISOLATED_PER_ROW,
+                level = firstFreeLevel + index / perRow,
+                order = index % perRow,
                 rows = rows[table],
                 connected = false,
             )

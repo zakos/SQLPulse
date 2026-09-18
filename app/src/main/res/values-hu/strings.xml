@@ -378,4 +378,7 @@
     <string name="map_parents">Hivatkozik erre: %1$s</string>
     <string name="map_children">Erre hivatkozik: %1$s</string>
     <string name="map_open_table">Tábla megnyitása</string>
+    <string name="map_no_foreign_keys">Ebben az adatbázisban nincs idegen kulcs. A %1$d szaggatott kapcsolat az oszlopnevekből olvasható ki — valószínű, nem biztos.</string>
+    <string name="map_some_guessed">%1$d kapcsolat idegen kulcsból, %2$d szaggatott az oszlopnevekből kitalálva.</string>
+    <string name="map_guessed_link">oszlopnévből kitalálva</string>
 </resources>

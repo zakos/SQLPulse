@@ -386,4 +386,7 @@
     <string name="map_parents">Points at: %1$s</string>
     <string name="map_children">Pointed at by: %1$s</string>
     <string name="map_open_table">Open table</string>
+    <string name="map_no_foreign_keys">This database declares no foreign keys. The %1$d dashed links are read off the column names — likely, not certain.</string>
+    <string name="map_some_guessed">%1$d links from foreign keys, %2$d dashed ones guessed from column names.</string>
+    <string name="map_guessed_link">guessed from the column name</string>
 </resources>

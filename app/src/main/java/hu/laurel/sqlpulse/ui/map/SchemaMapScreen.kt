@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -39,6 +40,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
@@ -48,8 +50,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -127,82 +131,132 @@ fun SchemaMapScreen(
                 state.error != null -> Message(state.error.orEmpty(), semantic.danger)
                 state.database == null -> Message(stringResource(R.string.map_no_session), semantic.textSecondary)
                 state.graph.isEmpty -> Message(stringResource(R.string.map_empty), semantic.textSecondary)
-                else -> BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val density = LocalDensity.current
-                    val widthPx = with(density) { maxWidth.toPx() }
-                    val heightPx = with(density) { maxHeight.toPx() }
-
-                    // Framing happens in composition, where the size is known, rather than while
-                    // drawing: a draw pass that writes state redraws itself for ever.
-                    LaunchedEffect(state.graph, widthPx, heightPx, fitRequest) {
-                        val bounds = state.graph.bounds()
-                        scale = min(
-                            widthPx / (bounds.width + NODE_WIDTH),
-                            heightPx / (bounds.height + NODE_HEIGHT),
-                        ).coerceIn(MIN_SCALE, 1f)
-                        offset = Offset(
-                            (widthPx - bounds.width * scale) / 2f - bounds.left * scale,
-                            with(density) { Spacing.l.toPx() },
+                else -> Column(modifier = Modifier.fillMaxSize()) {
+                    // Said out loud rather than left to the dashes: on a schema with no foreign
+                    // keys every line on the map is a guess, and that has to be impossible to
+                    // miss before anyone believes the picture.
+                    if (state.guessedCount > 0 || state.hasNoDeclaredLinks) {
+                        GuessBanner(
+                            declared = state.declaredCount,
+                            guessed = state.guessedCount,
+                            showGuesses = state.showGuesses,
+                            onToggle = viewModel::setShowGuesses,
                         )
                     }
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val density = LocalDensity.current
+                        val widthPx = with(density) { maxWidth.toPx() }
+                        val heightPx = with(density) { maxHeight.toPx() }
 
-                    val nodeColour = MaterialTheme.colorScheme.surface
-                    val linkColour = semantic.textSecondary
-                    val selectedColour = MaterialTheme.colorScheme.primary
-                    val textColour = MaterialTheme.colorScheme.onSurface
-                    val looseColour = semantic.hairline
+                        // Framing happens in composition, where the size is known, rather than while
+                        // drawing: a draw pass that writes state redraws itself for ever.
+                        LaunchedEffect(state.graph, widthPx, heightPx, fitRequest) {
+                            val bounds = state.graph.bounds()
+                            scale = min(
+                                widthPx / (bounds.width + NODE_WIDTH),
+                                heightPx / (bounds.height + NODE_HEIGHT),
+                            ).coerceIn(MIN_SCALE, 1f)
+                            offset = Offset(
+                                (widthPx - bounds.width * scale) / 2f - bounds.left * scale,
+                                with(density) { Spacing.l.toPx() },
+                            )
+                        }
 
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(state.graph) {
-                                detectTransformGestures { centroid, pan, zoom, _ ->
-                                    val next = (scale * zoom).coerceIn(MIN_SCALE, MAX_SCALE)
-                                    // Zoom towards the fingers rather than the corner, so what is
-                                    // being looked at stays under them.
-                                    offset = (offset - centroid) * (next / scale) + centroid + pan
-                                    scale = next
-                                }
-                            }
-                            .pointerInput(state.graph) {
-                                detectTapGestures { tap ->
-                                    val point = (tap - offset) / scale
-                                    val hit = state.graph.nodes.lastOrNull { node ->
-                                        node.bounds().contains(point)
+                        val nodeColour = MaterialTheme.colorScheme.surface
+                        val linkColour = semantic.textSecondary
+                        val selectedColour = MaterialTheme.colorScheme.primary
+                        val textColour = MaterialTheme.colorScheme.onSurface
+                        val looseColour = semantic.hairline
+
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(state.graph) {
+                                    detectTransformGestures { centroid, pan, zoom, _ ->
+                                        val next = (scale * zoom).coerceIn(MIN_SCALE, MAX_SCALE)
+                                        // Zoom towards the fingers rather than the corner, so what is
+                                        // being looked at stays under them.
+                                        offset = (offset - centroid) * (next / scale) + centroid + pan
+                                        scale = next
                                     }
-                                    viewModel.select(hit?.table)
                                 }
-                            },
-                    ) {
-                        translate(left = offset.x, top = offset.y) {
-                            scale(scale) {
-                                drawGraph(
-                                    graph = state.graph,
-                                    selected = state.selected,
-                                    measurer = measurer,
-                                    nodeColour = nodeColour,
-                                    looseColour = looseColour,
-                                    linkColour = linkColour,
-                                    selectedColour = selectedColour,
-                                    textColour = textColour,
-                                )
+                                .pointerInput(state.graph) {
+                                    detectTapGestures { tap ->
+                                        val point = (tap - offset) / scale
+                                        val hit = state.graph.nodes.lastOrNull { node ->
+                                            node.bounds().contains(point)
+                                        }
+                                        viewModel.select(hit?.table)
+                                    }
+                                },
+                        ) {
+                            translate(left = offset.x, top = offset.y) {
+                                scale(scale) {
+                                    drawGraph(
+                                        graph = state.graph,
+                                        selected = state.selected,
+                                        measurer = measurer,
+                                        nodeColour = nodeColour,
+                                        looseColour = looseColour,
+                                        linkColour = linkColour,
+                                        selectedColour = selectedColour,
+                                        textColour = textColour,
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    state.selected?.let { table ->
-                        SelectedTable(
-                            table = table,
-                            graph = state.graph,
-                            onOpen = { onOpenTable(state.database.orEmpty(), table) },
-                            onDismiss = { viewModel.select(null) },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(Spacing.l),
-                        )
+                        state.selected?.let { table ->
+                            SelectedTable(
+                                table = table,
+                                graph = state.graph,
+                                onOpen = { onOpenTable(state.database.orEmpty(), table) },
+                                onDismiss = { viewModel.select(null) },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(Spacing.l),
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * What the dashed lines are, and the switch that turns them off.
+ *
+ * On a schema that declares no foreign keys the map would otherwise be a wall of boxes; the lines
+ * come from the column names instead, and this is where that is admitted.
+ */
+@Composable
+private fun GuessBanner(
+    declared: Int,
+    guessed: Int,
+    showGuesses: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        Text(
+            text = if (declared == 0) {
+                stringResource(R.string.map_no_foreign_keys, guessed)
+            } else {
+                stringResource(R.string.map_some_guessed, declared, guessed)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        if (guessed > 0) {
+            Switch(checked = showGuesses, onCheckedChange = onToggle)
         }
     }
 }
@@ -222,8 +276,12 @@ private fun SelectedTable(
     modifier: Modifier = Modifier,
 ) {
     val semantic = LocalSemanticColors.current
-    val parents = graph.edges.filter { it.from == table && !it.isSelfReference }.map { it.to }
-    val children = graph.edges.filter { it.to == table && !it.isSelfReference }.map { it.from }
+    val parentEdges = graph.edges.filter { it.from == table && !it.isSelfReference }
+    val childEdges = graph.edges.filter { it.to == table && !it.isSelfReference }
+    // A guessed link is marked in the list too, not only by the dashes on the map.
+    val parents = parentEdges.map { if (it.guessed) "${it.to}*" else it.to }
+    val children = childEdges.map { if (it.guessed) "${it.from}*" else it.from }
+    val anyGuessed = (parentEdges + childEdges).any { it.guessed }
 
     HairlineCard(modifier = modifier) {
         Column(
@@ -246,6 +304,13 @@ private fun SelectedTable(
             if (children.isNotEmpty()) {
                 Text(
                     stringResource(R.string.map_children, children.sorted().joinToString(", ")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
+            if (anyGuessed) {
+                Text(
+                    "* " + stringResource(R.string.map_guessed_link),
                     style = MaterialTheme.typography.bodySmall,
                     color = semantic.textSecondary,
                 )
@@ -290,10 +355,18 @@ private fun DrawScope.drawGraph(
         val touched = selected != null && (edge.from == selected || edge.to == selected)
         val colour = if (touched) selectedColour else linkColour
         val width = if (touched) 2.5f else 1.5f
-        if (edge.isSelfReference) {
-            drawSelfLink(from, colour, width)
+        // A guess is drawn dashed and fainter. It has to be tellable from a link the server
+        // actually declared without reading anything.
+        val effect = if (edge.guessed) {
+            PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
         } else {
-            drawLink(from, to, colour, width)
+            null
+        }
+        val shade = if (edge.guessed && !touched) colour.copy(alpha = 0.55f) else colour
+        if (edge.isSelfReference) {
+            drawSelfLink(from, shade, width, effect)
+        } else {
+            drawLink(from, to, shade, width, effect)
         }
     }
 
@@ -313,16 +386,20 @@ private fun DrawScope.drawGraph(
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(CORNER, CORNER),
             style = Stroke(width = if (isSelected) 3f else 1.5f),
         )
+        // Measured inside the box, with an ellipsis: a long table name drawn at its natural
+        // width runs over its neighbours, which is what turns a dense schema into a smear.
         val label = measurer.measure(
             text = node.table,
             style = TextStyle(fontSize = 12.sp, color = textColour),
             maxLines = 1,
             softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            constraints = Constraints(maxWidth = (NODE_WIDTH - 2 * LABEL_PADDING).toInt()),
         )
         drawText(
             textLayoutResult = label,
             topLeft = Offset(
-                rect.left + max(4f, (NODE_WIDTH - label.size.width) / 2f),
+                rect.left + max(LABEL_PADDING, (NODE_WIDTH - label.size.width) / 2f),
                 rect.top + (NODE_HEIGHT - label.size.height) / 2f,
             ),
         )
@@ -330,7 +407,13 @@ private fun DrawScope.drawGraph(
 }
 
 /** Child bottom-up to parent, with an arrowhead where it arrives. */
-private fun DrawScope.drawLink(from: GraphNode, to: GraphNode, colour: Color, width: Float) {
+private fun DrawScope.drawLink(
+    from: GraphNode,
+    to: GraphNode,
+    colour: Color,
+    width: Float,
+    effect: PathEffect?,
+) {
     val start = Offset(from.bounds().center.x, from.bounds().top)
     val end = Offset(to.bounds().center.x, to.bounds().bottom)
     val midY = (start.y + end.y) / 2f
@@ -340,12 +423,17 @@ private fun DrawScope.drawLink(from: GraphNode, to: GraphNode, colour: Color, wi
         // straight lines turn into a fan.
         cubicTo(start.x, midY, end.x, midY, end.x, end.y)
     }
-    drawPath(path, color = colour, style = Stroke(width = width))
+    drawPath(path, color = colour, style = Stroke(width = width, pathEffect = effect))
     drawArrowHead(end, colour)
 }
 
 /** A loop out of the top of the box and back into it: a table referencing itself. */
-private fun DrawScope.drawSelfLink(node: GraphNode, colour: Color, width: Float) {
+private fun DrawScope.drawSelfLink(
+    node: GraphNode,
+    colour: Color,
+    width: Float,
+    effect: PathEffect?,
+) {
     val rect = node.bounds()
     val path = Path().apply {
         moveTo(rect.right - 12f, rect.top)
@@ -355,7 +443,7 @@ private fun DrawScope.drawSelfLink(node: GraphNode, colour: Color, width: Float)
             rect.right - 36f, rect.top,
         )
     }
-    drawPath(path, color = colour, style = Stroke(width = width))
+    drawPath(path, color = colour, style = Stroke(width = width, pathEffect = effect))
     drawArrowHead(Offset(rect.right - 36f, rect.top), colour)
 }
 
@@ -389,11 +477,12 @@ private fun SchemaGraph.bounds(): Rect {
     )
 }
 
-private const val NODE_WIDTH = 150f
+private const val NODE_WIDTH = 190f
 private const val NODE_HEIGHT = 44f
-private const val GAP_X = 28f
+private const val GAP_X = 24f
 private const val GAP_Y = 90f
 private const val CORNER = 10f
 private const val ARROW = 6f
+private const val LABEL_PADDING = 8f
 private const val MIN_SCALE = 0.2f
 private const val MAX_SCALE = 4f

@@ -370,6 +370,40 @@ class SchemaRepository @Inject constructor(
             }
     }
 
+    /**
+     * Every column of every table in one database, with which ones are primary keys.
+     *
+     * One statement for the schema, and only the three columns a guessed link needs — this runs
+     * for the map on schemas that have no foreign keys, where the names are all there is to go on.
+     */
+    suspend fun columnNames(database: String): List<TableColumns> =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(
+                """
+                SELECT TABLE_NAME, COLUMN_NAME, COLUMN_KEY
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = ?
+                ORDER BY TABLE_NAME, ORDINAL_POSITION
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, database)
+                statement.executeQuery().collect { rows ->
+                    Triple(
+                        rows.getString("TABLE_NAME"),
+                        rows.getString("COLUMN_NAME"),
+                        rows.getString("COLUMN_KEY").orEmpty(),
+                    )
+                }
+            }.groupBy { it.first }
+                .map { (table, columns) ->
+                    TableColumns(
+                        table = table,
+                        columns = columns.map { it.second },
+                        primaryKey = columns.filter { it.third == "PRI" }.map { it.second },
+                    )
+                }
+        }
+
     private suspend fun foreignKeys(database: String, table: String): List<ForeignKey> =
         sessions.withConnection { connection ->
             connection.prepareStatement(
