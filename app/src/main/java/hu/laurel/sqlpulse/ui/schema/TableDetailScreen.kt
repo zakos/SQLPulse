@@ -1,8 +1,5 @@
 package hu.laurel.sqlpulse.ui.schema
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +56,7 @@ import hu.laurel.sqlpulse.data.schema.SchemaIndex
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
+import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
@@ -475,7 +473,3 @@ private fun ForeignKeyRow(foreignKey: ForeignKey, onClick: () -> Unit) {
     }
 }
 
-private fun Context.copyToClipboard(text: String) {
-    val manager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    manager.setPrimaryClip(ClipData.newPlainText("sqlpulse", text))
-}

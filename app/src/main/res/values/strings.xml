@@ -233,4 +233,18 @@
     <string name="sql_error_duplicate_key">A row with this key already exists.</string>
     <string name="sql_error_server_busy">The server is refusing the request: it is read-only, or it has no free connections.</string>
     <string name="sql_error_code">MySQL error %1$d</string>
+
+    <!-- The kinds of object the schema browser lists. -->
+    <string name="schema_tables">Tables</string>
+    <string name="schema_views">Views</string>
+    <string name="schema_routines">Routines</string>
+    <string name="schema_triggers">Triggers</string>
+    <string name="schema_events">Events</string>
+    <string name="schema_procedure">Procedure</string>
+    <string name="schema_returns">Returns %1$s</string>
+    <string name="schema_routine_hidden">The body of this routine is not visible to this user.</string>
+    <string name="schema_no_views_title">No views</string>
+    <string name="schema_no_routines_title">No procedures or functions</string>
+    <string name="schema_no_triggers_title">No triggers</string>
+    <string name="schema_no_events_title">No scheduled events</string>
 </resources>

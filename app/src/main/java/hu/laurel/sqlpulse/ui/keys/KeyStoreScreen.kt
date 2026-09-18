@@ -52,6 +52,7 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -361,11 +362,6 @@ private fun PublicKeyDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
-}
-
-private fun Context.copyToClipboard(text: String) {
-    val manager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    manager.setPrimaryClip(ClipData.newPlainText("sqlpulse", text))
 }
 
 /** Clipboard hygiene (§6): a pasted private key is wiped from the clipboard immediately. */

@@ -225,4 +225,18 @@
     <string name="sql_error_duplicate_key">Ilyen kulccsal már van sor.</string>
     <string name="sql_error_server_busy">A kiszolgáló elutasítja a kérést: csak olvasható, vagy elfogytak a szabad kapcsolatai.</string>
     <string name="sql_error_code">MySQL hiba: %1$d</string>
+
+    <!-- Milyen objektumokat sorol fel a sémaböngésző. -->
+    <string name="schema_tables">Táblák</string>
+    <string name="schema_views">Nézetek</string>
+    <string name="schema_routines">Eljárások</string>
+    <string name="schema_triggers">Triggerek</string>
+    <string name="schema_events">Események</string>
+    <string name="schema_procedure">Eljárás</string>
+    <string name="schema_returns">Visszatérés: %1$s</string>
+    <string name="schema_routine_hidden">Ennek az eljárásnak a törzsét ez a felhasználó nem láthatja.</string>
+    <string name="schema_no_views_title">Nincs nézet</string>
+    <string name="schema_no_routines_title">Nincs eljárás vagy függvény</string>
+    <string name="schema_no_triggers_title">Nincs trigger</string>
+    <string name="schema_no_events_title">Nincs ütemezett esemény</string>
 </resources>

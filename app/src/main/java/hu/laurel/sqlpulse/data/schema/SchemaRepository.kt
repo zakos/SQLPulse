@@ -42,7 +42,8 @@ class SchemaRepository @Inject constructor(
         val tables = sessions.withConnection { connection ->
             connection.prepareStatement(
                 """
-                SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT
+                SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT, ENGINE,
+                       TABLE_COLLATION, DATA_LENGTH, INDEX_LENGTH
                 FROM information_schema.TABLES
                 WHERE TABLE_SCHEMA = ?
                 ORDER BY TABLE_NAME
@@ -64,6 +65,10 @@ class SchemaRepository @Inject constructor(
                                     approximateRows = rows.getLong("TABLE_ROWS")
                                         .takeUnless { rows.wasNull() },
                                     comment = rows.getString("TABLE_COMMENT")?.takeIf { it.isNotBlank() },
+                                    engine = rows.getString("ENGINE"),
+                                    collation = rows.getString("TABLE_COLLATION"),
+                                    dataBytes = rows.getLong("DATA_LENGTH").takeUnless { rows.wasNull() },
+                                    indexBytes = rows.getLong("INDEX_LENGTH").takeUnless { rows.wasNull() },
                                 ),
                             )
                         }
@@ -143,6 +148,102 @@ class SchemaRepository @Inject constructor(
             connection.prepareStatement(sql).use { statement ->
                 TableQuery.whereParameter(filter)?.let { statement.setString(1, it) }
                 statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else 0L }
+            }
+        }
+
+    /**
+     * Stored procedures and functions (§7.3).
+     *
+     * `information_schema.ROUTINES` only shows what the user may see, so an empty list can mean
+     * "none defined" or "not visible" — the screen says as much rather than guessing.
+     */
+    suspend fun routines(database: String): List<SchemaRoutine> = sessions.withConnection { connection ->
+        connection.prepareStatement(
+            """
+            SELECT ROUTINE_NAME, ROUTINE_TYPE, DTD_IDENTIFIER, ROUTINE_COMMENT
+            FROM information_schema.ROUTINES
+            WHERE ROUTINE_SCHEMA = ?
+            ORDER BY ROUTINE_TYPE, ROUTINE_NAME
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, database)
+            statement.executeQuery().collect { rows ->
+                val kind = if (rows.getString("ROUTINE_TYPE") == "FUNCTION") {
+                    RoutineKind.FUNCTION
+                } else {
+                    RoutineKind.PROCEDURE
+                }
+                SchemaRoutine(
+                    name = rows.getString("ROUTINE_NAME"),
+                    kind = kind,
+                    returns = rows.getString("DTD_IDENTIFIER")?.takeIf { kind == RoutineKind.FUNCTION },
+                    comment = rows.getString("ROUTINE_COMMENT")?.takeIf { it.isNotBlank() },
+                )
+            }
+        }
+    }
+
+    suspend fun triggers(database: String): List<SchemaTrigger> = sessions.withConnection { connection ->
+        connection.prepareStatement(
+            """
+            SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, ACTION_TIMING
+            FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA = ?
+            ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, database)
+            statement.executeQuery().collect { rows ->
+                SchemaTrigger(
+                    name = rows.getString("TRIGGER_NAME"),
+                    table = rows.getString("EVENT_OBJECT_TABLE"),
+                    event = rows.getString("EVENT_MANIPULATION"),
+                    timing = rows.getString("ACTION_TIMING"),
+                )
+            }
+        }
+    }
+
+    /**
+     * Scheduled events. A server with the event scheduler switched off still lists them, which is
+     * worth seeing: an event that never runs looks exactly like one that does.
+     */
+    suspend fun events(database: String): List<SchemaEvent> = sessions.withConnection { connection ->
+        connection.prepareStatement(
+            """
+            SELECT EVENT_NAME, STATUS, INTERVAL_VALUE, INTERVAL_FIELD, EXECUTE_AT
+            FROM information_schema.EVENTS
+            WHERE EVENT_SCHEMA = ?
+            ORDER BY EVENT_NAME
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, database)
+            statement.executeQuery().collect { rows ->
+                val interval = rows.getString("INTERVAL_VALUE")
+                val field = rows.getString("INTERVAL_FIELD")
+                SchemaEvent(
+                    name = rows.getString("EVENT_NAME"),
+                    status = rows.getString("STATUS"),
+                    schedule = when {
+                        interval != null && field != null -> "$interval $field"
+                        else -> rows.getString("EXECUTE_AT")
+                    },
+                )
+            }
+        }
+    }
+
+    /** `SHOW CREATE PROCEDURE` / `FUNCTION` for the routine sheet. */
+    suspend fun routineDdl(database: String, routine: SchemaRoutine): String =
+        sessions.withConnection { connection ->
+            val keyword = if (routine.kind == RoutineKind.FUNCTION) "FUNCTION" else "PROCEDURE"
+            val sql = "SHOW CREATE $keyword ${quoteIdentifier(database)}.${quoteIdentifier(routine.name)}"
+            connection.createStatement().use { statement ->
+                statement.executeQuery(sql).use { rows ->
+                    // Column 3 is "Create Procedure" / "Create Function"; it is NULL without the
+                    // privilege to see the body, and the screen shows that as an empty definition.
+                    if (rows.next()) rows.getString(3).orEmpty() else ""
+                }
             }
         }
 
