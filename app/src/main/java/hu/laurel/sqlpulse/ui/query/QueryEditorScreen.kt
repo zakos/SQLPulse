@@ -180,8 +180,9 @@ fun QueryEditorScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // §7.3 lets you browse any database, so the editor has to be able to follow it.
-            if (state.databases.isNotEmpty()) {
+            // §7.3 lets you browse any database, so the editor has to be able to follow it. The
+            // chips belong to writing a query, so they fold away with the editor.
+            if (state.databases.isNotEmpty() && !state.editorCollapsed) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s),
@@ -218,7 +219,13 @@ fun QueryEditorScreen(
             }
 
             if (state.editorCollapsed) {
-                CollapsedEditor(sql = state.sql, onExpand = viewModel::toggleEditor)
+                CollapsedEditor(
+                    sql = state.sql,
+                    running = state.running,
+                    onRun = { viewModel.run() },
+                    onCancel = viewModel::cancel,
+                    onExpand = viewModel::toggleEditor,
+                )
             } else {
                 OutlinedTextField(
                     value = field,
@@ -235,7 +242,7 @@ fun QueryEditorScreen(
                     visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 96.dp, max = 220.dp)
+                        .heightIn(max = 160.dp)
                         .padding(horizontal = Spacing.l, vertical = Spacing.s),
                 )
             }
@@ -270,69 +277,73 @@ fun QueryEditorScreen(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
-            ) {
-                if (state.running) {
-                    Button(onClick = viewModel::cancel, shape = Shapes.button) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
-                        Text(
-                            stringResource(R.string.query_cancel),
-                            modifier = Modifier.padding(start = Spacing.s),
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = { viewModel.run() },
-                        enabled = state.sql.isNotBlank() && state.connectionName != null,
-                        shape = Shapes.button,
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Text(
-                            // The label says what pressing it will actually do.
-                            stringResource(
-                                when {
-                                    state.hasSelection -> R.string.query_run_selection
-                                    state.isScript -> R.string.query_run_all
-                                    else -> R.string.query_run
-                                },
-                            ),
-                            modifier = Modifier.padding(start = Spacing.s),
-                        )
-                    }
-                    if (state.isScript && !state.hasSelection) {
-                        OutlinedButton(
-                            onClick = { viewModel.runCurrent() },
-                            enabled = state.connectionName != null,
+            if (!state.editorCollapsed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                ) {
+                    if (state.running) {
+                        Button(onClick = viewModel::cancel, shape = Shapes.button) {
+                            Icon(Icons.Default.Stop, contentDescription = null)
+                            Text(
+                                stringResource(R.string.query_cancel),
+                                modifier = Modifier.padding(start = Spacing.s),
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = { viewModel.run() },
+                            enabled = state.sql.isNotBlank() && state.connectionName != null,
                             shape = Shapes.button,
-                        ) { Text(stringResource(R.string.query_run_current)) }
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Text(
+                                // The label says what pressing it will actually do.
+                                stringResource(
+                                    when {
+                                        state.hasSelection -> R.string.query_run_selection
+                                        state.isScript -> R.string.query_run_all
+                                        else -> R.string.query_run
+                                    },
+                                ),
+                                modifier = Modifier.padding(start = Spacing.s),
+                            )
+                        }
+                        if (state.isScript && !state.hasSelection) {
+                            OutlinedButton(
+                                onClick = { viewModel.runCurrent() },
+                                enabled = state.connectionName != null,
+                                shape = Shapes.button,
+                            ) { Text(stringResource(R.string.query_run_current)) }
+                        }
+                        OutlinedButton(
+                            onClick = viewModel::explain,
+                            enabled = state.sql.isNotBlank() && state.connectionName != null,
+                            shape = Shapes.button,
+                        ) { Text(stringResource(R.string.query_explain)) }
                     }
-                    OutlinedButton(
-                        onClick = viewModel::explain,
-                        enabled = state.sql.isNotBlank() && state.connectionName != null,
-                        shape = Shapes.button,
-                    ) { Text(stringResource(R.string.query_explain)) }
-                }
-                Text(
-                    text = stringResource(R.string.query_row_limit, state.rowLimit),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
-                if (state.readOnly) {
                     Text(
-                        text = stringResource(R.string.db_read_only),
+                        text = stringResource(R.string.query_row_limit, state.rowLimit),
                         style = MaterialTheme.typography.bodySmall,
                         color = semantic.textSecondary,
                     )
+                    if (state.readOnly) {
+                        Text(
+                            text = stringResource(R.string.db_read_only),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = semantic.textSecondary,
+                        )
                 }
+            }
             }
 
             if (state.running) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
             SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.fillMaxWidth().padding(Spacing.l),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.l, vertical = Spacing.s),
             ) {
                 QueryPanel.entries.forEachIndexed { index, panel ->
                     SegmentedButton(
@@ -382,20 +393,24 @@ fun QueryEditorScreen(
                 ErrorBlock(message = message, detail = state.errorDetail)
             }
 
-            when {
-                state.connectionName == null -> NoSessionState(onBack)
-                state.panel == QueryPanel.HISTORY -> HistoryPanel(history, viewModel::load)
-                state.panel == QueryPanel.FAVOURITES -> FavouritesPanel(
-                    favourites = favourites,
-                    onLoad = viewModel::load,
-                    onDelete = viewModel::deleteFavourite,
-                )
+            // weight(1f), so the result gets whatever is left rather than whatever happens to be
+            // below the last control — in landscape that was nothing at all.
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                when {
+                    state.connectionName == null -> NoSessionState(onBack)
+                    state.panel == QueryPanel.HISTORY -> HistoryPanel(history, viewModel::load)
+                    state.panel == QueryPanel.FAVOURITES -> FavouritesPanel(
+                        favourites = favourites,
+                        onLoad = viewModel::load,
+                        onDelete = viewModel::deleteFavourite,
+                    )
 
-                else -> ResultPanel(
-                    state = state,
-                    onCellSelected = { selectedCell = it },
-                    onSort = viewModel::sortResult,
-                )
+                    else -> ResultPanel(
+                        state = state,
+                        onCellSelected = { selectedCell = it },
+                        onSort = viewModel::sortResult,
+                    )
+                }
             }
         }
     }
@@ -470,14 +485,21 @@ private fun ResultPanel(
         result == null -> Placeholder(R.string.query_no_result_yet)
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
+            // One line, not two: the note about the added LIMIT belongs with the row count.
             Text(
-                text = stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
+                text = listOfNotNull(
+                    stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
+                    stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = LocalSemanticColors.current.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = Spacing.l),
             )
             ResultGrid(
                 table = result,
+                showLimitNote = false,
                 modifier = Modifier.fillMaxSize(),
                 onCellClick = { onCellSelected(it) },
                 sort = state.resultSort,
@@ -682,19 +704,27 @@ private fun FindReplaceBar(onReplaceAll: (String, String) -> Unit, onClose: () -
 }
 
 /**
- * The editor while a result is being read: one line of the query, and a way back to it.
+ * The editor while a result is being read: one line of the query, and the two things still worth
+ * doing to it — run it again, or open it to change it.
  *
- * The whole row opens the editor, not just the arrow — after a query has run, the first thing
- * anyone does with the text is change it.
+ * Everything else (the database chips, the key row, the completion chips, EXPLAIN) belongs to
+ * writing a query, and comes back with the editor. This strip is one row tall, because the rows
+ * it saves are rows of the result.
  */
 @Composable
-private fun CollapsedEditor(sql: String, onExpand: () -> Unit) {
+private fun CollapsedEditor(
+    sql: String,
+    running: Boolean,
+    onRun: () -> Unit,
+    onCancel: () -> Unit,
+    onExpand: () -> Unit,
+) {
     val semantic = LocalSemanticColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onExpand)
-            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+            .padding(start = Spacing.l, end = Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -705,10 +735,20 @@ private fun CollapsedEditor(sql: String, onExpand: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Icon(
-            Icons.Default.ExpandMore,
-            contentDescription = stringResource(R.string.query_edit),
-            tint = semantic.textSecondary,
-        )
+        IconButton(onClick = if (running) onCancel else onRun) {
+            Icon(
+                imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = stringResource(
+                    if (running) R.string.query_cancel else R.string.query_run,
+                ),
+            )
+        }
+        IconButton(onClick = onExpand) {
+            Icon(
+                Icons.Default.ExpandMore,
+                contentDescription = stringResource(R.string.query_edit),
+                tint = semantic.textSecondary,
+            )
+        }
     }
 }

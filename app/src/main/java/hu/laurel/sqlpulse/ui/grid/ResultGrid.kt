@@ -86,6 +86,8 @@ fun ResultGrid(
     sort: ColumnSort? = null,
     /** Called with a column label when its sort icon is tapped. Null hides the icons. */
     onSort: ((String) -> Unit)? = null,
+    /** False where the caller already says so in its own summary line. */
+    showLimitNote: Boolean = true,
 ) {
     val horizontal = rememberScrollState()
     val listState = rememberLazyListState()
@@ -110,7 +112,7 @@ fun ResultGrid(
     }
 
     Column(modifier = modifier) {
-        if (table.limitAdded) {
+        if (table.limitAdded && showLimitNote) {
             Text(
                 text = stringResource(R.string.grid_limit_added),
                 style = MaterialTheme.typography.bodySmall,
