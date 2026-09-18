@@ -65,6 +65,15 @@ megnézhető.
 | EXPLAIN: mi szúr szemet a tervben | `data/sql/ExplainAdvice.kt` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
+### Pulzus — élő kiszolgálófigyelés
+
+| Funkció | Hol |
+| --- | --- |
+| Élő mérőóra: lekérdezés/mp, futó szálak, kapcsolatok, sorzár-várakozás, memóriából olvasás, lassú lekérdezés, kimenő forgalom, replikációs késés | `ui/pulse/PulseScreen.kt` |
+| Mintavétel 1, 5 vagy 15 másodpercenként, csak amíg a képernyő elöl van | `ui/pulse/PulseViewModel.kt` |
+| Számlálókból ráta két mintából; újraindult kiszolgáló nem ad hamis tüskét | `data/schema/ServerMetrics.kt` |
+| Küszöbök szerinti színezés, és „—" ott, ahol nem volt mit mérni | ugyanott |
+
 ### Táblagép és billentyűzet
 
 | Funkció | Hol |
@@ -84,6 +93,15 @@ mert a sorszerkesztés lapjai keskeny hasábban olvashatatlanok lennének.
 És ami minden tételre igaz: a „kész" itt fordítást és egységteszteket jelent. Éles
 MySQL kiszolgálón a kapcsolat, a régi driver ága és az SSH ág van kipróbálva, a többi
 képernyő nincs minden kiszolgálóverzióval végigmérve.
+
+## Ami ezután jön
+
+1. **Séma-térkép.** Az idegen kulcsokból rajzolt, nagyítható ER-vászon: egy ismeretlen
+   adatbázis szerkezete ránézésre.
+2. **Sorok bejárása kapcsolatokon át.** Koppintás egy idegen kulcsra, és ugrás a szülő
+   sorra — JOIN gépelése nélkül.
+3. **Időgép.** Egy lekérdezés eredményének pillanatfelvétele, majd összehasonlítás egy
+   későbbi futással: mi jött, mi tűnt el, mi változott.
 
 ## Amit szándékosan nem tartalmaz
 

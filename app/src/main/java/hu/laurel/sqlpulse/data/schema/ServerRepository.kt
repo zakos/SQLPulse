@@ -174,6 +174,53 @@ class ServerRepository @Inject constructor(
         }
     }
 
+    /**
+     * One reading for the live screen: the watched status variables, and the replica's lag.
+     *
+     * Two statements rather than one `SHOW GLOBAL STATUS` of several hundred rows — this runs
+     * every few seconds, over a tunnel, on a phone's battery. The replica question is allowed to
+     * fail: plenty of read-only users may not ask it, and a server that is not a replica answers
+     * with no rows, which is the same "nothing to report".
+     */
+    suspend fun sample(): ServerSample = sessions.withConnection { connection ->
+        val values = mutableMapOf<String, Long>()
+        val names = ServerMetrics.WATCHED.joinToString(", ") { quoteStringLiteral(it) }
+        connection.createStatement().use { statement ->
+            statement.executeQuery(
+                "SHOW GLOBAL STATUS WHERE Variable_name IN ($names)",
+            ).use { rows ->
+                while (rows.next()) {
+                    // Anything that is not a whole number is left out rather than rounded: the
+                    // screen would rather show a dash than a number it made up.
+                    rows.getString(2)?.toLongOrNull()?.let { values[rows.getString(1)] = it }
+                }
+            }
+        }
+        ServerSample(
+            takenAtMs = System.currentTimeMillis(),
+            uptimeSeconds = values["Uptime"] ?: 0L,
+            values = values,
+            replicationLagSeconds = replicationLag(connection),
+        )
+    }
+
+    /** `Seconds_Behind_Source` on 8.0.22 and later, `Seconds_Behind_Master` before it. */
+    private fun replicationLag(connection: java.sql.Connection): Long? =
+        listOf("SHOW REPLICA STATUS", "SHOW SLAVE STATUS").firstNotNullOfOrNull { sql ->
+            runCatching {
+                connection.createStatement().use { statement ->
+                    statement.executeQuery(sql).use { rows ->
+                        if (!rows.next()) return@use null
+                        listOf("Seconds_Behind_Source", "Seconds_Behind_Master")
+                            .firstNotNullOfOrNull { column ->
+                                runCatching { rows.getString(column) }.getOrNull()
+                            }
+                            ?.toLongOrNull()
+                    }
+                }
+            }.getOrNull()
+        }
+
     /** A handful of variables worth seeing at a glance. */
     suspend fun overview(): List<ServerFact> = sessions.withConnection { connection ->
         val facts = mutableListOf<ServerFact>()

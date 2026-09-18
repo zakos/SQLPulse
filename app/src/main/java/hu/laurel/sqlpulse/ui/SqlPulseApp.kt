@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import hu.laurel.sqlpulse.ui.connections.ConnectionEditorScreen
 import hu.laurel.sqlpulse.ui.connections.ConnectionListScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
+import hu.laurel.sqlpulse.ui.pulse.PulseScreen
 import hu.laurel.sqlpulse.ui.query.QueryEditorScreen
 import hu.laurel.sqlpulse.ui.settings.SettingsScreen
 import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
@@ -24,6 +25,7 @@ object Routes {
     const val QUERY = "query"
     const val SETTINGS = "settings"
     const val SERVER = "server"
+    const val PULSE = "pulse"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -66,6 +68,10 @@ fun SqlPulseApp() {
             ServerScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Routes.PULSE) {
+            PulseScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
@@ -82,6 +88,7 @@ fun SqlPulseApp() {
                 onBack = { navController.popBackStack() },
                 onOpenQuery = { navController.navigate(Routes.QUERY) },
                 onOpenServer = { navController.navigate(Routes.SERVER) },
+                onOpenPulse = { navController.navigate(Routes.PULSE) },
                 onOpenTable = { database, table ->
                     navController.navigate(Routes.table(database, table))
                 },

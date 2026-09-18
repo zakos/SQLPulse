@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +75,7 @@ fun SchemaBrowserScreen(
     onOpenTable: (database: String, table: String) -> Unit,
     onOpenQuery: () -> Unit,
     onOpenServer: () -> Unit,
+    onOpenPulse: () -> Unit,
     viewModel: SchemaBrowserViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,6 +103,12 @@ fun SchemaBrowserScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenPulse) {
+                        Icon(
+                            Icons.Default.MonitorHeart,
+                            contentDescription = stringResource(R.string.pulse_title),
+                        )
+                    }
                     IconButton(onClick = onOpenServer) {
                         Icon(
                             Icons.Default.Dns,

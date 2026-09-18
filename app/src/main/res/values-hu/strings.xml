@@ -347,4 +347,25 @@
     <string name="timeout_connect">Kapcsolódás (mp)</string>
     <string name="timeout_query">Lekérdezés (mp)</string>
     <string name="timeout_note">Másodpercben, 1 és %1$d között. Az időt túllépő lekérdezést a kiszolgáló leállítja; a kapcsolódás az első szám után feladja.</string>
+
+    <!-- Pulse -->
+    <string name="pulse_title">Pulzus</string>
+    <string name="pulse_no_session">Nyiss meg egy kapcsolatot, és itt látszik a kiszolgáló pulzusa.</string>
+    <string name="pulse_waiting">Első mérés folyamatban. Egy számláló önmagában azt mondja meg, mennyi történt a kiszolgáló indulása óta, nem azt, hogy most mi történik — a képernyő a második mérésnél telik meg.</string>
+    <string name="pulse_interval_fast">1 mp</string>
+    <string name="pulse_interval_normal">5 mp</string>
+    <string name="pulse_interval_slow">15 mp</string>
+    <string name="pulse_queries">Lekérdezés</string>
+    <string name="pulse_threads_running">Futó szálak</string>
+    <string name="pulse_threads_connected">Kapcsolatok</string>
+    <string name="pulse_lock_waits">Sorzárra vár</string>
+    <string name="pulse_buffer_hit">Olvasás memóriából</string>
+    <string name="pulse_slow_queries">Lassú lekérdezés</string>
+    <string name="pulse_traffic_out">Kimenő forgalom</string>
+    <string name="pulse_replication_lag">Replikációs késés</string>
+    <string name="pulse_unit_per_second">másodpercenként</string>
+    <string name="pulse_unit_now">éppen most</string>
+    <string name="pulse_unit_window">az előző mérés óta</string>
+    <string name="pulse_unit_out">klienseknek küldve</string>
+    <string name="pulse_unit_behind">lemaradás a forrástól</string>
 </resources>

@@ -355,4 +355,25 @@
     <string name="timeout_connect">Connect (s)</string>
     <string name="timeout_query">Query (s)</string>
     <string name="timeout_note">Seconds, 1 to %1$d. A query over its time is killed on the server; connecting gives up after the first number.</string>
+
+    <!-- Pulse -->
+    <string name="pulse_title">Pulse</string>
+    <string name="pulse_no_session">Open a connection and the server\'s pulse shows up here.</string>
+    <string name="pulse_waiting">Taking the first reading. A counter on its own says how much has happened since the server started, not what is happening now — so the screen fills on the second one.</string>
+    <string name="pulse_interval_fast">1s</string>
+    <string name="pulse_interval_normal">5s</string>
+    <string name="pulse_interval_slow">15s</string>
+    <string name="pulse_queries">Queries</string>
+    <string name="pulse_threads_running">Running threads</string>
+    <string name="pulse_threads_connected">Connections</string>
+    <string name="pulse_lock_waits">Waiting for a row lock</string>
+    <string name="pulse_buffer_hit">Reads from memory</string>
+    <string name="pulse_slow_queries">Slow queries</string>
+    <string name="pulse_traffic_out">Traffic out</string>
+    <string name="pulse_replication_lag">Replication lag</string>
+    <string name="pulse_unit_per_second">per second</string>
+    <string name="pulse_unit_now">right now</string>
+    <string name="pulse_unit_window">since the last reading</string>
+    <string name="pulse_unit_out">sent to clients</string>
+    <string name="pulse_unit_behind">behind the source</string>
 </resources>
