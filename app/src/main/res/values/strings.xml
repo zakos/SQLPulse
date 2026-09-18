@@ -312,4 +312,9 @@
     <string name="import_no_columns">None of the file\'s columns match this table.</string>
     <string name="import_blocking">The file does not fill these columns, and the table requires them: %1$s</string>
     <string name="import_run">Import</string>
+
+    <string name="cell_true">Yes (1)</string>
+    <string name="cell_false">No (0)</string>
+    <string name="cell_today">Today</string>
+    <string name="cell_now">Now</string>
 </resources>

@@ -61,6 +61,7 @@ import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.schema.SchemaIndex
 import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.ColumnEditors
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
 import hu.laurel.sqlpulse.ui.copyToClipboard
@@ -319,6 +320,14 @@ fun TableDetailScreen(
         CellEditDialog(
             columnLabel = selection.column.label,
             initialValue = if (selection.value is CellValue.Null) null else selection.value.asText(),
+            // The type comes from the table's own structure, which knows an enum's values; the
+            // result set only reports that the column is a string.
+            editor = ColumnEditors.of(
+                state.structure?.columns
+                    ?.firstOrNull { it.name == selection.column.label }
+                    ?.typeName
+                    ?: selection.column.typeName,
+            ),
             onConfirm = { newValue ->
                 viewModel.prepareCellEdit(selection.rowIndex, selection.column.label, newValue)
                 editingCell = null

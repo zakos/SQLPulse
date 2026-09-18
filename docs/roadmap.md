@@ -49,6 +49,7 @@ megnézhető.
 | Táblázat rögzített első oszloppal, átméretezhető oszlopokkal, lapozással | `ui/grid/ResultGrid.kt` |
 | Rendezés oszlopfejlécből növekvő, csökkenő és alapállapot között | ugyanott |
 | Sor szerkesztése, beszúrása, törlése kulcs alapján | `data/sql/RowEditor.kt` |
+| Típus szerinti cellaszerkesztő: enum lista, igen/nem, mai dátum | `data/sql/ColumnEditor.kt` |
 | A végrehajtandó SQL megmutatása mentés előtt | `data/sql/RowSqlBuilder.kt` |
 | Optimista zárolás: ütközés esetén szól, nem ír felül csendben | `data/sql/RowEditor.kt` |
 | Kézi tranzakció: COMMIT és ROLLBACK a lekérdező képernyőn | `data/sql/SqlSessionManager.kt` |
@@ -69,15 +70,13 @@ A sorrend a kutatási összefoglaló prioritásait követi.
 
 ### 1.2
 
-2. **Típus szerinti cellaszerkesztők** (dátumválasztó, felsorolás listából).
-
 ### 2.0
 
-3. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
-4. **Felhasználók és jogosultságok megtekintése.**
-5. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
+2. **Zárolások, hosszan futó tranzakciók, replikáció állapota.**
+3. **Felhasználók és jogosultságok megtekintése.**
+4. **Kapcsolatok csoportosítása** (fejlesztés, teszt, éles) és külön időkorlátok
    kapcsolatonként. Az éles kapcsolat megjelölése önmagában is véd.
-6. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
+5. **Táblagépes elrendezés** két hasábbal, és billentyűparancsok külső billentyűzethez.
 
 ## Amit szándékosan nem tartalmaz
 

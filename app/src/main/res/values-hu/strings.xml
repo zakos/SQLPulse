@@ -304,4 +304,9 @@
     <string name="import_no_columns">A fájl egyetlen oszlopa sem illik ehhez a táblához.</string>
     <string name="import_blocking">Ezeket az oszlopokat a fájl nem tölti ki, a tábla viszont megköveteli: %1$s</string>
     <string name="import_run">Importálás</string>
+
+    <string name="cell_true">Igen (1)</string>
+    <string name="cell_false">Nem (0)</string>
+    <string name="cell_today">Ma</string>
+    <string name="cell_now">Most</string>
 </resources>
