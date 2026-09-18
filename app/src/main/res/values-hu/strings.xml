@@ -170,6 +170,25 @@
 
     <string name="query_switched_database">A lekérdezések mostantól a(z) "%1$s" adatbázison futnak.</string>
 
+    <string name="grid_sort_asc">"%1$s": növekvő sorrend</string>
+    <string name="grid_sort_desc">"%1$s": csökkenő sorrend</string>
+    <string name="grid_sort_none">Rendezés: "%1$s"</string>
+
+    <string name="ssh_use_tunnel">Kapcsolódás SSH tunnelen</string>
+    <string name="ssh_direct_note">Tunnel nélkül a telefon közvetlenül a MySQL-hez kapcsolódik, tehát az adatbázis portjának elérhetőnek kell lennie arról a hálózatról, ahol a telefon éppen van.</string>
+    <string name="section_ssh_details">SSH részletek</string>
+    <string name="db_host_direct">DB host a telefon felől nézve</string>
+
+    <string name="filter_contains">Tartalmazza</string>
+
+    <string name="query_explain">EXPLAIN</string>
+    <string name="error_explain_read_only">Az EXPLAIN csak lekérdezésre értelmes.</string>
+
+    <string name="server_title">Szerver</string>
+    <string name="server_kill_title">Megszakítod a(z) %1$d kapcsolat utasítását?</string>
+    <string name="server_kill">Megszakítás</string>
+    <string name="server_process_privilege">Más felhasználók lekérdezéseinek látásához PROCESS jog kell a MySQL felhasználón.</string>
+
     <string name="error_key_duplicate">Ez a kulcs már szerepel a kulcstárban \"%1$s\" néven.</string>
     <plurals name="key_in_use">
         <item quantity="one">Egy kapcsolat használja — előbb azt töröld.</item>

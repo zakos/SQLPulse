@@ -13,13 +13,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +54,7 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
+import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -74,6 +82,10 @@ fun ResultGrid(
     totalRows: Int? = null,
     onCellClick: (CellSelection) -> Unit = {},
     onRowLongPress: (Int) -> Unit = {},
+    /** Current sort, if any; null leaves the header icons in their neutral state. */
+    sort: ColumnSort? = null,
+    /** Called with a column label when its sort icon is tapped. Null hides the icons. */
+    onSort: ((String) -> Unit)? = null,
 ) {
     val horizontal = rememberScrollState()
     val listState = rememberLazyListState()
@@ -115,6 +127,8 @@ fun ResultGrid(
                 val delta = with(density) { deltaPx.toDp() }
                 overrides[index] = (widthOf(index) + delta).coerceIn(MIN_WIDTH.dp, MAX_WIDTH.dp)
             },
+            sort = sort,
+            onSort = onSort,
         )
         HorizontalDivider(color = semantic.hairline)
 
@@ -181,30 +195,54 @@ private fun HeaderRow(
     horizontal: androidx.compose.foundation.ScrollState,
     widthOf: (Int) -> Dp,
     onResize: (Int, Float) -> Unit,
+    sort: ColumnSort?,
+    onSort: ((String) -> Unit)?,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SqlPulseColors.DarkSurfaceRaised)
+            // Follows the theme: on the light theme a dark header was a black band (§8).
+            .background(LocalSemanticColors.current.surfaceRaised)
             .height(HEADER_HEIGHT.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         table.columns.firstOrNull()?.let { column ->
-            HeaderCell(column.label, widthOf(0)) { onResize(0, it) }
+            HeaderCell(
+                label = column.label,
+                width = widthOf(0),
+                sort = sort,
+                onSort = onSort,
+                onResize = { onResize(0, it) },
+            )
         }
         Row(
             modifier = Modifier.horizontalScroll(horizontal),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             table.columns.drop(1).forEachIndexed { offset, column ->
-                HeaderCell(column.label, widthOf(offset + 1)) { onResize(offset + 1, it) }
+                HeaderCell(
+                    label = column.label,
+                    width = widthOf(offset + 1),
+                    sort = sort,
+                    onSort = onSort,
+                    onResize = { onResize(offset + 1, it) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HeaderCell(label: String, width: Dp, onResize: (Float) -> Unit) {
+private fun HeaderCell(
+    label: String,
+    width: Dp,
+    sort: ColumnSort?,
+    onSort: ((String) -> Unit)?,
+    onResize: (Float) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    val sorted = sort?.takeIf { it.column == label }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = label,
@@ -215,12 +253,41 @@ private fun HeaderCell(label: String, width: Dp, onResize: (Float) -> Unit) {
                 .width(width)
                 .padding(horizontal = Spacing.s),
         )
+        if (onSort != null) {
+            // One icon per column, cycling ascending -> descending -> the table's own order.
+            IconButton(
+                onClick = { onSort(label) },
+                modifier = Modifier.size(SORT_ICON_TARGET.dp),
+            ) {
+                Icon(
+                    imageVector = when {
+                        sorted == null -> Icons.Default.SwapVert
+                        sorted.descending -> Icons.Default.ArrowDownward
+                        else -> Icons.Default.ArrowUpward
+                    },
+                    contentDescription = stringResource(
+                        when {
+                            sorted == null -> R.string.grid_sort_none
+                            sorted.descending -> R.string.grid_sort_desc
+                            else -> R.string.grid_sort_asc
+                        },
+                        label,
+                    ),
+                    tint = if (sorted == null) {
+                        semantic.textSecondary.copy(alpha = 0.6f)
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    modifier = Modifier.size(SORT_ICON.dp),
+                )
+            }
+        }
         // The drag handle between two headers; 12dp wide so a thumb can find it.
         Box(
             modifier = Modifier
                 .width(RESIZE_HANDLE.dp)
                 .height(HEADER_HEIGHT.dp)
-                .background(LocalSemanticColors.current.hairline)
+                .background(semantic.hairline)
                 .pointerInput(label) {
                     detectHorizontalDragGestures { _, dragAmount -> onResize(dragAmount) }
                 },
@@ -338,7 +405,9 @@ private const val DEFAULT_WIDTH = 120
 private const val MIN_WIDTH = 48
 private const val MAX_WIDTH = 480
 private const val RESIZE_HANDLE = 12
-private const val HEADER_HEIGHT = 40
+private const val HEADER_HEIGHT = 44
+private const val SORT_ICON = 16
+private const val SORT_ICON_TARGET = 36
 private const val ROW_HEIGHT = 44
 
 /** §7.5: the next page starts loading this many rows before the end. */

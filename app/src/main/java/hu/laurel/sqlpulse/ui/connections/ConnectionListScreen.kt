@@ -187,7 +187,13 @@ private fun ConnectionCard(
             ) {
                 Text(connection.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "${connection.sshUser}@${connection.bastionHost} → ${connection.dbHost}:${connection.dbPort}/${connection.database}",
+                    // Without a tunnel there is no bastion to name.
+                    if (connection.useSshTunnel) {
+                        "${connection.sshUser}@${connection.bastionHost} → " +
+                            "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                    } else {
+                        "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                    },
                     style = MonoStyles.cell,
                     color = semantic.textSecondary,
                 )
@@ -207,7 +213,7 @@ private fun ConnectionCard(
                 if (tunnel is TunnelState.Connecting || tunnel is TunnelState.Unlocking ||
                     tunnel is TunnelState.Failed
                 ) {
-                    StepProgress(tunnel)
+                    StepProgress(tunnel, tunnelled = connection.useSshTunnel)
                 }
 
                 if (tunnel is TunnelState.Failed) {
@@ -254,8 +260,13 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun StepProgress(tunnel: TunnelState) {
-    val order = listOf(ConnectStep.KEY, ConnectStep.SSH, ConnectStep.MYSQL, ConnectStep.SCHEMA)
+private fun StepProgress(tunnel: TunnelState, tunnelled: Boolean) {
+    // A direct connection has no key to unlock and no SSH handshake, so those dots would be a lie.
+    val order = if (tunnelled) {
+        listOf(ConnectStep.KEY, ConnectStep.SSH, ConnectStep.MYSQL, ConnectStep.SCHEMA)
+    } else {
+        listOf(ConnectStep.MYSQL, ConnectStep.SCHEMA)
+    }
     val current = when (tunnel) {
         is TunnelState.Unlocking -> ConnectStep.KEY
         is TunnelState.Connecting -> tunnel.step

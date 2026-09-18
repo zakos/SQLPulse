@@ -27,6 +27,8 @@ All phases of the roadmap in §12 (0–9), with the caveat about compilation bel
 | Result grid: sticky header and first column, draggable widths, scroll paging, row detail | done |
 | Row editing: primary key detection, generated SQL, confirmation, undo | done |
 | Export to CSV/JSON through the share sheet, settings, automatic lock | done |
+| Optional SSH: per-connection switch, direct connections allowed | done |
+| Column sorting, quick column filter, EXPLAIN, running queries with KILL QUERY | done |
 
 The connection test verifies the far side really is MySQL by reading the server's initial
 handshake packet (`MysqlProbe`), which also drives the MySQL step of the connection indicator.
@@ -72,12 +74,17 @@ reports are uploaded as artifacts, the reports even when the build is red.
 
 ## Notes on two design decisions
 
-**Why a bastion.** The specification's premise (§4) is that the MySQL port is never reachable from
-the internet — only from a jump host. The app therefore always opens an SSH connection to that
-host and forwards a local port through it; the JDBC driver talks to `127.0.0.1`. If there is no
-separate jump host, point the SSH fields at any machine that can reach the database and runs
-sshd — the database server itself, for instance. What the app will not do is connect to MySQL
-directly (§2).
+**Why a bastion, and how to do without one.** The specification's premise (§4) is that the MySQL
+port is never reachable from the internet — only from a jump host. With the tunnel on, the app
+opens an SSH connection to that host and forwards a local port through it; the JDBC driver talks
+to `127.0.0.1`.
+
+The tunnel is a per-connection switch. §2 originally ruled out a direct connection; the app's
+owner asked for one, so with the switch off the phone dials MySQL itself and the SSH fields go
+unused. That means the database port has to be reachable from whatever network the phone is on,
+and the editor says so where the switch is. A third option, if there is no separate jump host but
+the database server runs sshd, is to keep the tunnel and point the SSH fields at the database
+server: then "DB host" is `localhost` as seen from there.
 
 **Importing a private key shows a public key.** Nothing is generated: the public half is
 mathematically contained in the private key, so the app derives it and shows it for comparison

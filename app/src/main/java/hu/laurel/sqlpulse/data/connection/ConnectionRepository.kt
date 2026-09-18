@@ -47,7 +47,9 @@ class ConnectionRepository @Inject constructor(
      * @return the saved row, with its id filled in for inserts.
      */
     suspend fun save(connection: ConnectionEntity, password: CharArray?): ConnectionEntity {
-        require(connection.sshKeyId != 0L) { "a connection without a key cannot be saved (§5)" }
+        require(!connection.useSshTunnel || connection.sshKeyId != null) {
+            "a tunnelled connection without a key cannot be saved (§5)"
+        }
         val saved = withContext(io) {
             if (connection.id == 0L) {
                 connection.copy(id = connections.insert(connection))

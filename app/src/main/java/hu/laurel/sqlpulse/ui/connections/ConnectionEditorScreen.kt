@@ -119,6 +119,28 @@ fun ConnectionEditorScreen(
             }
 
             Section(stringResource(R.string.section_ssh)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = form.useSsh,
+                        onCheckedChange = { value -> viewModel.update { it.copy(useSsh = value) } },
+                    )
+                    Text(
+                        stringResource(R.string.ssh_use_tunnel),
+                        modifier = Modifier.padding(start = Spacing.s),
+                    )
+                }
+                if (!form.useSsh) {
+                    // Stated plainly once: the port has to be reachable from the phone's network.
+                    Text(
+                        stringResource(R.string.ssh_direct_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
+                    )
+                }
+            }
+
+            if (form.useSsh) {
+                Section(stringResource(R.string.section_ssh_details)) {
                 OutlinedTextField(
                     value = form.bastionHost,
                     onValueChange = { value -> viewModel.update { it.copy(bastionHost = value) } },
@@ -159,13 +181,20 @@ fun ConnectionEditorScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                }
             }
 
             Section(stringResource(R.string.section_mysql)) {
                 OutlinedTextField(
                     value = form.dbHost,
                     onValueChange = { value -> viewModel.update { it.copy(dbHost = value) } },
-                    label = { Text(stringResource(R.string.db_host)) },
+                    label = {
+                        Text(
+                            stringResource(
+                                if (form.useSsh) R.string.db_host else R.string.db_host_direct,
+                            ),
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -317,7 +346,7 @@ private fun TestResult(tunnel: TunnelState, serverVersion: String?) {
     val semantic = LocalSemanticColors.current
     when (tunnel) {
         is TunnelState.Active -> Text(
-            "${stringResource(R.string.state_active)} · 127.0.0.1:${tunnel.localPort}" +
+            "${stringResource(R.string.state_active)} · ${tunnel.host}:${tunnel.port}" +
                 (serverVersion?.let { " · MySQL $it" } ?: ""),
             color = semantic.success,
             style = MonoStyles.cell,

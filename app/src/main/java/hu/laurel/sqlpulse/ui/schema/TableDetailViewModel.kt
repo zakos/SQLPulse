@@ -11,6 +11,9 @@ import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableStructure
 import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.ColumnFilter
+import hu.laurel.sqlpulse.data.sql.ColumnSort
+import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.NoPrimaryKeyException
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEdit
@@ -40,6 +43,10 @@ data class TableDetailUiState(
     val ddl: String? = null,
     val loading: Boolean = false,
     val error: String? = null,
+    /** Server-side sort of the data page; null means the table's own order (§7.5). */
+    val sort: ColumnSort? = null,
+    /** Quick "contains" search on one column (§7.1). */
+    val filter: ColumnFilter? = null,
     /** False on a read-only connection, or when the table has no primary key (§7.6). */
     val canEdit: Boolean = false,
     val editBlockedReason: EditBlock? = null,
@@ -96,6 +103,22 @@ class TableDetailViewModel @Inject constructor(
         load(_uiState.value.tab)
     }
 
+    /** Cycles the column through ascending, descending and the table's own order. */
+    fun sortBy(column: String) {
+        _uiState.value = _uiState.value.copy(
+            sort = TableQuery.nextSort(_uiState.value.sort, column),
+            rows = null,
+            totalRows = null,
+        )
+        load(TableTab.DATA)
+    }
+
+    fun setFilter(column: String?, contains: String) {
+        val filter = column?.takeIf { contains.isNotBlank() }?.let { ColumnFilter(it, contains) }
+        _uiState.value = _uiState.value.copy(filter = filter, rows = null, totalRows = null)
+        load(TableTab.DATA)
+    }
+
     /** Called by the grid as it nears the end of what is loaded (§7.5). */
     fun loadMore() {
         val state = _uiState.value
@@ -106,7 +129,14 @@ class TableDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loadingMore = true)
             try {
-                val next = schema.preview(database, table, PAGE_SIZE, current.rowCount)
+                val next = schema.preview(
+                    database = database,
+                    table = table,
+                    limit = PAGE_SIZE,
+                    offset = current.rowCount,
+                    sort = state.sort,
+                    filter = state.filter,
+                )
                 _uiState.value = _uiState.value.copy(
                     rows = current.copy(
                         rows = current.rows + next.rows,
@@ -229,8 +259,18 @@ class TableDetailViewModel @Inject constructor(
             try {
                 when (tab) {
                     TableTab.DATA -> {
-                        val page = schema.preview(database, table, PAGE_SIZE, 0)
-                        val total = runCatching { schema.rowCount(database, table).toInt() }.getOrNull()
+                        val current = _uiState.value
+                        val page = schema.preview(
+                            database = database,
+                            table = table,
+                            limit = PAGE_SIZE,
+                            offset = 0,
+                            sort = current.sort,
+                            filter = current.filter,
+                        )
+                        val total = runCatching {
+                            schema.rowCount(database, table, current.filter).toInt()
+                        }.getOrNull()
                         _uiState.value = _uiState.value.copy(rows = page, totalRows = total)
                     }
 

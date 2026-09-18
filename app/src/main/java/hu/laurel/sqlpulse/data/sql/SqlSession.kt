@@ -9,8 +9,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 data class JdbcConfig(
-    /** Always the forwarded loopback port — there is no other way in (§4). */
-    val localPort: Int,
+    /** Loopback for a tunnelled connection, the database's own address for a direct one. */
+    val host: String,
+    val port: Int,
     val database: String,
     val user: String,
     val password: String?,
@@ -20,11 +21,10 @@ data class JdbcConfig(
 )
 
 /**
- * A small connection pool over the tunnel (§4: at most three connections, so the forward is not
- * overloaded).
+ * A small connection pool (§4: at most three connections, so a forward is not overloaded).
  *
  * Connections are created lazily and handed out one at a time; [close] drops them all, which is
- * what happens when the tunnel goes away.
+ * what happens when the tunnel — or, for a direct connection, the session — goes away.
  */
 class SqlSession(private val config: JdbcConfig) : Closeable {
 
@@ -94,7 +94,7 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
             setProperty("autoReconnect", "false")
             setProperty("tcpKeepAlive", "true")
         }
-        val url = "jdbc:mariadb://127.0.0.1:${config.localPort}/${config.database}"
+        val url = "jdbc:mariadb://${config.host}:${config.port}/${config.database}"
         return DriverManager.getConnection(url, properties).apply {
             // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
             isReadOnly = config.readOnly

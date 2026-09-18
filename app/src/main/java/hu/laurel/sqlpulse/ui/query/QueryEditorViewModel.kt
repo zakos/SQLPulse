@@ -16,7 +16,10 @@ import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.SqlGuards
+import hu.laurel.sqlpulse.data.sql.StatementKind
+import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.data.sql.UnsupportedStatementException
@@ -55,6 +58,8 @@ data class QueryEditorUiState(
     val connectionName: String? = null,
     /** Set right after a USE, so the editor can say where it moved to. */
     val switchedTo: String? = null,
+    /** Sort applied to the loaded result; a query result cannot be re-ordered by the server. */
+    val resultSort: ColumnSort? = null,
     val shareIntent: Intent? = null,
 )
 
@@ -193,6 +198,7 @@ class QueryEditorViewModel @Inject constructor(
                     },
                     updateCount = outcome.updateCount,
                     switchedTo = outcome.switchedDatabase,
+                    resultSort = null,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
@@ -202,6 +208,37 @@ class QueryEditorViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Sorts the loaded result in place (§7.5).
+     *
+     * A query result is not a table page, so there is nothing to re-query: what is sorted is the
+     * rows already in memory, and the label says as much when only part of the result is loaded.
+     */
+    fun sortResult(column: String) {
+        val state = _uiState.value
+        val result = state.result ?: return
+        val sort = TableQuery.nextSort(state.resultSort, column)
+        val index = result.columns.indexOfFirst { it.label == column }
+        _uiState.value = state.copy(
+            resultSort = sort,
+            result = if (sort == null) result else result.sortedBy(index, sort.descending),
+        )
+    }
+
+    /** §12/5 mentions EXPLAIN visualisation later; this is the plain output of it for now. */
+    fun explain() {
+        val sql = _uiState.value.sql.trim()
+        if (sql.isBlank()) return
+        if (SqlGuards.classify(sql) != StatementKind.READ) {
+            _uiState.value = _uiState.value.copy(
+                error = context.getString(R.string.error_explain_read_only),
+            )
+            return
+        }
+        setSql("EXPLAIN $sql")
+        run()
     }
 
     fun cancel() {

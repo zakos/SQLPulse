@@ -107,7 +107,8 @@ class SqlSessionManager @Inject constructor(
         try {
             val fresh = SqlSession(
                 JdbcConfig(
-                    localPort = tunnel.localPort,
+                    host = tunnel.host,
+                    port = tunnel.port,
                     database = entity.database,
                     user = entity.dbUser,
                     password = password?.concatToString(),

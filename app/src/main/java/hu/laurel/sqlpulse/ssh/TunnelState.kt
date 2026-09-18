@@ -36,17 +36,25 @@ sealed interface TunnelState {
         val step: ConnectStep,
     ) : TunnelState
 
+    /**
+     * The database is reachable. [host] and [port] are the loopback end of the forward for a
+     * tunnelled connection, and the database's own address for a direct one.
+     */
     data class Active(
         override val connectionId: Long,
-        val localPort: Int,
+        val host: String,
+        val port: Int,
         val since: Long,
+        val tunnelled: Boolean,
     ) : TunnelState
 
     /** App went to the background; the tunnel stays up for at most five minutes (§5). */
     data class Paused(
         override val connectionId: Long,
-        val localPort: Int,
+        val host: String,
+        val port: Int,
         val pausedAt: Long,
+        val tunnelled: Boolean,
     ) : TunnelState
 
     data class Failed(

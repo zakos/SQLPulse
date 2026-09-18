@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +29,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -54,6 +57,7 @@ import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.schema.SchemaIndex
 import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
 import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
@@ -64,6 +68,7 @@ import hu.laurel.sqlpulse.ui.grid.RowDetailSheet
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
+import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
@@ -192,15 +197,24 @@ fun TableDetailScreen(
 
             when (state.tab) {
                 TableTab.DATA -> state.rows?.let { rows ->
-                    ResultGrid(
-                        table = rows,
-                        modifier = Modifier.fillMaxSize(),
-                        onLoadMore = viewModel::loadMore,
-                        loadingMore = state.loadingMore,
-                        totalRows = state.totalRows,
-                        onCellClick = { selectedCell = it },
-                        onRowLongPress = { detailRow = it },
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        FilterBar(
+                            columns = rows.columns.map { it.label },
+                            filter = state.filter,
+                            onFilter = viewModel::setFilter,
+                        )
+                        ResultGrid(
+                            table = rows,
+                            modifier = Modifier.fillMaxSize(),
+                            onLoadMore = viewModel::loadMore,
+                            loadingMore = state.loadingMore,
+                            totalRows = state.totalRows,
+                            onCellClick = { selectedCell = it },
+                            onRowLongPress = { detailRow = it },
+                            sort = state.sort,
+                            onSort = viewModel::sortBy,
+                        )
+                    }
                 }
 
                 TableTab.STRUCTURE -> state.structure?.let { structure ->
@@ -324,6 +338,67 @@ fun TableDetailScreen(
             requireTableName = state.table.takeIf { destructive && state.isProduction },
             onConfirm = viewModel::confirmEdit,
             onDismiss = viewModel::dismissEdit,
+        )
+    }
+}
+
+/**
+ * Quick search on one column (§7.1: "filter on a column" is the first thing the fast-lookup flow
+ * asks for). The filter runs on the server, so it searches the whole table, not the loaded page.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterBar(
+    columns: List<String>,
+    filter: ColumnFilter?,
+    onFilter: (String?, String) -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var text by remember(filter?.column) { mutableStateOf(filter?.contains.orEmpty()) }
+    val column = filter?.column ?: columns.firstOrNull() ?: return
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        Box {
+            OutlinedButton(onClick = { menuOpen = true }, shape = Shapes.button) {
+                Text(column, style = MonoStyles.cell, maxLines = 1)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                columns.forEach { candidate ->
+                    DropdownMenuItem(
+                        text = { Text(candidate, style = MonoStyles.cell) },
+                        onClick = {
+                            menuOpen = false
+                            onFilter(candidate, text)
+                        },
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                onFilter(column, it)
+            },
+            label = { Text(stringResource(R.string.filter_contains)) },
+            singleLine = true,
+            trailingIcon = {
+                if (text.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            text = ""
+                            onFilter(null, "")
+                        },
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.schema_clear_filter))
+                    }
+                }
+            },
+            modifier = Modifier.weight(1f),
         )
     }
 }

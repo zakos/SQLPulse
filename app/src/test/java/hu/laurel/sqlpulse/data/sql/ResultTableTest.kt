@@ -34,4 +34,63 @@ class ResultTableTest {
     fun `an empty table reports no rows`() {
         assertEquals(0, ResultTable.EMPTY.rowCount)
     }
+
+    @Test
+    fun `sorting a numeric column compares numbers, not text`() {
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("id", CellType.NUMBER, "INT", "t")),
+            rows = listOf(
+                listOf(CellValue.Number("10")),
+                listOf(CellValue.Number("9")),
+                listOf(CellValue.Number("100")),
+            ),
+        )
+
+        val ascending = table.sortedBy(0, descending = false).rows
+            .map { (it[0] as CellValue.Number).value }
+
+        assertEquals(listOf("9", "10", "100"), ascending)
+    }
+
+    @Test
+    fun `sorting descending reverses the order`() {
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("name", CellType.TEXT, "VARCHAR", "t")),
+            rows = listOf(
+                listOf(CellValue.Text("beta")),
+                listOf(CellValue.Text("alpha")),
+            ),
+        )
+
+        val descending = table.sortedBy(0, descending = true).rows
+            .map { (it[0] as CellValue.Text).value }
+
+        assertEquals(listOf("beta", "alpha"), descending)
+    }
+
+    @Test
+    fun `NULL sorts lowest, as MySQL does`() {
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("note", CellType.TEXT, "VARCHAR", "t")),
+            rows = listOf(
+                listOf(CellValue.Text("b")),
+                listOf(CellValue.Null),
+                listOf(CellValue.Text("a")),
+            ),
+        )
+
+        val ascending = table.sortedBy(0, descending = false).rows.map { it[0] }
+
+        assertEquals(CellValue.Null, ascending.first())
+    }
+
+    @Test
+    fun `sorting an unknown column leaves the rows alone`() {
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("a", CellType.TEXT, "VARCHAR", "t")),
+            rows = listOf(listOf(CellValue.Text("x"))),
+        )
+
+        assertEquals(table, table.sortedBy(7, descending = false))
+    }
 }

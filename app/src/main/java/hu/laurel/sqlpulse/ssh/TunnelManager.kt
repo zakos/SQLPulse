@@ -108,7 +108,13 @@ class TunnelManager @Inject constructor(
     fun onAppBackgrounded() {
         val current = _state.value
         if (current !is TunnelState.Active) return
-        _state.value = TunnelState.Paused(current.connectionId, current.localPort, System.currentTimeMillis())
+        _state.value = TunnelState.Paused(
+            connectionId = current.connectionId,
+            host = current.host,
+            port = current.port,
+            pausedAt = System.currentTimeMillis(),
+            tunnelled = current.tunnelled,
+        )
         backgroundTimeoutJob = scope.launch {
             delay(BACKGROUND_GRACE_MS)
             if (_state.value is TunnelState.Paused) disconnect()
@@ -119,9 +125,16 @@ class TunnelManager @Inject constructor(
         backgroundTimeoutJob?.cancel()
         val current = _state.value
         if (current !is TunnelState.Paused) return
-        val alive = tunnel?.isAlive == true
+        // A direct connection has nothing to keep alive: the JDBC pool reconnects on its own.
+        val alive = !current.tunnelled || tunnel?.isAlive == true
         _state.value = if (alive) {
-            TunnelState.Active(current.connectionId, current.localPort, current.pausedAt)
+            TunnelState.Active(
+                connectionId = current.connectionId,
+                host = current.host,
+                port = current.port,
+                since = current.pausedAt,
+                tunnelled = current.tunnelled,
+            )
         } else {
             TunnelState.Failed(current.connectionId, networkDropFailure())
         }
@@ -134,9 +147,16 @@ class TunnelManager @Inject constructor(
             return
         }
 
+        if (!connection.useSshTunnel) {
+            connectDirectly(connection)
+            return
+        }
+
         _state.value = TunnelState.Unlocking(connectionId)
         val keyPair: KeyPair = try {
-            val key = withContext(io) { keys.byId(connection.sshKeyId) }
+            val keyId = connection.sshKeyId
+                ?: throw IllegalStateException("a tunnelled connection without a key (§5)")
+            val key = withContext(io) { keys.byId(keyId) }
                 ?: throw IllegalStateException("connection references a key that is gone")
             keys.unlockKeyPair(key)
         } catch (e: UnlockCancelledException) {
@@ -172,7 +192,7 @@ class TunnelManager @Inject constructor(
 
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)
         try {
-            _serverVersion.value = withContext(io) { MysqlProbe.serverVersion(port) }
+            _serverVersion.value = withContext(io) { MysqlProbe.serverVersion(port = port) }
         } catch (e: Exception) {
             fresh.close()
             tunnel = null
@@ -184,9 +204,46 @@ class TunnelManager @Inject constructor(
         }
 
         withContext(io) { connections.touch(connectionId, System.currentTimeMillis()) }
-        _state.value = TunnelState.Active(connectionId, port, System.currentTimeMillis())
+        _state.value = TunnelState.Active(
+            connectionId = connectionId,
+            host = SshTunnel.LOOPBACK,
+            port = port,
+            since = System.currentTimeMillis(),
+            tunnelled = true,
+        )
         registerNetworkCallback()
         TunnelService.start(context, connection.name, port, connection.dbHost, connection.dbPort)
+    }
+
+    /**
+     * No tunnel: the phone dials the database itself.
+     *
+     * There is no key to unlock and no foreground service to run — nothing has to be kept alive
+     * between statements, so the connection indicator goes straight to the MySQL step.
+     */
+    private suspend fun connectDirectly(connection: ConnectionEntity) {
+        val connectionId = connection.id
+        _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)
+        try {
+            _serverVersion.value = withContext(io) {
+                MysqlProbe.serverVersion(port = connection.dbPort, host = connection.dbHost)
+            }
+        } catch (e: Exception) {
+            _state.value = TunnelState.Failed(
+                connectionId,
+                TunnelFailure(FailureLayer.MYSQL, e.message ?: "MySQL did not answer", e.toString()),
+            )
+            return
+        }
+
+        withContext(io) { connections.touch(connectionId, System.currentTimeMillis()) }
+        _state.value = TunnelState.Active(
+            connectionId = connectionId,
+            host = connection.dbHost,
+            port = connection.dbPort,
+            since = System.currentTimeMillis(),
+            tunnelled = false,
+        )
     }
 
     private suspend fun askAboutHostKey(prompt: HostKeyPrompt): Boolean {
@@ -267,6 +324,10 @@ class TunnelManager @Inject constructor(
     private fun checkLiveness() {
         val current = _state.value
         if (current !is TunnelState.Active && current !is TunnelState.Paused) return
+        // Only a tunnel can go stale here; a direct connection is the JDBC pool's business.
+        val tunnelled = (current as? TunnelState.Active)?.tunnelled
+            ?: (current as? TunnelState.Paused)?.tunnelled ?: false
+        if (!tunnelled) return
         if (tunnel?.isAlive == true) return
         val id = current.connectionId ?: return
         withTunnel { it.close() }

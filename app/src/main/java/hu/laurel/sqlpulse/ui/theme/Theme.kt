@@ -43,6 +43,8 @@ data class SemanticColors(
     val production: Color,
     val hairline: Color,
     val textSecondary: Color,
+    /** Raised surface: bottom sheets, and the grid header that stays put over the rows (§8). */
+    val surfaceRaised: Color,
 )
 
 val LocalSemanticColors = staticCompositionLocalOf {
@@ -53,6 +55,7 @@ val LocalSemanticColors = staticCompositionLocalOf {
         production = SqlPulseColors.Production,
         hairline = SqlPulseColors.HairlineDark,
         textSecondary = SqlPulseColors.DarkTextSecondary,
+        surfaceRaised = SqlPulseColors.DarkSurfaceRaised,
     )
 }
 
@@ -77,6 +80,7 @@ fun SqlPulseTheme(
             production = SqlPulseColors.Production,
             hairline = SqlPulseColors.HairlineDark,
             textSecondary = SqlPulseColors.DarkTextSecondary,
+            surfaceRaised = SqlPulseColors.DarkSurfaceRaised,
         )
     } else {
         SemanticColors(
@@ -86,6 +90,7 @@ fun SqlPulseTheme(
             production = SqlPulseColors.Production,
             hairline = SqlPulseColors.HairlineLight,
             textSecondary = SqlPulseColors.LightTextSecondary,
+            surfaceRaised = SqlPulseColors.LightSurfaceRaised,
         )
     }
     CompositionLocalProvider(LocalSemanticColors provides semantic) {

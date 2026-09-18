@@ -66,11 +66,21 @@ data class ConnectionEntity(
     val name: String,
     /** Name of a ui.theme.ConnectionColor entry. */
     val color: String,
+    /**
+     * Whether the MySQL traffic goes through an SSH tunnel.
+     *
+     * The specification rules out a direct connection (§2); this flag exists because the app's
+     * owner asked for it. With the tunnel off, the SSH fields are unused and [dbHost] is dialled
+     * straight from the phone — which means the database port has to be reachable from wherever
+     * the phone happens to be.
+     */
+    val useSshTunnel: Boolean = true,
     val bastionHost: String,
     val bastionPort: Int = 22,
     val sshUser: String,
-    /** Not nullable on purpose: no key, no connection (§5). */
-    val sshKeyId: Long,
+    /** Null only when [useSshTunnel] is false; a tunnel without a key is refused (§5). */
+    val sshKeyId: Long?,
+    /** With a tunnel, as seen from the bastion; without one, as seen from the phone. */
     val dbHost: String,
     val dbPort: Int = 3306,
     val database: String,

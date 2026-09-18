@@ -24,6 +24,8 @@ data class ConnectionForm(
     val id: Long = 0,
     val name: String = "",
     val color: ConnectionColor = ConnectionColor.Blue,
+    /** On by default: a tunnel is the safe shape, and the spec's original rule (§4). */
+    val useSsh: Boolean = true,
     val bastionHost: String = "",
     val bastionPort: String = "22",
     val sshUser: String = "",
@@ -36,15 +38,22 @@ data class ConnectionForm(
     val passwordTouched: Boolean = false,
     val readOnly: Boolean = true,
 ) {
-    /** §5: no key, no save. There is no password-authentication path to fall back on. */
+    /**
+     * With the tunnel on, §5 still holds: no key, no save, and no password-authentication path to
+     * fall back on. With it off, the SSH fields are irrelevant and only the database matters.
+     */
     val canSave: Boolean
         get() = name.isNotBlank() &&
-            bastionHost.isNotBlank() &&
-            sshUser.isNotBlank() &&
-            sshKeyId != null &&
             dbHost.isNotBlank() &&
-            bastionPort.toIntOrNull() != null &&
-            dbPort.toIntOrNull() != null
+            dbPort.toIntOrNull() != null &&
+            (
+                !useSsh || (
+                    bastionHost.isNotBlank() &&
+                        sshUser.isNotBlank() &&
+                        sshKeyId != null &&
+                        bastionPort.toIntOrNull() != null
+                    )
+                )
 }
 
 @HiltViewModel
@@ -128,10 +137,12 @@ class ConnectionEditorViewModel @Inject constructor(
         id = id,
         name = name.trim(),
         color = color.name,
+        useSshTunnel = useSsh,
         bastionHost = bastionHost.trim(),
         bastionPort = bastionPort.toIntOrNull() ?: 22,
         sshUser = sshUser.trim(),
-        sshKeyId = requireNotNull(sshKeyId),
+        // Kept rather than cleared when the tunnel is switched off, so switching back is painless.
+        sshKeyId = if (useSsh) requireNotNull(sshKeyId) else sshKeyId,
         dbHost = dbHost.trim(),
         dbPort = dbPort.toIntOrNull() ?: 3306,
         database = database.trim(),
@@ -143,6 +154,7 @@ class ConnectionEditorViewModel @Inject constructor(
         id = id,
         name = name,
         color = ConnectionColor.fromName(color),
+        useSsh = useSshTunnel,
         bastionHost = bastionHost,
         bastionPort = bastionPort.toString(),
         sshUser = sshUser,

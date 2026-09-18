@@ -28,7 +28,7 @@ class Converters {
         QueryHistoryEntity::class,
         SavedQueryEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

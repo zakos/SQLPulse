@@ -38,6 +38,50 @@ data class ResultTable(
 ) {
     val rowCount: Int get() = rows.size
 
+    /**
+     * Sorts the rows already loaded, for a result that did not come from a table page and so
+     * cannot be re-ordered by the server (§7.5).
+     *
+     * Numbers compare numerically rather than as text, so 9 sorts below 10. NULL is the lowest
+     * value, which is what MySQL does.
+     */
+    fun sortedBy(columnIndex: Int, descending: Boolean): ResultTable {
+        if (columnIndex !in columns.indices) return this
+        val numeric = columns[columnIndex].type == CellType.NUMBER
+        val comparator = Comparator<List<CellValue>> { left, right ->
+            compareCells(left.getOrNull(columnIndex), right.getOrNull(columnIndex), numeric)
+        }
+        return copy(rows = rows.sortedWith(if (descending) comparator.reversed() else comparator))
+    }
+
+    private fun compareCells(left: CellValue?, right: CellValue?, numeric: Boolean): Int {
+        val leftNull = left == null || left is CellValue.Null
+        val rightNull = right == null || right is CellValue.Null
+        if (leftNull || rightNull) return leftNull.compareTo(rightNull) * -1
+        if (numeric) {
+            val a = left.asComparableNumber()
+            val b = right.asComparableNumber()
+            if (a != null && b != null) return a.compareTo(b)
+        }
+        return left.asSortText().compareTo(right.asSortText(), ignoreCase = true)
+    }
+
+    private fun CellValue.asComparableNumber(): java.math.BigDecimal? = when (this) {
+        is CellValue.Number -> value.toBigDecimalOrNull()
+        is CellValue.Bool -> if (value) java.math.BigDecimal.ONE else java.math.BigDecimal.ZERO
+        is CellValue.Blob -> java.math.BigDecimal(sizeBytes)
+        else -> null
+    }
+
+    private fun CellValue.asSortText(): String = when (this) {
+        is CellValue.Null -> ""
+        is CellValue.Text -> value
+        is CellValue.Number -> value
+        is CellValue.Date -> value
+        is CellValue.Bool -> if (value) "1" else "0"
+        is CellValue.Blob -> sizeBytes.toString()
+    }
+
     companion object {
         val EMPTY = ResultTable(emptyList(), emptyList())
 

@@ -16,11 +16,18 @@ object MysqlProbe {
 
     class ProbeFailed(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-    /** @return the server version string, e.g. "8.0.36-0ubuntu0.22.04.1". */
-    fun serverVersion(localPort: Int, timeoutMs: Int = 10_000): String {
+    /**
+     * @param host loopback for a tunnelled connection, the database's own address for a direct one.
+     * @return the server version string, e.g. "8.0.36-0ubuntu0.22.04.1".
+     */
+    fun serverVersion(
+        port: Int,
+        host: String = SshTunnel.LOOPBACK,
+        timeoutMs: Int = 10_000,
+    ): String {
         Socket().use { socket ->
             socket.soTimeout = timeoutMs
-            socket.connect(InetSocketAddress(SshTunnel.LOOPBACK, localPort), timeoutMs)
+            socket.connect(InetSocketAddress(host, port), timeoutMs)
             val input = DataInputStream(socket.getInputStream().buffered())
 
             // Packet header: 3-byte little-endian payload length, then a 1-byte sequence id.

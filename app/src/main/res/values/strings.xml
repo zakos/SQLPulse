@@ -178,6 +178,25 @@
 
     <string name="query_switched_database">Now running against "%1$s".</string>
 
+    <string name="grid_sort_asc">"%1$s": sorted ascending</string>
+    <string name="grid_sort_desc">"%1$s": sorted descending</string>
+    <string name="grid_sort_none">Sort by "%1$s"</string>
+
+    <string name="ssh_use_tunnel">Connect through an SSH tunnel</string>
+    <string name="ssh_direct_note">Without a tunnel the phone dials MySQL directly, so the database port has to be reachable from whatever network the phone is on.</string>
+    <string name="section_ssh_details">SSH details</string>
+    <string name="db_host_direct">DB host (as seen from the phone)</string>
+
+    <string name="filter_contains">Contains</string>
+
+    <string name="query_explain">EXPLAIN</string>
+    <string name="error_explain_read_only">EXPLAIN only makes sense for a query.</string>
+
+    <string name="server_title">Server</string>
+    <string name="server_kill_title">End statement on connection %1$d?</string>
+    <string name="server_kill">End statement</string>
+    <string name="server_process_privilege">Seeing other users\' queries needs the PROCESS privilege on the MySQL user.</string>
+
     <string name="error_key_duplicate">This key is already in the key store as \"%1$s\".</string>
     <plurals name="key_in_use">
         <item quantity="one">Used by one connection — delete that first.</item>

@@ -12,6 +12,7 @@ import hu.laurel.sqlpulse.data.crypto.wipe
 import hu.laurel.sqlpulse.data.db.ConnectionDao
 import hu.laurel.sqlpulse.data.db.DbCredentialDao
 import hu.laurel.sqlpulse.data.db.KnownHostDao
+import hu.laurel.sqlpulse.data.db.Migrations
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.SavedQueryDao
 import hu.laurel.sqlpulse.data.db.SqlPulseDatabase
@@ -34,6 +35,7 @@ object DatabaseModule {
         return try {
             Room.databaseBuilder(context, SqlPulseDatabase::class.java, SqlPulseDatabase.NAME)
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
+                .addMigrations(*Migrations.ALL)
                 // Foreign keys guard the "deleting a connection deletes its history" rule (§9).
                 .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .build()

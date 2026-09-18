@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -238,6 +239,11 @@ fun QueryEditorScreen(
                             modifier = Modifier.padding(start = Spacing.s),
                         )
                     }
+                    OutlinedButton(
+                        onClick = viewModel::explain,
+                        enabled = state.sql.isNotBlank() && state.connectionName != null,
+                        shape = Shapes.button,
+                    ) { Text(stringResource(R.string.query_explain)) }
                 }
                 Text(
                     text = stringResource(R.string.query_row_limit, state.rowLimit),
@@ -300,7 +306,11 @@ fun QueryEditorScreen(
                     onDelete = viewModel::deleteFavourite,
                 )
 
-                else -> ResultPanel(state) { selectedCell = it }
+                else -> ResultPanel(
+                    state = state,
+                    onCellSelected = { selectedCell = it },
+                    onSort = viewModel::sortResult,
+                )
             }
         }
     }
@@ -364,7 +374,11 @@ private fun Placeholder(textId: Int) {
 }
 
 @Composable
-private fun ResultPanel(state: QueryEditorUiState, onCellSelected: (CellSelection) -> Unit) {
+private fun ResultPanel(
+    state: QueryEditorUiState,
+    onCellSelected: (CellSelection) -> Unit,
+    onSort: (String) -> Unit,
+) {
     val result = state.result
     when {
         state.updateCount != null -> Placeholder(R.string.query_rows_changed)
@@ -381,6 +395,8 @@ private fun ResultPanel(state: QueryEditorUiState, onCellSelected: (CellSelectio
                 table = result,
                 modifier = Modifier.fillMaxSize(),
                 onCellClick = { onCellSelected(it) },
+                sort = state.resultSort,
+                onSort = onSort,
             )
         }
     }

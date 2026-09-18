@@ -1,6 +1,9 @@
 package hu.laurel.sqlpulse.data.schema
 
+import hu.laurel.sqlpulse.data.sql.ColumnFilter
+import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import java.sql.ResultSet
 import javax.inject.Inject
@@ -110,17 +113,36 @@ class SchemaRepository @Inject constructor(
         table: String,
         limit: Int = PREVIEW_ROWS,
         offset: Int = 0,
+        sort: ColumnSort? = null,
+        filter: ColumnFilter? = null,
     ): ResultTable =
         sessions.withConnection { connection ->
-            connection.createStatement().use { statement ->
+            // LIMIT and OFFSET are integers we control; the filter value is bound.
+            val sql = buildString {
+                append("SELECT * FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)}")
+                append(TableQuery.where(filter))
+                append(TableQuery.orderBy(sort))
+                append(" LIMIT $limit OFFSET $offset")
+            }
+            connection.prepareStatement(sql).use { statement ->
                 statement.fetchSize = limit
-                val sql = "SELECT * FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)} " +
-                    "LIMIT $limit OFFSET $offset"
+                TableQuery.whereParameter(filter)?.let { statement.setString(1, it) }
                 val started = System.currentTimeMillis()
-                statement.executeQuery(sql).use { rows ->
+                statement.executeQuery().use { rows ->
                     ResultTable.from(rows, limit)
                         .copy(durationMs = System.currentTimeMillis() - started)
                 }
+            }
+        }
+
+    /** Exact count for the "loaded of total" line, honouring the same filter (§7.5). */
+    suspend fun rowCount(database: String, table: String, filter: ColumnFilter? = null): Long =
+        sessions.withConnection { connection ->
+            val sql = "SELECT COUNT(*) FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)}" +
+                TableQuery.where(filter)
+            connection.prepareStatement(sql).use { statement ->
+                TableQuery.whereParameter(filter)?.let { statement.setString(1, it) }
+                statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else 0L }
             }
         }
 
@@ -209,14 +231,6 @@ class SchemaRepository @Inject constructor(
     private inline fun <T> ResultSet.collect(mapper: (ResultSet) -> T): List<T> = use { rows ->
         buildList {
             while (rows.next()) add(mapper(rows))
-        }
-    }
-
-    /** Exact count for the "loaded of total" line; only asked for when the user scrolls (§7.5). */
-    suspend fun rowCount(database: String, table: String): Long = sessions.withConnection { connection ->
-        connection.createStatement().use { statement ->
-            val sql = "SELECT COUNT(*) FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)}"
-            statement.executeQuery(sql).use { rows -> if (rows.next()) rows.getLong(1) else 0L }
         }
     }
 
