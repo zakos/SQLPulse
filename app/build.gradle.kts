@@ -15,6 +15,25 @@ val buildNumber = (System.getenv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NU
     ?.toIntOrNull() ?: 1
 val commitSha = System.getenv("GITHUB_SHA")?.take(7)
 
+/**
+ * Signing material, taken from the environment.
+ *
+ * CI decodes the keystore from a repository secret into a temporary file and passes these four
+ * variables; locally you can export the same four. Nothing signing-related is committed, so
+ * repository access alone does not let anyone build an update for an installed app.
+ *
+ * With the variables unset the build falls back to the Android SDK's own debug key, which differs
+ * per machine: fine for running on your own device, useless for distributing.
+ */
+val signingKeystorePath: String? = System.getenv("SIGNING_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+val signingKeystorePassword: String? = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
+val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
+val hasExternalSigning = signingKeystorePath != null &&
+    signingKeystorePassword != null &&
+    signingKeyAlias != null &&
+    signingKeyPassword != null
+
 android {
     namespace = "hu.laurel.sqlpulse"
     compileSdk = 35
@@ -32,18 +51,16 @@ android {
 
     signingConfigs {
         /**
-         * A checked-in debug key, so every build — CI or local — is signed identically and an
-         * artifact can replace an installed app. Android refuses an update whose signature differs
-         * from the installed one, and a generated debug key differs on every machine and every CI
-         * run.
-         *
-         * It is a debug key with the conventional password and must never sign a release.
+         * One key for every build, so an artifact can replace an installed app: Android refuses an
+         * update whose signature differs from what is installed.
          */
         getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            if (hasExternalSigning) {
+                storeFile = file(signingKeystorePath!!)
+                storePassword = signingKeystorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
         }
     }
 

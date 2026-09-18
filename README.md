@@ -76,17 +76,35 @@ Two workflows:
   artifact `sqlpulse-debug-<run number>`.
 
 **Installing an update.** Download the artifact, unzip it, open the APK on the phone. It installs
-over the existing app, keeping its data: every build is signed with `app/debug.keystore`, which is
-committed for exactly that reason — Android refuses an update whose signing key differs from the
-installed app's, and a generated debug key differs on every machine and every CI run. The version
-code is the CI run number, so a newer artifact is never treated as a downgrade.
+over the existing app and keeps its data, because every build is signed with the same key and the
+version code is the CI run number, so a newer artifact is never a downgrade.
 
-That keystore is a debug key with the conventional password. It is not a secret and must never
-sign a release build.
+**Signing setup (once).** The key lives in repository secrets, never in the repository — read
+access to the code must not be enough to build an update for an installed app. Create a key and
+upload it:
 
-> One-off: an app installed from an *earlier* build was signed with a different, ephemeral key.
-> Android cannot replace it, so uninstall that one first. Every build from here on updates in
-> place.
+```sh
+keytool -genkeypair -v -keystore sqlpulse.keystore -alias sqlpulse \
+  -keyalg RSA -keysize 2048 -validity 10950 -dname "CN=SQLPulse, O=<your org>, C=HU"
+
+gh secret set SIGNING_KEYSTORE_BASE64 < <(base64 -w0 sqlpulse.keystore)
+gh secret set SIGNING_KEYSTORE_PASSWORD   # the store password you just chose
+gh secret set SIGNING_KEY_ALIAS           # sqlpulse
+gh secret set SIGNING_KEY_PASSWORD        # the key password you just chose
+```
+
+Keep `sqlpulse.keystore` somewhere safe and out of the repository (`*.keystore` is gitignored).
+Losing it means the next build cannot update installed copies — they would have to be uninstalled
+first. The build fails with a clear message if the secrets are missing, rather than producing an
+APK signed with a throwaway key.
+
+To build locally with the same key, export the same four values:
+`SIGNING_KEYSTORE_PATH`, `SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`.
+Without them the build falls back to the Android SDK's per-machine debug key, which is fine for
+your own device and useless for distributing.
+
+> One-off: an app installed from an earlier build carries a different signature, and Android cannot
+> replace it. Uninstall that one first. Every build from here on updates in place.
 
 ## Notes on two design decisions
 

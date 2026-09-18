@@ -45,9 +45,39 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # The signing key lives in repository secrets, never in the repository. Without it the
+      # artifact could not replace an installed app, so a missing secret fails the build rather
+      # than quietly producing an APK signed with a throwaway key.
+      - name: Restore the signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::SIGNING_KEYSTORE_BASE64 is not set. See \"CI and installing the app\" in the README."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing.keystore"
+
       # The run number becomes the version code, so this APK installs over the previous one.
       - name: Assemble debug
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/signing.keystore
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
+
+      # Prints the signer certificate, not the key: a quick way to confirm that every build is
+      # signed with the same certificate, which is what makes updates possible.
+      - name: Show the signing certificate
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/*.apk \
+            | grep -i "SHA-256 digest" || true
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signing.keystore"
 
       - name: Android Lint
         run: ./gradlew --no-daemon lintDebug
@@ -83,5 +113,5 @@ jobs:
             echo "Artifact: **sqlpulse-debug-${{ github.run_number }}** (version code ${{ github.run_number }})."
             echo
             echo "Download it, unzip, and open the APK on the phone to install over the existing app."
-            echo "Every build is signed with the repository's debug key, so updates replace each other."
+            echo "Every build is signed with the key held in repository secrets, so updates replace each other."
           } >> "$GITHUB_STEP_SUMMARY"
