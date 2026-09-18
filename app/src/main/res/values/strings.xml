@@ -376,4 +376,14 @@
     <string name="pulse_unit_window">since the last reading</string>
     <string name="pulse_unit_out">sent to clients</string>
     <string name="pulse_unit_behind">behind the source</string>
+
+    <!-- Schema map -->
+    <string name="map_title">Schema map</string>
+    <string name="map_fit">Fit to screen</string>
+    <string name="map_no_session">Open a connection and pick a database to see its map.</string>
+    <string name="map_empty">This database has no tables to draw.</string>
+    <string name="map_references">References %1$d, referenced by %2$d</string>
+    <string name="map_parents">Points at: %1$s</string>
+    <string name="map_children">Pointed at by: %1$s</string>
+    <string name="map_open_table">Open table</string>
 </resources>

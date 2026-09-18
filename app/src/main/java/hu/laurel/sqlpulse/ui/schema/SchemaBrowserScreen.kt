@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
@@ -76,6 +77,7 @@ fun SchemaBrowserScreen(
     onOpenQuery: () -> Unit,
     onOpenServer: () -> Unit,
     onOpenPulse: () -> Unit,
+    onOpenMap: () -> Unit,
     viewModel: SchemaBrowserViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -103,6 +105,12 @@ fun SchemaBrowserScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenMap) {
+                        Icon(
+                            Icons.Default.AccountTree,
+                            contentDescription = stringResource(R.string.map_title),
+                        )
+                    }
                     IconButton(onClick = onOpenPulse) {
                         Icon(
                             Icons.Default.MonitorHeart,

@@ -368,4 +368,14 @@
     <string name="pulse_unit_window">az előző mérés óta</string>
     <string name="pulse_unit_out">klienseknek küldve</string>
     <string name="pulse_unit_behind">lemaradás a forrástól</string>
+
+    <!-- Schema map -->
+    <string name="map_title">Séma-térkép</string>
+    <string name="map_fit">Képernyőre igazítás</string>
+    <string name="map_no_session">Nyiss meg egy kapcsolatot és válassz adatbázist a térképhez.</string>
+    <string name="map_empty">Ebben az adatbázisban nincs kirajzolható tábla.</string>
+    <string name="map_references">%1$d táblára hivatkozik, %2$d tábla hivatkozik rá</string>
+    <string name="map_parents">Hivatkozik erre: %1$s</string>
+    <string name="map_children">Erre hivatkozik: %1$s</string>
+    <string name="map_open_table">Tábla megnyitása</string>
 </resources>

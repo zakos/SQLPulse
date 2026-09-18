@@ -74,6 +74,15 @@ megnézhető.
 | Számlálókból ráta két mintából; újraindult kiszolgáló nem ad hamis tüskét | `data/schema/ServerMetrics.kt` |
 | Küszöbök szerinti színezés, és „—" ott, ahol nem volt mit mérni | ugyanott |
 
+### Séma-térkép
+
+| Funkció | Hol |
+| --- | --- |
+| Idegen kulcsokból rajzolt térkép: szülő tábla felül, gyerek alatta, nyíl a kapcsolat | `ui/map/SchemaMapScreen.kt` |
+| Csippentés, húzás, koppintás egy táblára: mire hivatkozik, mi hivatkozik rá, és megnyitás | ugyanott |
+| Elrendezés determinisztikusan, körhivatkozással és önhivatkozással együtt | `data/schema/SchemaGraph.kt` |
+| Egy lekérdezés az egész sémára, nem táblánként egy | `data/schema/SchemaRepository.kt` |
+
 ### Táblagép és billentyűzet
 
 | Funkció | Hol |
@@ -96,11 +105,9 @@ képernyő nincs minden kiszolgálóverzióval végigmérve.
 
 ## Ami ezután jön
 
-1. **Séma-térkép.** Az idegen kulcsokból rajzolt, nagyítható ER-vászon: egy ismeretlen
-   adatbázis szerkezete ránézésre.
-2. **Sorok bejárása kapcsolatokon át.** Koppintás egy idegen kulcsra, és ugrás a szülő
+1. **Sorok bejárása kapcsolatokon át.** Koppintás egy idegen kulcsra, és ugrás a szülő
    sorra — JOIN gépelése nélkül.
-3. **Időgép.** Egy lekérdezés eredményének pillanatfelvétele, majd összehasonlítás egy
+2. **Időgép.** Egy lekérdezés eredményének pillanatfelvétele, majd összehasonlítás egy
    későbbi futással: mi jött, mi tűnt el, mi változott.
 
 ## Amit szándékosan nem tartalmaz

@@ -333,6 +333,43 @@ class SchemaRepository @Inject constructor(
             }
         }
 
+    /**
+     * Every foreign key inside one database, as links for the map.
+     *
+     * One statement for the whole schema rather than one per table: a schema of two hundred tables
+     * would otherwise be two hundred round trips through the tunnel. The columns of one constraint
+     * are grouped into a single link, because that is what a reader sees — one arrow, however many
+     * columns it is made of.
+     */
+    suspend fun links(database: String): List<GraphEdge> = sessions.withConnection { connection ->
+        connection.prepareStatement(
+            """
+            SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = ?
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+              AND REFERENCED_TABLE_SCHEMA = TABLE_SCHEMA
+            ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, database)
+            statement.executeQuery().collect { rows ->
+                Triple(
+                    rows.getString("TABLE_NAME") to rows.getString("CONSTRAINT_NAME"),
+                    rows.getString("REFERENCED_TABLE_NAME"),
+                    rows.getString("COLUMN_NAME"),
+                )
+            }
+        }.groupBy { it.first }
+            .map { (key, columns) ->
+                GraphEdge(
+                    from = key.first,
+                    to = columns.first().second,
+                    columns = columns.map { it.third },
+                )
+            }
+    }
+
     private suspend fun foreignKeys(database: String, table: String): List<ForeignKey> =
         sessions.withConnection { connection ->
             connection.prepareStatement(
