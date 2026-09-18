@@ -1,7 +1,7 @@
 name: Build
 
-# Automatic only once work lands on main. On a branch, start it by hand from the Actions tab
-# (Run workflow -> pick the branch).
+# The installable build. It runs when work lands on main — which is what merging a pull request
+# does — and on request from the Actions tab. Ordinary commits are covered by check.yml.
 on:
   push:
     branches: [main]
@@ -10,7 +10,6 @@ on:
 permissions:
   contents: read
 
-# A new push supersedes a run that is still going on the same branch.
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -46,6 +45,7 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # The run number becomes the version code, so this APK installs over the previous one.
       - name: Assemble debug
         run: ./gradlew --no-daemon assembleDebug
 
@@ -69,7 +69,19 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: sqlpulse-debug-apk
+          name: sqlpulse-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
+
+      - name: Summarise the install
+        if: success()
+        run: |
+          {
+            echo "### SQLPulse debug build ${{ github.run_number }}"
+            echo
+            echo "Artifact: **sqlpulse-debug-${{ github.run_number }}** (version code ${{ github.run_number }})."
+            echo
+            echo "Download it, unzip, and open the APK on the phone to install over the existing app."
+            echo "Every build is signed with the repository's debug key, so updates replace each other."
+          } >> "$GITHUB_STEP_SUMMARY"

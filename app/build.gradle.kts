@@ -6,6 +6,15 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+/**
+ * Version code from the CI run number, so each artifact can install over the previous one; a local
+ * build falls back to 1. VERSION_CODE overrides both. Read from the environment rather than from
+ * git, because starting a process at configuration time would break the configuration cache.
+ */
+val buildNumber = (System.getenv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER"))
+    ?.toIntOrNull() ?: 1
+val commitSha = System.getenv("GITHUB_SHA")?.take(7)
+
 android {
     namespace = "hu.laurel.sqlpulse"
     compileSdk = 35
@@ -14,16 +23,34 @@ android {
         applicationId = "hu.laurel.sqlpulse"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = buildNumber
+        versionName = listOfNotNull("0.1.$buildNumber", commitSha).joinToString("+")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("en", "hu")
     }
 
+    signingConfigs {
+        /**
+         * A checked-in debug key, so every build — CI or local — is signed identically and an
+         * artifact can replace an installed app. Android refuses an update whose signature differs
+         * from the installed one, and a generated debug key differs on every machine and every CI
+         * run.
+         *
+         * It is a debug key with the conventional password and must never sign a release.
+         */
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = true

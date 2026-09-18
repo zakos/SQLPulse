@@ -65,12 +65,28 @@ access to `dl.google.com`, so CI is where the app is actually compiled.
 Nothing has been run on a device or against a real MySQL server yet, so the tunnel, the key
 handling and the JDBC layer are compiled and unit-tested but not yet exercised end to end.
 
-## CI
+## CI and installing the app
 
-`.github/workflows/build.yml` runs unit tests, `assembleDebug` and Android Lint on a runner that
-has the Android SDK. It starts by itself only for pushes to `main`; on any other branch, start it
-from the Actions tab with "Run workflow". The debug APK and the test and lint
-reports are uploaded as artifacts, the reports even when the build is red.
+Two workflows:
+
+- `.github/workflows/check.yml` — every commit on a branch and every pull request: unit tests and
+  Android Lint, no APK. This is the quick feedback loop.
+- `.github/workflows/build.yml` — pushes to `main`, which is what merging a pull request does, plus
+  manual runs from the Actions tab. Same checks, and it uploads the installable debug APK as the
+  artifact `sqlpulse-debug-<run number>`.
+
+**Installing an update.** Download the artifact, unzip it, open the APK on the phone. It installs
+over the existing app, keeping its data: every build is signed with `app/debug.keystore`, which is
+committed for exactly that reason — Android refuses an update whose signing key differs from the
+installed app's, and a generated debug key differs on every machine and every CI run. The version
+code is the CI run number, so a newer artifact is never treated as a downgrade.
+
+That keystore is a debug key with the conventional password. It is not a secret and must never
+sign a release build.
+
+> One-off: an app installed from an *earlier* build was signed with a different, ephemeral key.
+> Android cannot replace it, so uninstall that one first. Every build from here on updates in
+> place.
 
 ## Notes on two design decisions
 
