@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -36,7 +37,9 @@ import kotlinx.coroutines.launch
 /**
  * FragmentActivity, because BiometricPrompt needs one.
  *
- * FLAG_SECURE is set for the whole app (§6): no screenshots, and no preview in the recents list.
+ * FLAG_SECURE keeps screenshots and the recents-list preview blank (§6). It follows the setting
+ * rather than being fixed, so it can be turned off to report a bug with a screenshot; it is set
+ * before the first frame either way, so nothing is ever shown unprotected by accident.
  */
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
@@ -55,6 +58,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Protected from the first frame; the setting can relax it a moment later.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         activityHolder.attach(this)
@@ -63,6 +67,14 @@ class MainActivity : FragmentActivity() {
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = Settings())
             val locked by lockManager.locked.collectAsState()
+
+            LaunchedEffect(settings.blockScreenshots) {
+                if (settings.blockScreenshots) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
 
             SqlPulseTheme(preference = settings.theme) {
                 if (locked) {

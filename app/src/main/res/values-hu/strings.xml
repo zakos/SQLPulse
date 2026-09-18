@@ -261,4 +261,8 @@
     <string name="query_replace_all">Mind cseréje</string>
 
     <string name="query_edit">Lekérdezés szerkesztése</string>
+
+    <string name="settings_privacy">Adatvédelem</string>
+    <string name="settings_block_screenshots">Képernyőkép tiltása</string>
+    <string name="settings_block_screenshots_note">Üresen hagyja a képernyőképet és az alkalmazásváltó előnézetét. Kapcsold ki, ha képernyőképet szeretnél küldeni egy hibáról — a képernyőn lévő táblázat valódi adat.</string>
 </resources>

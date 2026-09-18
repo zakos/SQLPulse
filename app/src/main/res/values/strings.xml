@@ -269,4 +269,8 @@
     <string name="query_replace_all">Replace all</string>
 
     <string name="query_edit">Edit the query</string>
+
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_block_screenshots">Block screenshots</string>
+    <string name="settings_block_screenshots_note">Keeps screenshots and the app switcher preview blank. Turn it off to send a screenshot of a problem — a result grid on screen is real data.</string>
 </resources>

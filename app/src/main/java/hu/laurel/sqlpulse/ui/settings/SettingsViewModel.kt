@@ -31,6 +31,8 @@ class SettingsViewModel @Inject constructor(
     fun setBlockWritesWithoutWhere(block: Boolean) =
         launch { repository.setBlockWritesWithoutWhere(block) }
 
+    fun setBlockScreenshots(block: Boolean) = launch { repository.setBlockScreenshots(block) }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

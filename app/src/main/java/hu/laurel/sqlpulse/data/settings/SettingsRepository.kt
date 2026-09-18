@@ -29,6 +29,13 @@ data class Settings(
      * typed with a thumb, and the whole-table version of it looks almost identical.
      */
     val blockWritesWithoutWhere: Boolean = true,
+    /**
+     * Keep screenshots and the recents-list preview blank (§6).
+     *
+     * On by default, because a result grid on screen is customer data. It can be turned off, since
+     * a screenshot is the quickest way to report what an app is doing wrong.
+     */
+    val blockScreenshots: Boolean = true,
 )
 
 @Singleton
@@ -44,6 +51,7 @@ class SettingsRepository @Inject constructor(
                 ?: ThemePreference.System,
             gridFontScale = preferences[GRID_FONT] ?: 100,
             blockWritesWithoutWhere = preferences[BLOCK_UNGUARDED_WRITES] ?: true,
+            blockScreenshots = preferences[BLOCK_SCREENSHOTS] ?: true,
         )
     }
 
@@ -55,6 +63,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setBlockWritesWithoutWhere(block: Boolean) {
         context.dataStore.edit { it[BLOCK_UNGUARDED_WRITES] = block }
+    }
+
+    suspend fun setBlockScreenshots(block: Boolean) {
+        context.dataStore.edit { it[BLOCK_SCREENSHOTS] = block }
     }
 
     suspend fun setTheme(theme: ThemePreference) {
@@ -71,5 +83,6 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val GRID_FONT = intPreferencesKey("grid_font_scale")
         val BLOCK_UNGUARDED_WRITES = booleanPreferencesKey("block_writes_without_where")
+        val BLOCK_SCREENSHOTS = booleanPreferencesKey("block_screenshots")
     }
 }

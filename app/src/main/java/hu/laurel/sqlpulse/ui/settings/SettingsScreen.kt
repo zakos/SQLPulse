@@ -86,6 +86,24 @@ fun SettingsScreen(
                 }
             }
 
+            Section(stringResource(R.string.settings_privacy)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = settings.blockScreenshots,
+                        onCheckedChange = viewModel::setBlockScreenshots,
+                    )
+                    Text(
+                        stringResource(R.string.settings_block_screenshots),
+                        modifier = Modifier.padding(start = Spacing.s),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_block_screenshots_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
+
             Section(stringResource(R.string.settings_default_limit)) {
                 Text("${settings.defaultRowLimit}", style = MonoStyles.cell)
                 Slider(

@@ -179,7 +179,8 @@ with the entry in `authorized_keys`. Only "Generate on device" creates a new pai
 - Private keys are sealed with an Android Keystore key that requires user authentication for
   every single use, and are never exported or displayed.
 - The SQLCipher passphrase is 32 random bytes, sealed with a separate device-bound keystore key.
-- `FLAG_SECURE` is set on the whole app: no screenshots, no recents preview.
+- `FLAG_SECURE` is set before the first frame: no screenshots, no recents preview. Settings can
+  turn it off, which is how a screenshot of a problem gets reported.
 - A changed SSH host fingerprint blocks the connection; unblocking is explicit, in the editor.
 - The tunnel lives in a foreground service and drops after five minutes in the background.
 - JDBC connects with `allowLocalInfile=false`, so a hostile server cannot ask the client for
