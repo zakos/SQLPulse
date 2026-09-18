@@ -120,11 +120,13 @@ $certificate = New-SelfSignedCertificate `
 
 Export-PfxCertificate -Cert $certificate -FilePath sqlpulse.p12 -Password $password
 
-# One line of base64, no wrapping and no trailing newline.
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("sqlpulse.p12")) |
+# One line of base64, no wrapping and no trailing newline. Resolve-Path because .NET has its own
+# working directory, which is not the one PowerShell is showing you.
+[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path .\sqlpulse.p12))) |
   Out-File -Encoding ascii -NoNewline keystore.b64
 
-gh secret set SIGNING_KEYSTORE_BASE64 --repo <owner>/SQLPulse < keystore.b64
+# A pipe, not "<": PowerShell has no input redirection.
+Get-Content -Raw keystore.b64 | gh secret set SIGNING_KEYSTORE_BASE64 --repo <owner>/SQLPulse
 gh secret set SIGNING_KEYSTORE_PASSWORD --repo <owner>/SQLPulse   # the password you just typed
 
 Remove-Item keystore.b64
