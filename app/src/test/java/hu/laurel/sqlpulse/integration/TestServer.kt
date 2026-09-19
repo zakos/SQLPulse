@@ -1,6 +1,8 @@
 package hu.laurel.sqlpulse.integration
 
 import hu.laurel.sqlpulse.data.sql.JdbcConfig
+import hu.laurel.sqlpulse.data.sql.JdbcDriverKind
+import hu.laurel.sqlpulse.data.sql.SslProperties
 import java.sql.Connection
 import java.sql.Driver
 import java.util.Properties
@@ -64,14 +66,21 @@ object TestServer {
      * that the driver the fallback falls back to really can reach the same server.
      */
     fun connectWith(driver: Driver, scheme: String, config: JdbcConfig): Connection {
+        val kind = if (scheme == "mysql") JdbcDriverKind.LEGACY else JdbcDriverKind.MODERN
         val properties = Properties().apply {
             setProperty("user", config.user)
             config.password?.let { setProperty("password", it) }
             setProperty("connectTimeout", config.connectTimeoutMs.toString())
-            if (scheme == "mysql") {
+            if (kind == JdbcDriverKind.LEGACY) {
                 setProperty("useUnicode", "true")
                 setProperty("characterEncoding", "UTF-8")
             }
+            // The same TLS decision the session makes. Leaving it out is what made this helper
+            // fail where the app does not: the 2019 driver offers TLS by default when the server
+            // advertises it, MySQL 5.7 answers "Bad handshake", and the connection dies with a
+            // communications failure that says nothing about TLS.
+            SslProperties.propertiesFor(config.sslMode, config.caCertificatePath, kind)
+                .forEach { (key, value) -> setProperty(key, value) }
         }
         val url = "jdbc:$scheme://${config.host}:${config.port}/${config.database}"
         return driver.connect(url, properties) ?: error("the driver did not accept $url")
