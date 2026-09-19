@@ -43,6 +43,11 @@ object TestServer {
             // These tests create and drop their own tables, so the flag the app usually sets is
             // deliberately off; what it guards is covered by the unit tests around SqlGuards.
             readOnly = false,
+            // The same shape as the app's ordinary connection: a loopback address that something
+            // else has already secured. Without this the session refuses to hand MySQL 8 a
+            // password over an unencrypted link — correctly, which is what the app does in front
+            // of a user, and what these tests would otherwise all fail on.
+            tunnelled = true,
         )
     }
 

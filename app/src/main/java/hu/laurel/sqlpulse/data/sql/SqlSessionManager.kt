@@ -402,6 +402,7 @@ class SqlSessionManager @Inject constructor(
                     sslMode = SslMode.fromName(entity.sslMode),
                     caCertificatePath = entity.caCertificate
                         ?.let { certificates.pathFor(it) },
+                    tunnelled = entity.useSshTunnel,
                     connectTimeoutMs = ConnectionTimeouts.connectMillis(entity.connectTimeoutSeconds),
                     socketTimeoutMs = ConnectionTimeouts.socketMillis(entity.queryTimeoutSeconds),
                 ),

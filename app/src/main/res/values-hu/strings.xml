@@ -381,4 +381,5 @@
     <string name="map_no_foreign_keys">Ebben az adatbázisban nincs idegen kulcs. A %1$d szaggatott kapcsolat az oszlopnevekből olvasható ki — valószínű, nem biztos.</string>
     <string name="map_some_guessed">%1$d kapcsolat idegen kulcsból, %2$d szaggatott az oszlopnevekből kitalálva.</string>
     <string name="map_guessed_link">oszlopnévből kitalálva</string>
+    <string name="sql_error_authentication_unprotected">Ez a kiszolgáló nem küldi a jelszót titkosítatlan kapcsolaton. Kapcsold be a TLS-t ennél a kapcsolatnál, vagy érd el a kiszolgálót az SSH alagúton át.</string>
 </resources>

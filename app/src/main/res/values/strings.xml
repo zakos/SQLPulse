@@ -389,4 +389,5 @@
     <string name="map_no_foreign_keys">This database declares no foreign keys. The %1$d dashed links are read off the column names — likely, not certain.</string>
     <string name="map_some_guessed">%1$d links from foreign keys, %2$d dashed ones guessed from column names.</string>
     <string name="map_guessed_link">guessed from the column name</string>
+    <string name="sql_error_authentication_unprotected">This server will not send the password over an unencrypted connection. Turn TLS on for this connection, or reach the server through the SSH tunnel.</string>
 </resources>

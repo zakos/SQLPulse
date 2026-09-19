@@ -126,3 +126,31 @@ class SqlFailuresTest {
         assertEquals("Unknown database 'shop'", failure.serverMessage)
     }
 }
+
+class UnprotectedAuthenticationTest {
+
+    @Test
+    fun `a refusal to send the password unencrypted is not a wrong password`() {
+        // What MySQL 8 gives a client with no TLS and no tunnel. Telling the user to check their
+        // password would send them looking in the wrong place: the password is right, the link is
+        // the problem.
+        listOf(
+            "RSA public key is not available client side (option serverRsaPublicKeyFile not set)",
+            "Public Key Retrieval is not allowed",
+        ).forEach { message ->
+            assertEquals(
+                message,
+                SqlFailureKind.AUTHENTICATION_UNPROTECTED,
+                SqlFailures.classify(0, null, message),
+            )
+        }
+    }
+
+    @Test
+    fun `an ordinary denial is still an ordinary denial`() {
+        assertEquals(
+            SqlFailureKind.AUTHENTICATION,
+            SqlFailures.classify(1045, "28000", "Access denied for user 'root'@'localhost'"),
+        )
+    }
+}

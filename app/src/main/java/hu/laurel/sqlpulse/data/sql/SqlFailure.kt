@@ -14,6 +14,16 @@ enum class SqlFailureKind {
     /** Wrong user or password. */
     AUTHENTICATION,
 
+    /**
+     * The password could not be exchanged safely over an unencrypted connection.
+     *
+     * MySQL 8's default authentication needs either an encrypted link or the server's RSA public
+     * key, and a client that fetches that key over a link it cannot trust has no way to tell the
+     * server from an impostor. The user's answer is to turn on TLS or the tunnel, not to retype
+     * the password — which is why this is not [AUTHENTICATION].
+     */
+    AUTHENTICATION_UNPROTECTED,
+
     /** The user is known, but not allowed to do this. */
     PRIVILEGE,
 
@@ -168,6 +178,10 @@ object SqlFailures {
 
             text.containsAny("connection reset", "broken pipe", "connection is closed",
                 "unexpected end of stream", "socket closed") -> SqlFailureKind.CONNECTION_LOST
+
+            // The MariaDB driver's wording, and the MySQL driver's, for the same refusal.
+            text.containsAny("rsa public key is not available", "public key retrieval",
+                "serverrsapublickeyfile") -> SqlFailureKind.AUTHENTICATION_UNPROTECTED
 
             text.containsAny("access denied") -> SqlFailureKind.AUTHENTICATION
 
