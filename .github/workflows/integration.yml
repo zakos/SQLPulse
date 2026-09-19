@@ -34,13 +34,13 @@ jobs:
         include:
           - name: MySQL 8.0
             image: mysql:8.0
-            health: --health-cmd="mysqladmin ping --silent" --health-interval=10s --health-timeout=5s --health-retries=20
+            health: --health-cmd="mysqladmin ping -uroot -psqlpulse --silent" --health-interval=10s --health-timeout=5s --health-retries=20
             # MySQL 8 authenticates with caching_sha2_password, which the 2019 driver cannot do.
             # The fallback test skips itself rather than pretending that is a failure.
             legacy: 'false'
           - name: MySQL 5.7
             image: mysql:5.7
-            health: --health-cmd="mysqladmin ping --silent" --health-interval=10s --health-timeout=5s --health-retries=20
+            health: --health-cmd="mysqladmin ping -uroot -psqlpulse --silent" --health-interval=10s --health-timeout=5s --health-retries=20
             legacy: 'true'
           - name: MariaDB 11
             image: mariadb:11
@@ -60,6 +60,11 @@ jobs:
           - 3306:3306
         # The job does not start until the server answers; without this the first test would race
         # the server's own initialisation and fail on a connection refused.
+        #
+        # The MySQL images need the password in the health command: root has one, and
+        # `mysqladmin ping` without it is answered with "access denied" until the retries run out
+        # — the server is up the whole time and the job never gets to start. MariaDB's own
+        # healthcheck.sh reads the container's environment itself and needs no credentials.
         options: ${{ matrix.health }}
 
     steps:
