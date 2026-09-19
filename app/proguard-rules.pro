@@ -70,3 +70,10 @@
 -keepclasseswithmembernames class * { native <methods>; }
 # Room reaches SQLCipher through the support-SQLite interfaces, which its factory implements.
 -keep class androidx.sqlite.db.** { *; }
+
+# sshj's Ed25519 implementation (net.i2p.crypto:eddsa) asks whether a public key is a
+# sun.security.x509.X509Key — a JDK-internal class Android has never shipped. The branch is dead
+# here: on a desktop JVM it is one way of unwrapping a key, and on Android the key always arrives
+# as one of the other shapes. R8 treats a missing class as an error, so it has to be told that
+# this one is expected to be absent rather than left out by mistake.
+-dontwarn sun.security.x509.**

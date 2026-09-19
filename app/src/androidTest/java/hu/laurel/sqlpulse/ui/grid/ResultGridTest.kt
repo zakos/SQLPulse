@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.ui.grid
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -49,6 +50,20 @@ class ResultGridTest {
         compose.onNodeWithText("first").assertIsDisplayed()
         // NULL is shown as the word, not as an empty cell: an empty string is a different value.
         compose.onNodeWithText("NULL").assertIsDisplayed()
+    }
+
+    @Test
+    fun aColumnSitsUnderItsOwnTitle() {
+        // The bug this guards: the header cell hung its sort icon and drag handle off the end of
+        // the label, so every header was 48dp wider than the cells beneath it and the columns
+        // walked left of their titles — by the fourth column the data was under the third name.
+        compose.setContent { SqlPulseTheme { ResultGrid(table = table) } }
+
+        val header = compose.onNodeWithText("note").getUnclippedBoundsInRoot()
+        val cell = compose.onNodeWithText("first").getUnclippedBoundsInRoot()
+
+        // Both are padded inside their column by the same amount, so their left edges coincide.
+        assertEquals(header.left.value, cell.left.value, 1f)
     }
 
     @Test
