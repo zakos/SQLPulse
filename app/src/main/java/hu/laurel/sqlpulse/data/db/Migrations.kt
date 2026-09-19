@@ -6,165 +6,42 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * Schema history. Migrations rather than a destructive fallback, because the local database holds
  * the user's connections and their encrypted secrets — dropping it would mean re-importing keys.
+ *
+ * The SQL itself lives in [MigrationStatements], which has no Room or Android import and can
+ * therefore be applied to a real SQLite engine from an ordinary JVM unit test. Each [Migration]
+ * below executes exactly one of those lists, in order, and holds no SQL of its own: what the test
+ * runs is what the app runs.
  */
 object Migrations {
 
-    /**
-     * v2: the SSH tunnel becomes optional, so `sshKeyId` has to allow NULL and a `useSshTunnel`
-     * flag is added.
-     *
-     * SQLite cannot relax a column's NOT NULL, so the table is rebuilt and copied. The columns are
-     * still named `bastionHost`/`bastionPort` here — this migration has to match the schema as it
-     * was at version 2, whatever later versions renamed.
-     */
-    val MIGRATION_1_2 = object : Migration(1, 2) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `connection_new` (
-                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    `name` TEXT NOT NULL,
-                    `color` TEXT NOT NULL,
-                    `useSshTunnel` INTEGER NOT NULL,
-                    `bastionHost` TEXT NOT NULL,
-                    `bastionPort` INTEGER NOT NULL,
-                    `sshUser` TEXT NOT NULL,
-                    `sshKeyId` INTEGER,
-                    `dbHost` TEXT NOT NULL,
-                    `dbPort` INTEGER NOT NULL,
-                    `database` TEXT NOT NULL,
-                    `dbUser` TEXT NOT NULL,
-                    `readOnly` INTEGER NOT NULL,
-                    `lastUsedAt` INTEGER,
-                    FOREIGN KEY(`sshKeyId`) REFERENCES `ssh_key`(`id`)
-                        ON UPDATE NO ACTION ON DELETE RESTRICT
-                )
-                """.trimIndent(),
-            )
-            db.execSQL(
-                """
-                INSERT INTO `connection_new` (
-                    id, name, color, useSshTunnel, bastionHost, bastionPort, sshUser, sshKeyId,
-                    dbHost, dbPort, `database`, dbUser, readOnly, lastUsedAt
-                )
-                SELECT id, name, color, 1, bastionHost, bastionPort, sshUser, sshKeyId,
-                       dbHost, dbPort, `database`, dbUser, readOnly, lastUsedAt
-                FROM `connection`
-                """.trimIndent(),
-            )
-            db.execSQL("DROP TABLE `connection`")
-            db.execSQL("ALTER TABLE `connection_new` RENAME TO `connection`")
-            db.execSQL("CREATE INDEX IF NOT EXISTS `index_connection_sshKeyId` ON `connection` (`sshKeyId`)")
+    /** A [Migration] that runs [statements] in order. See [MigrationStatements] for the why. */
+    private fun migration(from: Int, to: Int, statements: List<String>): Migration =
+        object : Migration(from, to) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                statements.forEach { db.execSQL(it) }
+            }
         }
-    }
 
-    /**
-     * v3: "bastion" is gone from the app's vocabulary, so the two columns carrying it are renamed
-     * to what they always were — the SSH host and port.
-     *
-     * A rename rather than another rebuild: SQLCipher ships a recent SQLite, so RENAME COLUMN is
-     * available regardless of the Android version.
-     */
-    val MIGRATION_2_3 = object : Migration(2, 3) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `connection` RENAME COLUMN `bastionHost` TO `sshHost`")
-            db.execSQL("ALTER TABLE `connection` RENAME COLUMN `bastionPort` TO `sshPort`")
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_1_2]. */
+    val MIGRATION_1_2: Migration = migration(1, 2, MigrationStatements.MIGRATION_1_2)
 
-    /**
-     * v4: TLS for the MySQL connection itself.
-     *
-     * Existing connections keep DISABLED: they were all tunnelled, where the tunnel is the
-     * encryption, and silently turning on verification would break them.
-     */
-    val MIGRATION_3_4 = object : Migration(3, 4) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                "ALTER TABLE `connection` ADD COLUMN `sslMode` TEXT NOT NULL DEFAULT 'DISABLED'",
-            )
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `caCertificate` TEXT")
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_2_3]. */
+    val MIGRATION_2_3: Migration = migration(2, 3, MigrationStatements.MIGRATION_2_3)
 
-    /**
-     * v5: the SSH host can be entered with a password as well as a key.
-     *
-     * Existing connections keep KEY, which is what they all were. The password lives in its own
-     * table, sealed the same way as the MySQL one.
-     */
-    val MIGRATION_4_5 = object : Migration(4, 5) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                "ALTER TABLE `connection` ADD COLUMN `sshAuthMethod` TEXT NOT NULL DEFAULT 'KEY'",
-            )
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `ssh_credential` (
-                    `connectionId` INTEGER PRIMARY KEY NOT NULL,
-                    `sealedPassword` BLOB NOT NULL
-                )
-                """.trimIndent(),
-            )
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_3_4]. */
+    val MIGRATION_3_4: Migration = migration(3, 4, MigrationStatements.MIGRATION_3_4)
 
-    /** v6: a connection can reach its SSH host through a first one. */
-    val MIGRATION_5_6 = object : Migration(5, 6) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpHost` TEXT")
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpPort` INTEGER NOT NULL DEFAULT 22")
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpUser` TEXT")
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_4_5]. */
+    val MIGRATION_4_5: Migration = migration(4, 5, MigrationStatements.MIGRATION_4_5)
 
-    /**
-     * v7: a connection says which environment it belongs to, and carries its own timeouts.
-     *
-     * Existing rows become UNSET rather than PRODUCTION: the app has no way to know, and a wrong
-     * guess either cries wolf on every connection or stays quiet on the one that matters. The
-     * timeouts default to what the whole app used until now, so nothing changes until they are
-     * edited.
-     */
-    val MIGRATION_6_7 = object : Migration(6, 7) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                "ALTER TABLE `connection` ADD COLUMN `environment` TEXT NOT NULL DEFAULT 'UNSET'",
-            )
-            db.execSQL(
-                "ALTER TABLE `connection` ADD COLUMN `connectTimeoutSeconds` INTEGER NOT NULL DEFAULT 10",
-            )
-            db.execSQL(
-                "ALTER TABLE `connection` ADD COLUMN `queryTimeoutSeconds` INTEGER NOT NULL DEFAULT 30",
-            )
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_5_6]. */
+    val MIGRATION_5_6: Migration = migration(5, 6, MigrationStatements.MIGRATION_5_6)
 
-    /**
-     * v8: the jump host can be entered with a credential of its own.
-     *
-     * Existing rows get NULL in `sshJumpAuthMethod` and in `sshJumpKeyId`, and NULL is defined to
-     * mean "the first hop uses the same credential as the second" — which is what every two-hop
-     * connection saved so far has been doing. Nothing is rewritten and nothing changes behaviour:
-     * a connection only splits its credentials once the user fills the new fields in.
-     *
-     * The new password gets its own table rather than a column on `ssh_credential`, whose
-     * `sealedPassword` is NOT NULL and would have to be rebuilt to take a second, optional one.
-     */
-    val MIGRATION_7_8 = object : Migration(7, 8) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpAuthMethod` TEXT")
-            db.execSQL("ALTER TABLE `connection` ADD COLUMN `sshJumpKeyId` INTEGER")
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `ssh_jump_credential` (
-                    `connectionId` INTEGER PRIMARY KEY NOT NULL,
-                    `sealedPassword` BLOB NOT NULL
-                )
-                """.trimIndent(),
-            )
-        }
-    }
+    /** See [MigrationStatements.MIGRATION_6_7]. */
+    val MIGRATION_6_7: Migration = migration(6, 7, MigrationStatements.MIGRATION_6_7)
+
+    /** See [MigrationStatements.MIGRATION_7_8]. */
+    val MIGRATION_7_8: Migration = migration(7, 8, MigrationStatements.MIGRATION_7_8)
 
     val ALL = arrayOf(
         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
