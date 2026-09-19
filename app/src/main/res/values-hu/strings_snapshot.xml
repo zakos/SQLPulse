@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="snapshot_menu">Időgép</string>
+    <string name="snapshot_take">Pillanatfelvétel</string>
+    <string name="snapshot_retake">Pillanatfelvétel cseréje</string>
+    <string name="snapshot_compare">Összehasonlítás a felvétellel</string>
+    <string name="snapshot_discard">Felvétel eldobása</string>
+    <string name="snapshot_state">Felvétel: %1$s · %2$d sor</string>
+
+    <string name="snapshot_notice_title">Pillanatfelvétel</string>
+    <string name="snapshot_notice_taken">%1$d sor megjegyezve. Futtassa le a lekérdezést később, és hasonlítsa össze.</string>
+    <string name="snapshot_notice_trimmed">Az eredmény %1$d soros volt; az első %2$d sor maradt meg, az összehasonlítás csak ezekre terjed ki.</string>
+    <string name="snapshot_notice_partial_source">Maga a lekérdezés sem hozta el a teljes választ, így az összehasonlítás csak a betöltött sorokra vonatkozik.</string>
+    <string name="snapshot_notice_too_wide">%1$d oszlop több annál, amennyit egy felvétel elbír; a határ %2$d. Válasszon ki kevesebb oszlopot.</string>
+    <string name="snapshot_notice_no_result">Nincs a képernyőn eredmény, amiről felvétel készülhetne.</string>
+
+    <string name="snapshot_title">Időgép</string>
+    <string name="snapshot_times">%1$s → %2$s</string>
+    <string name="snapshot_summary">%1$d új · %2$d eltűnt · %3$d változott</string>
+    <string name="snapshot_unchanged">%1$d változatlan</string>
+    <string name="snapshot_identical">A felvétel óta semmi nem változott.</string>
+    <string name="snapshot_match_key">A sorok párosítása elsődleges kulcs szerint: %1$s</string>
+    <string name="snapshot_match_row">Az eredményben nincs elsődleges kulcs, ezért a teljes sorok párosulnak: egy módosított sor így egy eltűnt és egy új sorként látszik.</string>
+    <string name="snapshot_partial">Az eredménynek csak egy része van összehasonlítva: akkor %1$d sor, most %2$d sor.</string>
+    <string name="snapshot_columns_differ">A lekérdezés megváltozott a felvétel óta — az oszlopok már nem ugyanazok, így nincs mit egymás mellé tenni.</string>
+    <string name="snapshot_no_result">A legutóbbi futás nem adott sorokat, amikkel összevethető lenne.</string>
+    <string name="snapshot_refused">Ez az eredmény túl széles az összehasonlításhoz.</string>
+
+    <string name="snapshot_row_added">Új</string>
+    <string name="snapshot_row_removed">Eltűnt</string>
+    <string name="snapshot_row_changed">Változott</string>
+    <string name="snapshot_row_key">Kulcs: %1$s</string>
+    <string name="snapshot_cell_change">%1$s: %2$s → %3$s</string>
+    <string name="snapshot_close">Bezárás</string>
+</resources>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Time machine: a snapshot of a result, and the comparison with a later run. -->
+    <string name="snapshot_menu">Time machine</string>
+    <string name="snapshot_take">Take a snapshot</string>
+    <string name="snapshot_retake">Replace the snapshot</string>
+    <string name="snapshot_compare">Compare with the snapshot</string>
+    <string name="snapshot_discard">Discard the snapshot</string>
+    <string name="snapshot_state">Snapshot: %1$s · %2$d rows</string>
+
+    <string name="snapshot_notice_title">Snapshot</string>
+    <string name="snapshot_notice_taken">%1$d rows kept. Run the query again later and compare.</string>
+    <string name="snapshot_notice_trimmed">The result had %1$d rows; the first %2$d were kept, and the comparison will cover only those.</string>
+    <string name="snapshot_notice_partial_source">The query itself stopped short of the whole answer, so the comparison covers only the rows that were loaded.</string>
+    <string name="snapshot_notice_too_wide">%1$d columns is more than a snapshot can hold; the limit is %2$d. Select fewer columns and try again.</string>
+    <string name="snapshot_notice_no_result">There is no result on screen to take a snapshot of.</string>
+
+    <string name="snapshot_title">Time machine</string>
+    <string name="snapshot_times">%1$s → %2$s</string>
+    <string name="snapshot_summary">%1$d new · %2$d gone · %3$d changed</string>
+    <string name="snapshot_unchanged">%1$d unchanged</string>
+    <string name="snapshot_identical">Nothing has changed since the snapshot.</string>
+    <string name="snapshot_match_key">Rows matched by primary key: %1$s</string>
+    <string name="snapshot_match_row">The result has no primary key in it, so whole rows are matched: an edited row shows up as one row gone and one row new.</string>
+    <string name="snapshot_partial">Only part of the result is compared: %1$d rows then, %2$d rows now.</string>
+    <string name="snapshot_columns_differ">The query has changed since the snapshot was taken — the columns are no longer the same, so there is nothing to line up.</string>
+    <string name="snapshot_no_result">The last run produced no rows to compare with.</string>
+    <string name="snapshot_refused">This result is too wide to compare.</string>
+
+    <string name="snapshot_row_added">New</string>
+    <string name="snapshot_row_removed">Gone</string>
+    <string name="snapshot_row_changed">Changed</string>
+    <string name="snapshot_row_key">Key: %1$s</string>
+    <string name="snapshot_cell_change">%1$s: %2$s → %3$s</string>
+    <string name="snapshot_close">Close</string>
+</resources>

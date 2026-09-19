@@ -18,6 +18,11 @@ import hu.laurel.sqlpulse.data.query.QueryDraftStore
 import hu.laurel.sqlpulse.data.query.QueryRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.snapshot.ComparisonOutcome
+import hu.laurel.sqlpulse.data.snapshot.ResultDiffs
+import hu.laurel.sqlpulse.data.snapshot.ResultSnapshot
+import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
+import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ParameterValue
@@ -89,6 +94,28 @@ data class WriteConfirmation(
 }
 
 /**
+ * What taking a snapshot has to say for itself.
+ *
+ * Taking one is a single tap that produces no visible change on screen, so it always answers:
+ * how many rows it kept, and — this is the part that matters — whether that is all of them. A
+ * comparison of the first two thousand rows of a result is a useful thing; a comparison of the
+ * first two thousand rows that the user believes covers forty thousand is not.
+ */
+sealed interface SnapshotNotice {
+    data class Taken(
+        val rows: Int,
+        /** The row count of the result when it did not fit, else null. */
+        val trimmedFrom: Int?,
+        /** True when the query itself had already stopped at the row limit. */
+        val sourceTruncated: Boolean,
+    ) : SnapshotNotice
+
+    data class TooWide(val columnCount: Int, val maxColumns: Int) : SnapshotNotice
+
+    data object NoResult : SnapshotNotice
+}
+
+/**
  * The screen's state: the open tabs, and the few things that belong to the session rather than to
  * any one tab — the connection, the transaction, and the one query that may be running.
  *
@@ -112,6 +139,20 @@ data class QueryEditorUiState(
     val tabLimitReached: Boolean = false,
     /** The tab a close is waiting to be confirmed for, because its text is not saved anywhere. */
     val closingTab: Long? = null,
+    /**
+     * The time machine's memory, one snapshot per tab.
+     *
+     * It lives in the state rather than in the tab because the tab is [QueryTabs]' data and stays
+     * that way; and it lives in the view model rather than on the screen because leaving the
+     * screen and coming back must not throw away a snapshot that was taken to be compared with
+     * something that has not happened yet. A snapshot dies with its tab and with the process —
+     * nothing about a result is ever written to disk (§9).
+     */
+    val snapshots: Map<Long, ResultSnapshot> = emptyMap(),
+    /** Set while the comparison sheet is up. */
+    val comparison: ComparisonOutcome? = null,
+    /** Set right after a snapshot was taken, or refused. */
+    val snapshotNotice: SnapshotNotice? = null,
 ) {
     val active: QueryTab get() = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
 
@@ -133,6 +174,9 @@ data class QueryEditorUiState(
     val editorCollapsed: Boolean get() = active.editorCollapsed
     val isScript: Boolean get() = active.isScript
     val hasSelection: Boolean get() = active.hasSelection
+
+    /** The active tab's snapshot, if it has one. */
+    val snapshot: ResultSnapshot? get() = snapshots[activeTabId]
 
     /** The tab a close confirmation is about, if one is open. */
     val closing: QueryTab? get() = closingTab?.let { id -> tabs.firstOrNull { it.id == id } }
@@ -301,6 +345,9 @@ class QueryEditorViewModel @Inject constructor(
             activeTabId = active,
             closingTab = null,
             tabLimitReached = false,
+            // The snapshot belonged to that tab's query; keeping it for whatever tab reuses the
+            // id later would offer a comparison between two unrelated questions.
+            snapshots = state.snapshots - id,
         )
         noteDraftChange()
     }
@@ -837,6 +884,105 @@ class QueryEditorViewModel @Inject constructor(
             )
         }
         noteDraftChange()
+    }
+
+    // --- Time machine ------------------------------------------------------------------------
+
+    /**
+     * Freezes the result the active tab is showing (roadmap: Időgép).
+     *
+     * The only thing decided here is which columns identify a row: the primary key of the one
+     * table the result came from, when the result actually carries every part of it. Everything
+     * else — whether that key can be believed, how much of the result fits, what "the same row"
+     * means without a key — is [ResultSnapshots]' answer, so it can be stated as an equality in a
+     * test rather than demonstrated on a phone.
+     */
+    fun takeSnapshot() {
+        val state = _uiState.value
+        val tabId = state.activeTabId
+        val tab = state.active
+        val result = tab.result
+        if (result == null || result.columns.isEmpty()) {
+            _uiState.value = state.copy(snapshotNotice = SnapshotNotice.NoResult)
+            return
+        }
+        viewModelScope.launch {
+            val keyColumns = keyColumnsOf(tab.database, result)
+            when (val outcome = ResultSnapshots.take(result, System.currentTimeMillis(), keyColumns)) {
+                is SnapshotOutcome.Taken -> {
+                    val snapshot = outcome.snapshot
+                    _uiState.value = _uiState.value.copy(
+                        snapshots = _uiState.value.snapshots + (tabId to snapshot),
+                        snapshotNotice = SnapshotNotice.Taken(
+                            rows = snapshot.rowCount,
+                            trimmedFrom = snapshot.sourceRowCount.takeIf { snapshot.truncated },
+                            sourceTruncated = snapshot.sourceTruncated,
+                        ),
+                    )
+                }
+
+                is SnapshotOutcome.TooWide -> _uiState.value = _uiState.value.copy(
+                    snapshotNotice = SnapshotNotice.TooWide(outcome.columnCount, outcome.maxColumns),
+                )
+
+                SnapshotOutcome.NoResult -> _uiState.value = _uiState.value.copy(
+                    snapshotNotice = SnapshotNotice.NoResult,
+                )
+            }
+        }
+    }
+
+    /**
+     * Compares the snapshot with what the tab is showing now.
+     *
+     * Nothing is re-run: the comparison is between the snapshot and the result that is on screen,
+     * which is the same thing the user is looking at. Running the query again is the run button,
+     * deliberately — a comparison that silently went to the server would be a write-shaped action
+     * hiding behind a read-shaped one.
+     */
+    fun compareWithSnapshot() {
+        val state = _uiState.value
+        val snapshot = state.snapshots[state.activeTabId] ?: return
+        val result = state.active.result
+        val outcome = if (result == null) {
+            ComparisonOutcome.NoResult
+        } else {
+            ResultDiffs.compare(snapshot, result, System.currentTimeMillis())
+        }
+        _uiState.value = state.copy(comparison = outcome)
+    }
+
+    fun dismissComparison() {
+        _uiState.value = _uiState.value.copy(comparison = null)
+    }
+
+    fun dismissSnapshotNotice() {
+        _uiState.value = _uiState.value.copy(snapshotNotice = null)
+    }
+
+    /** Throws the snapshot away, for when the next one should be taken from a different run. */
+    fun discardSnapshot() {
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            snapshots = state.snapshots - state.activeTabId,
+            comparison = null,
+        )
+    }
+
+    /**
+     * The result's own primary key columns, or nothing.
+     *
+     * A join, a computed column, a result from a database the session is no longer pointed at,
+     * or a schema lookup that fails all land in the same place: no key, and the comparison then
+     * matches whole rows and says so. Guessing a key from column names would be worse than not
+     * having one, because a wrong key pairs rows that have nothing to do with each other.
+     */
+    private suspend fun keyColumnsOf(database: String?, result: ResultTable): List<String> {
+        if (database == null) return emptyList()
+        val table = ResultSnapshots.sourceTable(result.columns) ?: return emptyList()
+        val primaryKey = runCatching { schema.structure(database, table).primaryKey }
+            .getOrDefault(emptyList())
+        return ResultSnapshots.primaryKeyColumns(result.columns.map { it.label }, primaryKey)
     }
 
     // --- Drafts -----------------------------------------------------------------------------

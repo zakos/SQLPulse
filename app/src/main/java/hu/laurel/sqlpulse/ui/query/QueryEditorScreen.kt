@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -101,6 +102,7 @@ import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
+import hu.laurel.sqlpulse.ui.snapshot.SnapshotSheet
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -128,6 +130,7 @@ fun QueryEditorScreen(
     var findOpen by remember { mutableStateOf(false) }
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
+    var snapshotMenuOpen by remember { mutableStateOf(false) }
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
     LaunchedEffect(state.shareIntent) {
@@ -228,6 +231,60 @@ fun QueryEditorScreen(
                         enabled = state.sql.isNotBlank(),
                     ) {
                         Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
+                    }
+                    // The time machine (roadmap): freeze this result, and later hold the same
+                    // query's answer up against it. A menu rather than a button because taking a
+                    // snapshot and comparing with one are two different moments, and the second
+                    // one only exists once the first has happened.
+                    if (state.result != null || state.snapshot != null) {
+                        Box {
+                            IconButton(onClick = { snapshotMenuOpen = true }) {
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = stringResource(R.string.snapshot_menu),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = snapshotMenuOpen,
+                                onDismissRequest = { snapshotMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (state.snapshot == null) {
+                                                    R.string.snapshot_take
+                                                } else {
+                                                    R.string.snapshot_retake
+                                                },
+                                            ),
+                                        )
+                                    },
+                                    enabled = state.result != null,
+                                    onClick = {
+                                        snapshotMenuOpen = false
+                                        viewModel.takeSnapshot()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.snapshot_compare)) },
+                                    enabled = state.snapshot != null,
+                                    onClick = {
+                                        snapshotMenuOpen = false
+                                        viewModel.compareWithSnapshot()
+                                    },
+                                )
+                                if (state.snapshot != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.snapshot_discard)) },
+                                        onClick = {
+                                            snapshotMenuOpen = false
+                                            viewModel.discardSnapshot()
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                     if (state.result != null) {
                         Box {
@@ -633,6 +690,23 @@ fun QueryEditorScreen(
         )
     }
 
+    state.comparison?.let { outcome ->
+        SnapshotSheet(outcome = outcome, onDismiss = viewModel::dismissComparison)
+    }
+
+    state.snapshotNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSnapshotNotice,
+            title = { Text(stringResource(R.string.snapshot_notice_title)) },
+            text = { Text(snapshotNoticeText(notice)) },
+            confirmButton = {
+                Button(onClick = viewModel::dismissSnapshotNotice) {
+                    Text(stringResource(R.string.snapshot_close))
+                }
+            },
+        )
+    }
+
     if (favouriteDialogOpen) {
         FavouriteNameDialog(
             onSave = { name ->
@@ -642,6 +716,29 @@ fun QueryEditorScreen(
             onDismiss = { favouriteDialogOpen = false },
         )
     }
+}
+
+/**
+ * What the dialog after a snapshot says.
+ *
+ * Three sentences at most, and the second one is the important one: a snapshot that kept only
+ * part of the result has to say so at the moment it is taken, not later when the comparison it
+ * produced turns out to be about a slice nobody knew about.
+ */
+@Composable
+private fun snapshotNoticeText(notice: SnapshotNotice): String = when (notice) {
+    is SnapshotNotice.Taken -> listOfNotNull(
+        stringResource(R.string.snapshot_notice_taken, notice.rows),
+        notice.trimmedFrom?.let {
+            stringResource(R.string.snapshot_notice_trimmed, it, notice.rows)
+        },
+        stringResource(R.string.snapshot_notice_partial_source).takeIf { notice.sourceTruncated },
+    ).joinToString("\n\n")
+
+    is SnapshotNotice.TooWide ->
+        stringResource(R.string.snapshot_notice_too_wide, notice.columnCount, notice.maxColumns)
+
+    SnapshotNotice.NoResult -> stringResource(R.string.snapshot_notice_no_result)
 }
 
 @Composable
@@ -707,6 +804,24 @@ private fun ResultPanel(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = Spacing.l),
             )
+
+            // A snapshot leaves no mark on the result it was taken from, and an unmarked
+            // snapshot is one that gets compared against by accident an hour later. When it
+            // was taken, and how much of it there is, is the whole of what has to be said here.
+            state.snapshot?.let { snapshot ->
+                Text(
+                    text = stringResource(
+                        R.string.snapshot_state,
+                        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(snapshot.takenAt)),
+                        snapshot.rowCount,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalSemanticColors.current.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = Spacing.l),
+                )
+            }
             ResultGrid(
                 table = result,
                 showLimitNote = false,
