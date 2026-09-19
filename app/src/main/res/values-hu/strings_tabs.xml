@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="query_tab_untitled">%1$d. lekérdezés</string>
+    <string name="query_tab_new">Új lap</string>
+    <string name="query_tab_switch">Lapváltás</string>
+    <string name="query_tab_position">%1$d/%2$d</string>
+    <string name="query_tab_rename">Átnevezés</string>
+    <string name="query_tab_rename_label">A lap neve</string>
+    <string name="query_tab_duplicate">Megkettőzés</string>
+    <string name="query_tab_close">Lap bezárása</string>
+    <string name="query_tab_unsaved">Nincs kedvencként elmentve</string>
+    <string name="query_tab_unsaved_mark">•</string>
+    <string name="query_tab_close_title">Bezárja ezt a lapot?</string>
+    <string name="query_tab_close_body">Ez a lekérdezés nincs kedvencként elmentve. A lap bezárásával elvész.</string>
+    <string name="query_tab_close_confirm">Bezárás, elvész</string>
+    <string name="query_tab_limit_title">Nincs hely újabb lapnak</string>
+    <string name="query_tab_limit_body">Egyszerre %1$d lap lehet nyitva. Előbb zárjon be egyet, amivel már végzett.</string>
+</resources>

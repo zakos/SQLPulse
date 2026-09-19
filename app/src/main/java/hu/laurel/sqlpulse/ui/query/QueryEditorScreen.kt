@@ -23,12 +23,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -124,6 +126,7 @@ fun QueryEditorScreen(
     var favouriteDialogOpen by remember { mutableStateOf(false) }
     var exportMenuOpen by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
+    var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
@@ -259,6 +262,17 @@ fun QueryEditorScreen(
         // Two columns where there is room for two: on a tablet the result no longer has to share
         // the height with the editor, and neither has to be scrolled to reach the other.
         val editorPane: @Composable ColumnScope.() -> Unit = {
+                QueryTabBar(
+                    tabs = state.tabs,
+                    activeId = state.activeTabId,
+                    wide = wide,
+                    onSelect = viewModel::selectTab,
+                    onNew = viewModel::newTab,
+                    onRename = { renameDialogOpen = true },
+                    onDuplicate = { viewModel.duplicateTab(it) },
+                    onClose = viewModel::requestCloseTab,
+                )
+
                 // §7.3 lets you browse any database, so the editor has to be able to follow it. The
                 // chips belong to writing a query, so they fold away with the editor.
                 if (state.databases.isNotEmpty() && !state.editorCollapsed) {
@@ -286,7 +300,9 @@ fun QueryEditorScreen(
                 // TextFieldValue rather than a plain String: the selection is what decides whether
                 // "run" means the whole script or only the part the user marked.
                 var field by remember { mutableStateOf(TextFieldValue(state.sql)) }
-                LaunchedEffect(state.sql, state.selectionStart) {
+                // The tab id is part of the key: two tabs can hold the same text, and switching
+                // between them still has to move the cursor to where that tab left it.
+                LaunchedEffect(state.activeTabId, state.sql, state.selectionStart) {
                     // The text can also change from outside the field: a completion, the key row, a
                     // favourite. The cursor then goes where the view model put it, not to the end.
                     if (field.text != state.sql) {
@@ -310,12 +326,7 @@ fun QueryEditorScreen(
                         value = field,
                         onValueChange = { value ->
                             field = value
-                            viewModel.setSql(value.text)
-                            viewModel.setSelection(value.selection.min, value.selection.max)
-                            viewModel.suggest(
-                                value.text.take(value.selection.min)
-                                    .takeLastWhile { it.isLetterOrDigit() || it == '_' },
-                            )
+                            viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
                         },
                         textStyle = MonoStyles.editor,
                         visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
@@ -495,10 +506,10 @@ fun QueryEditorScreen(
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when {
                         state.connectionName == null -> NoSessionState(onBack)
-                        state.panel == QueryPanel.HISTORY -> HistoryPanel(history, viewModel::load)
+                        state.panel == QueryPanel.HISTORY -> HistoryPanel(history) { viewModel.load(it, saved = false) }
                         state.panel == QueryPanel.FAVOURITES -> FavouritesPanel(
                             favourites = favourites,
-                            onLoad = viewModel::load,
+                            onLoad = { viewModel.load(it, saved = true) },
                             onDelete = viewModel::deleteFavourite,
                         )
 
@@ -569,6 +580,56 @@ fun QueryEditorScreen(
             confirmation = confirmation,
             onConfirm = viewModel::confirmWrite,
             onDismiss = viewModel::dismissWriteConfirmation,
+        )
+    }
+
+    state.closing?.let { tab ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCloseTab,
+            title = { Text(stringResource(R.string.query_tab_close_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    Text(stringResource(R.string.query_tab_close_body))
+                    Text(
+                        text = tab.sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
+                        style = MonoStyles.cell,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.closeTab(tab.id) }) {
+                    Text(stringResource(R.string.query_tab_close_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissCloseTab) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (state.tabLimitReached) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissTabLimit,
+            title = { Text(stringResource(R.string.query_tab_limit_title)) },
+            text = { Text(stringResource(R.string.query_tab_limit_body, QueryTabs.MAX_TABS)) },
+            confirmButton = {
+                Button(onClick = viewModel::dismissTabLimit) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    if (renameDialogOpen) {
+        TabNameDialog(
+            initial = state.active.title.orEmpty(),
+            onSave = { name ->
+                viewModel.renameTab(state.activeTabId, name)
+                renameDialogOpen = false
+            },
+            onDismiss = { renameDialogOpen = false },
         )
     }
 
@@ -1077,3 +1138,227 @@ private fun Key.shortcutName(): String = when (this) {
 
 /** The editor gets a little less than half: the result is the wider of the two things to read. */
 private const val EDITOR_PANE_WEIGHT = 0.42f
+
+/**
+ * The tab strip, in the two shapes it needs.
+ *
+ * On a wide window the tabs are a scrolling row of chips: there is room for several names, and
+ * seeing them all at once is the point of having them.
+ *
+ * On a phone there is no such room, and a strip of chips there is actively harmful. At 360dp a row
+ * of four names either elides every one of them down to "SEL…" — which tells you nothing about
+ * which tab is which — or scrolls sideways, directly above an editor that also scrolls sideways,
+ * so a horizontal swipe becomes a guess about which of the two will take it. Worse, the strip
+ * grows as tabs are added, eating the four or five lines of SQL the editor has to begin with.
+ *
+ * So the phone gets one row that never grows: the name of the tab you are in, "3/5" so you know
+ * there are others and where you are among them, and a tap to open the full list as a menu, where
+ * every name has the whole width and closing one is a deliberate second target. Vertical space is
+ * fixed, the names are legible, and nothing competes with the editor for a sideways swipe.
+ */
+@Composable
+private fun QueryTabBar(
+    tabs: List<QueryTab>,
+    activeId: Long,
+    wide: Boolean,
+    onSelect: (Long) -> Unit,
+    onNew: () -> Unit,
+    onRename: (Long) -> Unit,
+    onDuplicate: (Long) -> Unit,
+    onClose: (Long) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    var listOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val activeIndex = tabs.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.l, end = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        if (wide) {
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
+                    FilterChip(
+                        selected = tab.id == activeId,
+                        onClick = { onSelect(tab.id) },
+                        label = {
+                            Text(
+                                text = tabLabel(tab, index),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        // The dot is the whole mark: a tab whose text is not a favourite yet.
+                        leadingIcon = if (tab.unsaved) {
+                            {
+                                Text(
+                                    text = stringResource(R.string.query_tab_unsaved_mark),
+                                    color = semantic.warning,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        trailingIcon = if (tabs.size > 1) {
+                            {
+                                IconButton(onClick = { onClose(tab.id) }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.query_tab_close),
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        } else {
+            Box(modifier = Modifier.weight(1f)) {
+                TextButton(onClick = { listOpen = true }) {
+                    if (tabs[activeIndex].unsaved) {
+                        Text(
+                            text = stringResource(R.string.query_tab_unsaved_mark),
+                            color = semantic.warning,
+                            modifier = Modifier.padding(end = Spacing.xs),
+                        )
+                    }
+                    Text(
+                        text = tabLabel(tabs[activeIndex], activeIndex),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.query_tab_position,
+                            activeIndex + 1,
+                            tabs.size,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
+                        modifier = Modifier.padding(start = Spacing.xs),
+                    )
+                    Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.query_tab_switch))
+                }
+                DropdownMenu(expanded = listOpen, onDismissRequest = { listOpen = false }) {
+                    tabs.forEachIndexed { index, tab ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = tabLabel(tab, index),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (tab.id == activeId) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                            },
+                            leadingIcon = if (tab.unsaved) {
+                                {
+                                    Text(
+                                        text = stringResource(R.string.query_tab_unsaved_mark),
+                                        color = semantic.warning,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            trailingIcon = if (tabs.size > 1) {
+                                {
+                                    IconButton(
+                                        onClick = {
+                                            listOpen = false
+                                            onClose(tab.id)
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = stringResource(R.string.query_tab_close),
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                listOpen = false
+                                onSelect(tab.id)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        IconButton(onClick = onNew) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.query_tab_new))
+        }
+
+        // Rename, duplicate and close act on the tab you are in, so they are one menu in both
+        // layouts rather than a second control per chip.
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.query_tab_switch))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_rename)) },
+                    onClick = {
+                        menuOpen = false
+                        onRename(activeId)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_duplicate)) },
+                    onClick = {
+                        menuOpen = false
+                        onDuplicate(activeId)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_close)) },
+                    onClick = {
+                        menuOpen = false
+                        onClose(activeId)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** A tab's name, its first line of SQL, or a number — in that order of preference. */
+@Composable
+private fun tabLabel(tab: QueryTab, index: Int): String =
+    QueryTabs.label(tab) ?: stringResource(R.string.query_tab_untitled, index + 1)
+
+@Composable
+private fun TabNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.query_tab_rename)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.query_tab_rename_label)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onSave(name) }) { Text(stringResource(R.string.connection_save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}

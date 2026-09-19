@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Query editor tabs (§7.4). -->
+    <string name="query_tab_untitled">Query %1$d</string>
+    <string name="query_tab_new">New tab</string>
+    <string name="query_tab_switch">Switch tab</string>
+    <string name="query_tab_position">%1$d/%2$d</string>
+    <string name="query_tab_rename">Rename</string>
+    <string name="query_tab_rename_label">Tab name</string>
+    <string name="query_tab_duplicate">Duplicate</string>
+    <string name="query_tab_close">Close tab</string>
+    <string name="query_tab_unsaved">Not saved as a favourite</string>
+    <string name="query_tab_unsaved_mark">•</string>
+    <string name="query_tab_close_title">Close this tab?</string>
+    <string name="query_tab_close_body">This query is not saved as a favourite. Closing the tab loses it.</string>
+    <string name="query_tab_close_confirm">Close and lose it</string>
+    <string name="query_tab_limit_title">No room for another tab</string>
+    <string name="query_tab_limit_body">You can keep %1$d tabs open at once. Close one you are done with first.</string>
+</resources>
