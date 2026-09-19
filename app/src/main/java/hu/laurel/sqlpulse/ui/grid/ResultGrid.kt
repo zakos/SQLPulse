@@ -393,8 +393,6 @@ private fun columnWidths(table: ResultTable): List<Dp> = table.columns.mapIndexe
     GridWidths.columnWidthDp(column.label.length, widest).dp
 }
 
-}
-
 private fun displayLength(value: CellValue): Int = when (value) {
     is CellValue.Null -> 4
     is CellValue.Text -> value.value.length

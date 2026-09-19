@@ -9,9 +9,13 @@ package hu.laurel.sqlpulse.ui.grid
  * label instead; a header that hangs them off the end of the label, as this grid first did, makes
  * every header wider than its column and the two rows drift apart by 48dp per column.
  */
+/** The sort icon's touch target, and the drag handle between two headers. */
+internal const val SORT_ICON_TARGET = 36
+internal const val RESIZE_HANDLE = 12
+
 internal object GridWidths {
 
-    /** The sort icon's touch target plus the drag handle, both inside the column. */
+    /** What those two take out of every column, before the label gets any. */
     const val HEADER_CONTROLS_DP = SORT_ICON_TARGET + RESIZE_HANDLE
 
     /** Rough advance width of JetBrains Mono at 13sp. */
@@ -29,6 +33,3 @@ internal object GridWidths {
         return characters * CHAR_WIDTH_DP + HEADER_CONTROLS_DP
     }
 }
-
-internal const val SORT_ICON_TARGET = 36
-internal const val RESIZE_HANDLE = 12
