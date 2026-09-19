@@ -99,6 +99,32 @@ jobs:
           SQLPULSE_TEST_MYSQL_LEGACY: ${{ matrix.legacy }}
         run: ./gradlew --no-daemon testDebugUnitTest --tests 'hu.laurel.sqlpulse.integration.*'
 
+      # The messages, last, where they can be read.
+      #
+      # Gradle prints them where it runs, but GitHub dumps the whole service container's log after
+      # the job — a hundred lines of InnoDB starting up — and that is what is left at the end of
+      # the log. The report is also uploaded as an artifact, which is the better copy; this is for
+      # reading the failure without downloading anything.
+      - name: Say what failed
+        if: failure()
+        run: |
+          python3 - <<'PYTHON'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          shown = 0
+          for path in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for problem in list(case.iter("failure")) + list(case.iter("error")):
+                      shown += 1
+                      if shown > 12:
+                          continue
+                      print(f"--- {case.get('classname')} > {case.get('name')}")
+                      print((problem.get("message") or "no message").strip()[:600])
+                      print()
+          print(f"{shown} failing tests in total.")
+          PYTHON
+
       # A skipped test here would mean the server was never reached, which is exactly the failure
       # this workflow exists to catch — so the report is kept whatever the outcome.
       - name: Upload the test report
