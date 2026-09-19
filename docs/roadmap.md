@@ -36,6 +36,8 @@ megnézhető.
 | --- | --- |
 | Adatbázisok és táblák listája, tábla szerkezete és indexei | `ui/schema/` |
 | Nézetek, eljárások, triggerek, események külön füleken | `data/schema/SchemaRepository.kt` |
+| Generált oszlopok, CHECK megszorítások, egybevetés, particionálás, ON DELETE/UPDATE | `data/schema/SchemaExtras.kt` |
+| A séma kapcsolat nélkül is böngészhető, a felvétel idejével megjelölve | `data/schema/SchemaCache.kt` |
 | Tábla motorja, karakterkészlete és mérete | `data/schema/SchemaModels.kt` |
 | Adatbázis váltás menet közben, `USE` paranccsal is | `data/sql/QueryExecutor.kt` |
 | Adatbázis megadása nélküli kapcsolat (több adatbázisra kérdező lekérdezésekhez) | ugyanott |
@@ -68,7 +70,9 @@ megnézhető.
 | CSV import: oszlopok név szerinti illesztése, egy tranzakcióban | `data/csv/` |
 | JSON cella formázva, BLOB belenézés (szöveg vagy hex) | `data/sql/JsonFormatter.kt`, `BlobPreview.kt` |
 | Sorok bejárása idegen kulcson át: a hivatkozott sor, és ami a sorra hivatkozik | `data/schema/RowLinks.kt`, `ui/grid/Sheets.kt` |
+| Időgép: pillanatfelvétel az eredményről, és mi lett új, mi tűnt el, mi változott | `data/snapshot/`, `ui/snapshot/` |
 | EXPLAIN: mi szúr szemet a tervben | `data/sql/ExplainAdvice.kt` |
+| A terv fa nézetben, a legdrágább lépés kiemelve; régi kiszolgálón a lapos olvasat | `data/sql/ExplainJson.kt`, `ui/explain/` |
 | Hibák osztályozása (jogosultság, TLS, időtúllépés, zárolás, …) | `data/sql/SqlFailure.kt` |
 
 ### Pulzus — élő kiszolgálófigyelés
@@ -104,6 +108,7 @@ megnézhető.
 | Éles MySQL 8.0, 5.7 és MariaDB 11 ellen futó integrációs tesztek a CI-ban | `.github/workflows/integration.yml` |
 | A vándorlások valódi SQLite-on végigfuttatva, 1-től a mai verzióig | `app/src/test/.../MigrationSqlTest.kt` |
 | Kiadási build R8-cal, a driverek és a natív hívások megtartva | `app/proguard-rules.pro` |
+| Diagnosztikai jelentés hibabejelentéshez, amiben nincs gépnév, felhasználó, jelszó, kulcs, lekérdezés | `data/diagnostics/` |
 
 ## Ami hiányzik
 
@@ -119,12 +124,10 @@ képernyő nincs minden kiszolgálóverzióval végigmérve.
 
 ## Ami ezután jön
 
-1. **Időgép.** Egy lekérdezés eredményének pillanatfelvétele, majd összehasonlítás egy
-   későbbi futással: mi jött, mi tűnt el, mi változott.
-2. **Bővebb séma-adatok.** CHECK megszorítások, az idegen kulcsok ON DELETE és ON UPDATE
-   szabálya, generált oszlopok, egybevetés, particionálás.
-3. **Séma a hálózat nélkül.** A letöltött szerkezet megmarad, így a táblák böngészhetők
-   akkor is, amikor nincs kapcsolat.
+1. **Séma-összehasonlítás.** Két kapcsolat szerkezete egymás mellett: mi tér el a
+   fejlesztői és az éles adatbázis között.
+2. **Éles próba minden képernyőn.** A kapcsolat, a régi driver ága és az SSH ág van
+   valódi kiszolgálón kimérve; a többi képernyő nincs minden verzióval végigpróbálva.
 
 ## Amit szándékosan nem tartalmaz
 
