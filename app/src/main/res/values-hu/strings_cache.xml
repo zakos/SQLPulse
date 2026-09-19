@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cache_badge">Mentett séma</string>
+    <string name="cache_not_live">Nincs kapcsolat: ez egy korábban mentett másolat, nem élő adat.</string>
+    <string name="cache_taken">%1$s mentve, ekkor: %2$s.</string>
+    <string name="cache_taken_just_now">az imént</string>
+    <plurals name="cache_taken_minutes">
+        <item quantity="one">egy perce</item>
+        <item quantity="other">%d perce</item>
+    </plurals>
+    <plurals name="cache_taken_hours">
+        <item quantity="one">egy órája</item>
+        <item quantity="other">%d órája</item>
+    </plurals>
+    <plurals name="cache_taken_days">
+        <item quantity="one">egy napja</item>
+        <item quantity="other">%d napja</item>
+    </plurals>
+    <string name="cache_stale">Ez a másolat régen készült, azóta változhatott a séma.</string>
+    <string name="cache_refresh">Frissítés a szerverről</string>
+</resources>

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,21 +39,34 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.schema.CacheAgeUnit
 import hu.laurel.sqlpulse.data.schema.ObjectKind
+import hu.laurel.sqlpulse.data.schema.SchemaCache
+import hu.laurel.sqlpulse.data.schema.SchemaCacheRepository
 import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.schema.formatByteSize
@@ -63,7 +77,18 @@ import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.explain
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
+import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import java.text.DateFormat
+import java.util.Date
+import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * Schema browser (§7.3): databases as chips, tables in a searchable list, one tap into the table
@@ -79,9 +104,22 @@ fun SchemaBrowserScreen(
     onOpenPulse: () -> Unit,
     onOpenMap: () -> Unit,
     viewModel: SchemaBrowserViewModel = hiltViewModel(),
+    cacheViewModel: SchemaCacheMarkerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
+
+    // Which connection's cache the marker is reading. A lost session still knows its connection,
+    // which is exactly the case the marker exists for.
+    val connectionId = when (val session = state.session) {
+        is SqlSessionState.Ready -> session.connection.id
+        is SqlSessionState.Lost -> session.connection.id
+        else -> null
+    }
+    val capturedAt by cacheViewModel.capturedAt.collectAsStateWithLifecycle()
+    LaunchedEffect(connectionId, state.selectedDatabase) {
+        cacheViewModel.watch(connectionId, state.selectedDatabase)
+    }
 
     Scaffold(
         topBar = {
@@ -133,118 +171,252 @@ fun SchemaBrowserScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.session !is SqlSessionState.Ready -> SessionPlaceholder(state.session, onBack)
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Above everything, never inside the list: a marker that scrolls away is a marker
+            // that was not read.
+            SchemaCacheMarker(
+                live = state.session is SqlSessionState.Ready,
+                capturedAt = capturedAt,
+                onRefresh = viewModel::refresh,
+            )
 
-                else -> SchemaBody(
-                    wide = isWideWindow(),
-                    databases = state.databases,
-                    selectedDatabase = state.selectedDatabase,
-                    onSelectDatabase = viewModel::selectDatabase,
-                ) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = Spacing.l),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                when {
+                    // Without a session the placeholder is the whole screen — unless the cache
+                    // has something, in which case the tables are browsable and the marker above
+                    // is what says they are not live.
+                    state.session !is SqlSessionState.Ready && state.databases.isEmpty() ->
+                        SessionPlaceholder(state.session, onBack)
+
+                    else -> SchemaBody(
+                        wide = isWideWindow(),
+                        databases = state.databases,
+                        selectedDatabase = state.selectedDatabase,
+                        onSelectDatabase = viewModel::selectDatabase,
                     ) {
-                        items(ObjectKind.entries) { kind ->
-                            FilterChip(
-                                selected = kind == state.objectKind,
-                                onClick = { viewModel.selectObjectKind(kind) },
-                                label = { Text(stringResource(kind.labelRes())) },
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = Spacing.l),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                        ) {
+                            items(ObjectKind.entries) { kind ->
+                                FilterChip(
+                                    selected = kind == state.objectKind,
+                                    onClick = { viewModel.selectObjectKind(kind) },
+                                    label = { Text(stringResource(kind.labelRes())) },
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = state.filter,
+                            onValueChange = viewModel::setFilter,
+                            label = { Text(stringResource(R.string.schema_search)) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.l),
+                        )
+
+                        state.error?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(Spacing.l),
                             )
                         }
-                    }
 
-                    OutlinedTextField(
-                        value = state.filter,
-                        onValueChange = viewModel::setFilter,
-                        label = { Text(stringResource(R.string.schema_search)) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Spacing.l),
-                    )
+                        if (state.loading) {
+                            CircularProgressIndicator(modifier = Modifier.padding(Spacing.l))
+                        }
 
-                    state.error?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = it,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(Spacing.l),
-                        )
-                    }
+                        if (state.isEmpty) {
+                            EmptyState(
+                                title = stringResource(state.objectKind.emptyTitleRes()),
+                                body = stringResource(R.string.schema_no_tables_body),
+                                actionLabel = stringResource(R.string.schema_clear_filter),
+                                onAction = { viewModel.setFilter("") },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                when (state.objectKind) {
+                                    ObjectKind.TABLES, ObjectKind.VIEWS ->
+                                        items(state.visibleTables, key = { "${it.database}.${it.name}" }) { table ->
+                                            TableRow(table) { onOpenTable(table.database, table.name) }
+                                            HorizontalDivider(color = semantic.hairline)
+                                        }
 
-                    if (state.loading) {
-                        CircularProgressIndicator(modifier = Modifier.padding(Spacing.l))
-                    }
+                                    ObjectKind.ROUTINES ->
+                                        items(state.visibleRoutines, key = { "${it.kind}.${it.name}" }) { routine ->
+                                            ObjectRow(
+                                                name = routine.name,
+                                                detail = routine.comment,
+                                                trailing = routine.returns
+                                                    ?.let { stringResource(R.string.schema_returns, it) }
+                                                    ?: stringResource(R.string.schema_procedure),
+                                                onClick = { viewModel.showRoutine(routine) },
+                                            )
+                                            HorizontalDivider(color = semantic.hairline)
+                                        }
 
-                    if (state.isEmpty) {
-                        EmptyState(
-                            title = stringResource(state.objectKind.emptyTitleRes()),
-                            body = stringResource(R.string.schema_no_tables_body),
-                            actionLabel = stringResource(R.string.schema_clear_filter),
-                            onAction = { viewModel.setFilter("") },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            when (state.objectKind) {
-                                ObjectKind.TABLES, ObjectKind.VIEWS ->
-                                    items(state.visibleTables, key = { "${it.database}.${it.name}" }) { table ->
-                                        TableRow(table) { onOpenTable(table.database, table.name) }
-                                        HorizontalDivider(color = semantic.hairline)
-                                    }
+                                    ObjectKind.TRIGGERS ->
+                                        items(state.visibleTriggers, key = { it.name }) { trigger ->
+                                            ObjectRow(
+                                                name = trigger.name,
+                                                detail = "${trigger.timing} ${trigger.event}",
+                                                trailing = trigger.table,
+                                                onClick = { onOpenTable(state.selectedDatabase.orEmpty(), trigger.table) },
+                                            )
+                                            HorizontalDivider(color = semantic.hairline)
+                                        }
 
-                                ObjectKind.ROUTINES ->
-                                    items(state.visibleRoutines, key = { "${it.kind}.${it.name}" }) { routine ->
-                                        ObjectRow(
-                                            name = routine.name,
-                                            detail = routine.comment,
-                                            trailing = routine.returns
-                                                ?.let { stringResource(R.string.schema_returns, it) }
-                                                ?: stringResource(R.string.schema_procedure),
-                                            onClick = { viewModel.showRoutine(routine) },
-                                        )
-                                        HorizontalDivider(color = semantic.hairline)
-                                    }
-
-                                ObjectKind.TRIGGERS ->
-                                    items(state.visibleTriggers, key = { it.name }) { trigger ->
-                                        ObjectRow(
-                                            name = trigger.name,
-                                            detail = "${trigger.timing} ${trigger.event}",
-                                            trailing = trigger.table,
-                                            onClick = { onOpenTable(state.selectedDatabase.orEmpty(), trigger.table) },
-                                        )
-                                        HorizontalDivider(color = semantic.hairline)
-                                    }
-
-                                ObjectKind.EVENTS ->
-                                    items(state.visibleEvents, key = { it.name }) { event ->
-                                        ObjectRow(
-                                            name = event.name,
-                                            detail = event.schedule,
-                                            trailing = event.status,
-                                            onClick = null,
-                                        )
-                                        HorizontalDivider(color = semantic.hairline)
-                                    }
+                                    ObjectKind.EVENTS ->
+                                        items(state.visibleEvents, key = { it.name }) { event ->
+                                            ObjectRow(
+                                                name = event.name,
+                                                detail = event.schedule,
+                                                trailing = event.status,
+                                                onClick = null,
+                                            )
+                                            HorizontalDivider(color = semantic.hairline)
+                                        }
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            state.routineDefinition?.let { definition ->
-                val context = LocalContext.current
-                RoutineSheet(
-                    definition = definition,
-                    onCopy = context::copyToClipboard,
-                    onDismiss = viewModel::dismissRoutine,
-                )
+                state.routineDefinition?.let { definition ->
+                    val context = LocalContext.current
+                    RoutineSheet(
+                        definition = definition,
+                        onCopy = context::copyToClipboard,
+                        onDismiss = viewModel::dismissRoutine,
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * The line that says this schema came from the cache, and when it was taken (§11).
+ *
+ * It is shown whenever there is no live session and something was captured for this database.
+ * Nothing about the lists below it changes to say so — a list looks the same whatever produced
+ * it, which is precisely why this bar has to be here and has to be at the top, above the search
+ * box and outside the scrolling area. The one mistake this feature could make is a stored schema
+ * read as what the server says right now.
+ *
+ * The capture time is given twice on purpose: "3 hours ago" is what tells the reader whether to
+ * trust it, and the date and time is what lets them check. The refresh action asks the browser
+ * for the schema again, which is what a reconnect does with it.
+ */
+@Composable
+private fun SchemaCacheMarker(
+    live: Boolean,
+    capturedAt: Long?,
+    onRefresh: () -> Unit,
+) {
+    if (live || capturedAt == null) return
+    val semantic = LocalSemanticColors.current
+    val age = SchemaCache.age(capturedAt, System.currentTimeMillis())
+    val stale = SchemaCache.isStale(capturedAt, System.currentTimeMillis())
+    val ago = when (age.unit) {
+        CacheAgeUnit.JUST_NOW -> stringResource(R.string.cache_taken_just_now)
+        CacheAgeUnit.MINUTES -> pluralStringResource(R.plurals.cache_taken_minutes, age.count, age.count)
+        CacheAgeUnit.HOURS -> pluralStringResource(R.plurals.cache_taken_hours, age.count, age.count)
+        CacheAgeUnit.DAYS -> pluralStringResource(R.plurals.cache_taken_days, age.count, age.count)
+    }
+    val taken = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+        .format(Date(capturedAt))
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.l, vertical = Spacing.s)
+            // Announced when it appears: a reader who is not looking at the top of the screen has
+            // no other way of learning that what they are reading is not live.
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        shape = Shapes.card,
+        color = semantic.surfaceRaised,
+    ) {
+        Row(
+            modifier = Modifier.padding(Spacing.m),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.History,
+                contentDescription = null,
+                tint = if (stale) semantic.warning else semantic.textSecondary,
+            )
+            Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.m)) {
+                Text(
+                    text = stringResource(R.string.cache_badge),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (stale) semantic.warning else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.cache_not_live),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+                Text(
+                    text = stringResource(R.string.cache_taken, ago, taken),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+                if (stale) {
+                    Text(
+                        text = stringResource(R.string.cache_stale),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
+                    )
+                }
+            }
+            TextButton(onClick = onRefresh) {
+                Text(stringResource(R.string.cache_refresh))
+            }
+        }
+    }
+}
+
+/**
+ * When this database's schema was last captured, and nothing else.
+ *
+ * Its own view model rather than a field on [SchemaBrowserUiState]: the marker is about the
+ * cache, not about the browser's state machine, and it has to keep working in the states where
+ * that state machine has given up — a lost session clears the lists but the marker is exactly
+ * what should appear then. Keeping it separate also means the browser's state class does not
+ * grow a field that every screen showing a schema would then have to remember to set.
+ */
+@HiltViewModel
+class SchemaCacheMarkerViewModel @Inject constructor(
+    private val cache: SchemaCacheRepository,
+) : ViewModel() {
+
+    private val target = MutableStateFlow<Pair<Long, String>?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val capturedAt: StateFlow<Long?> = target
+        .flatMapLatest { watched ->
+            if (watched == null) {
+                flowOf(null)
+            } else {
+                cache.observeTablesCapturedAt(watched.first, watched.second)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+
+    /** Follows the connection and database on screen; null while there is neither. */
+    fun watch(connectionId: Long?, database: String?) {
+        target.value = if (connectionId != null && database != null) connectionId to database else null
+    }
+
+    private companion object {
+        /** Long enough to survive a rotation without dropping the query and asking again. */
+        const val STOP_TIMEOUT_MS = 5_000L
     }
 }
 

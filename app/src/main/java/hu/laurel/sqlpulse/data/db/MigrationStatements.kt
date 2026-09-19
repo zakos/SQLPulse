@@ -145,6 +145,115 @@ object MigrationStatements {
     )
 
     /**
+     * v9: the offline schema cache (§11).
+     *
+     * Five new tables and not one existing column touched, which is the point: the cache is a
+     * record of what a server looked like, so it can be created empty, and a phone that upgrades
+     * simply has nothing cached until the next time it browses. Nothing has to be backfilled and
+     * there is no state an older version could have left behind that means something different
+     * here.
+     *
+     * Every table carries `connectionId` with ON DELETE CASCADE, so deleting a connection takes
+     * its cached schema with it exactly as it takes its history (§9) — the cache is as much a
+     * record of a server as the query log is, and it must not outlive the connection that
+     * explains it. The index on `connectionId` is what makes that cascade, and every read the
+     * browser does, something other than a scan of every schema ever cached.
+     *
+     * `capturedAt` is NOT NULL everywhere it appears: a cached row with no capture time could not
+     * be shown without lying about when it was taken, so the schema refuses to hold one.
+     * `cached_table.structureCapturedAt` is the one nullable timestamp, and its NULL means the
+     * table has been listed but never opened.
+     */
+    val MIGRATION_8_9: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `cached_database` (
+            `connectionId` INTEGER NOT NULL,
+            `name` TEXT NOT NULL,
+            `capturedAt` INTEGER NOT NULL,
+            PRIMARY KEY(`connectionId`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_database_connectionId`" +
+            " ON `cached_database` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_table` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `kind` TEXT NOT NULL,
+            `approximateRows` INTEGER,
+            `comment` TEXT,
+            `engine` TEXT,
+            `collation` TEXT,
+            `dataBytes` INTEGER,
+            `indexBytes` INTEGER,
+            `capturedAt` INTEGER NOT NULL,
+            `structureCapturedAt` INTEGER,
+            PRIMARY KEY(`connectionId`, `database`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_table_connectionId`" +
+            " ON `cached_table` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_column` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `tableName` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `typeName` TEXT NOT NULL,
+            `nullable` INTEGER NOT NULL,
+            `defaultValue` TEXT,
+            `isPrimaryKey` INTEGER NOT NULL,
+            `extra` TEXT,
+            `comment` TEXT,
+            `position` INTEGER NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `tableName`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_column_connectionId`" +
+            " ON `cached_column` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_index` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `tableName` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `isUnique` INTEGER NOT NULL,
+            `columns` TEXT NOT NULL,
+            `position` INTEGER NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `tableName`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_index_connectionId`" +
+            " ON `cached_index` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_foreign_key` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `tableName` TEXT NOT NULL,
+            `constraintName` TEXT NOT NULL,
+            `column` TEXT NOT NULL,
+            `referencedDatabase` TEXT NOT NULL,
+            `referencedTable` TEXT NOT NULL,
+            `referencedColumn` TEXT NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `tableName`, `constraintName`, `column`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_foreign_key_connectionId`" +
+            " ON `cached_foreign_key` (`connectionId`)",
+    )
+
+    /**
      * Every migration in order, keyed by the version it leaves the database at: index 0 is 1→2.
      * The test walks this list, so a ninth migration added to [Migrations] without being added
      * here goes untested — and a migration added here without being wired into [Migrations] does
@@ -158,5 +267,6 @@ object MigrationStatements {
         5 to MIGRATION_5_6,
         6 to MIGRATION_6_7,
         7 to MIGRATION_7_8,
+        8 to MIGRATION_8_9,
     )
 }

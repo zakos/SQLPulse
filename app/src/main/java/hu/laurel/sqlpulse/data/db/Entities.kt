@@ -231,3 +231,161 @@ data class SavedQueryEntity(
     /** Comma-separated :parameter names picked out of the SQL. */
     val parameters: String,
 )
+
+/**
+ * The offline schema cache (§11), one table per level of the tree.
+ *
+ * Five tables rather than one blob column per database, because the browser reads them one level
+ * at a time — the database list, then that database's tables, then one table's structure — and a
+ * blob would have to be parsed whole to answer any of those. Rows also let a refresh write back
+ * only what actually changed (see [hu.laurel.sqlpulse.data.schema.SchemaCache.merge]).
+ *
+ * Every row carries `connectionId` with a CASCADE foreign key: the cache is a record of what one
+ * server looked like, it means nothing detached from that connection, and §9's rule that deleting
+ * a connection deletes everything belonging to it covers the schema just as it covers the
+ * history. Two servers with a database of the same name never see each other's rows.
+ *
+ * `capturedAt` is on every table and is not a bookkeeping detail: the screen may not show any of
+ * this without saying when it was taken, so the moment is stored beside the data it describes
+ * rather than in one place that could fall out of step with it.
+ */
+@Entity(
+    tableName = "cached_database",
+    primaryKeys = ["connectionId", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedDatabaseEntity(
+    val connectionId: Long,
+    val name: String,
+    /** When this database list was last read from the server. */
+    val capturedAt: Long,
+)
+
+@Entity(
+    tableName = "cached_table",
+    primaryKeys = ["connectionId", "database", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedTableEntity(
+    val connectionId: Long,
+    val database: String,
+    val name: String,
+    /** The name of a TableKind entry. Text, so renaming the enum cannot orphan stored rows. */
+    val kind: String,
+    val approximateRows: Long?,
+    val comment: String?,
+    val engine: String?,
+    val collation: String?,
+    val dataBytes: Long?,
+    val indexBytes: Long?,
+    /** When the table list this row came from was read. */
+    val capturedAt: Long,
+    /**
+     * When this table's columns, indexes and foreign keys were read, or null while only its name
+     * has ever been seen.
+     *
+     * Separate from [capturedAt] because the two are captured at different moments: the list
+     * arrives when the database is opened, the structure only when the table itself is. A single
+     * timestamp would date a structure by when its table was listed, and the marker on the table
+     * page would then claim a freshness nothing measured.
+     */
+    val structureCapturedAt: Long?,
+)
+
+@Entity(
+    tableName = "cached_column",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedColumnEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    val typeName: String,
+    val nullable: Boolean,
+    val defaultValue: String?,
+    val isPrimaryKey: Boolean,
+    val extra: String?,
+    val comment: String?,
+    /** The server's own column order, which is part of what the user is reading. */
+    val position: Int,
+)
+
+@Entity(
+    tableName = "cached_index",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedIndexEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    /** Not `unique`: that is a reserved word in SQLite and every statement would need quoting. */
+    val isUnique: Boolean,
+    /**
+     * The index's columns joined by a unit separator, in order. A child table would be the
+     * textbook shape, but an index's columns are only ever read and written together with the
+     * index, and a separator that cannot occur in a MySQL identifier makes the join lossless.
+     */
+    val columns: String,
+    val position: Int,
+)
+
+@Entity(
+    tableName = "cached_foreign_key",
+    primaryKeys = ["connectionId", "database", "tableName", "constraintName", "column"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedForeignKeyEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val constraintName: String,
+    /** The constraint's own column. A composite key is several rows sharing a constraint name. */
+    val column: String,
+    val referencedDatabase: String,
+    val referencedTable: String,
+    val referencedColumn: String,
+)

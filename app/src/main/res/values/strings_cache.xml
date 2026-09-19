@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The offline schema cache (§11). Kept out of strings.xml on purpose: Android merges every
+    values file, and a separate one is one fewer file two people have to edit at the same time.
+
+    Every string here has one job — to stop a stored copy of the schema being read as what the
+    server says right now. None of them is optional decoration.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+
+    <!-- The marker above a schema that came from the cache -->
+    <string name="cache_badge">Cached schema</string>
+    <string name="cache_not_live">There is no connection: this is a stored copy, not live data.</string>
+    <!-- %1$s is how long ago, %2$s the date and time it was taken -->
+    <string name="cache_taken">Taken %1$s, on %2$s.</string>
+    <string name="cache_taken_just_now">a moment ago</string>
+    <plurals name="cache_taken_minutes">
+        <item quantity="one">a minute ago</item>
+        <item quantity="other">%d minutes ago</item>
+    </plurals>
+    <plurals name="cache_taken_hours">
+        <item quantity="one">an hour ago</item>
+        <item quantity="other">%d hours ago</item>
+    </plurals>
+    <plurals name="cache_taken_days">
+        <item quantity="one">a day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+    <string name="cache_stale">This was taken a while ago; the schema may have changed since.</string>
+    <string name="cache_refresh">Refresh from the server</string>
+</resources>

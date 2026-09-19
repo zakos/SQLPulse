@@ -13,7 +13,7 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The seven migrations, run end to end against a real SQLite engine.
+ * The eight migrations, run end to end against a real SQLite engine.
  *
  * Room's own MigrationTestHelper needs an instrumented device and the exported schema JSONs, and
  * this project has neither in its ordinary check run — so the migrations had never been executed
@@ -141,7 +141,7 @@ class MigrationSqlTest {
     // ------------------------------------------------------- the whole ladder
 
     /**
-     * Every table and column the current entities declare exists after 1 → 8, with matching
+     * Every table and column the current entities declare exists after 1 → 9, with matching
      * nullability. The expectation is read out of `Entities.kt` itself (see [EntitySource]), so a
      * field added to an entity without a migration fails here.
      */
@@ -205,7 +205,7 @@ class MigrationSqlTest {
 
     /** The user's saved connection, key and sealed password come out the other side unchanged. */
     @Test
-    fun `data written at version 1 survives to version 8`() {
+    fun `data written at version 1 survives to version 9`() {
         seedVersion1()
         migrateToCurrent()
 
@@ -393,6 +393,100 @@ class MigrationSqlTest {
         assertTrue(jump.getValue("sealedPassword").notNull)
     }
 
+    /**
+     * 8→9 adds the offline schema cache (§11): five empty tables and not one existing column
+     * touched.
+     *
+     * Two things are worth failing over. A cached row has to carry the moment it was captured —
+     * the screen may not show it without saying when it was taken, so `capturedAt` is NOT NULL
+     * and the schema is what enforces that. And the cache has to die with its connection: it is
+     * a record of one server, it means nothing without it, and §9's rule that deleting a
+     * connection deletes what belongs to it covers the schema as much as the query log. That
+     * cascade is checked by actually deleting the connection with foreign keys on.
+     */
+    @Test
+    fun `the 8 to 9 cache tables start empty and die with their connection`() {
+        seedVersion1()
+        migrate(1, 8)
+        for (table in CACHE_TABLES) {
+            assertFalse("`$table` must not exist before version 9", tables().contains(table))
+        }
+
+        migrate(8, 9)
+
+        for (table in CACHE_TABLES) {
+            assertTrue("`$table` is missing at version 9", tables().contains(table))
+            assertEquals("`$table` must start empty", 0, rows("SELECT * FROM `$table`").size)
+            assertTrue(
+                "every cached row must be attributable to a connection",
+                columns(table).getValue("connectionId").let { it.notNull && it.primaryKey },
+            )
+            assertTrue(
+                "`index_${table}_connectionId` must exist, or every read scans every cache",
+                rows("PRAGMA index_list(`$table`)").any { it["name"] == "index_${table}_connectionId" },
+            )
+        }
+
+        // The capture time: present, non-null, and the one nullable timestamp is the structure's.
+        assertTrue(columns("cached_database").getValue("capturedAt").notNull)
+        val cachedTable = columns("cached_table")
+        assertTrue(cachedTable.getValue("capturedAt").notNull)
+        assertEquals("INTEGER", cachedTable.getValue("capturedAt").type)
+        assertFalse(
+            "structureCapturedAt is NULL until the table itself has been opened",
+            cachedTable.getValue("structureCapturedAt").notNull,
+        )
+        assertNull(cachedTable.getValue("structureCapturedAt").default)
+        // A table that has only been listed keeps its own estimates nullable: the server does not
+        // always have them, and a 0 would read as "this table is empty".
+        for (name in listOf("approximateRows", "dataBytes", "indexBytes", "comment", "engine")) {
+            assertFalse("`cached_table`.`$name` must stay nullable", cachedTable.getValue(name).notNull)
+        }
+
+        // A table, a column, an index and a foreign key cached for the seeded connection.
+        exec(
+            "INSERT INTO `cached_database` (connectionId, name, capturedAt)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 1700000900000)",
+        )
+        exec(
+            "INSERT INTO `cached_table` (connectionId, `database`, name, kind, approximateRows," +
+                " comment, engine, collation, dataBytes, indexBytes, capturedAt, structureCapturedAt)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'TABLE', 42, NULL, 'InnoDB'," +
+                " 'utf8mb4_general_ci', 8192, 4096, 1700000900000, NULL)",
+        )
+        exec(
+            "INSERT INTO `cached_column` (connectionId, `database`, tableName, name, typeName," +
+                " nullable, defaultValue, isPrimaryKey, extra, comment, position)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'id', 'bigint', 0, NULL, 1," +
+                " 'auto_increment', NULL, 0)",
+        )
+        exec(
+            "INSERT INTO `cached_index` (connectionId, `database`, tableName, name, isUnique," +
+                " columns, position) VALUES ($CONNECTION_ID, 'reporting', 'orders', 'PRIMARY', 1, 'id', 0)",
+        )
+        exec(
+            "INSERT INTO `cached_foreign_key` (connectionId, `database`, tableName, constraintName," +
+                " `column`, referencedDatabase, referencedTable, referencedColumn)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'fk_customer', 'customer_id'," +
+                " 'reporting', 'customers', 'id')",
+        )
+        assertEquals(
+            "orders",
+            rows("SELECT name FROM `cached_table`").single()["name"],
+        )
+
+        exec("PRAGMA foreign_keys = ON")
+        assertEquals(emptyList<Map<String, Any?>>(), rows("PRAGMA foreign_key_check"))
+        exec("DELETE FROM `connection` WHERE id = $CONNECTION_ID")
+        for (table in CACHE_TABLES) {
+            assertEquals(
+                "`$table` must be emptied when its connection is deleted",
+                0,
+                rows("SELECT * FROM `$table`").size,
+            )
+        }
+    }
+
     /** 4→5 adds the SSH password table without disturbing the MySQL one. */
     @Test
     fun `the 4 to 5 credential table is added alongside the existing one`() {
@@ -442,7 +536,12 @@ class MigrationSqlTest {
          * it imports Room — so bumping the schema means bumping this too, and `every version step
          * is covered` then fails until the new migration is listed.
          */
-        const val CURRENT_VERSION = 8
+        const val CURRENT_VERSION = 9
+
+        /** The five tables the offline schema cache lives in, added at version 9. */
+        val CACHE_TABLES = listOf(
+            "cached_database", "cached_table", "cached_column", "cached_index", "cached_foreign_key",
+        )
 
         const val KEY_ID = 7L
         const val CONNECTION_ID = 3L
