@@ -85,7 +85,26 @@ data class SchemaColumn(
     val isPrimaryKey: Boolean,
     val extra: String?,
     val comment: String?,
-)
+    /**
+     * The column's own collation, which is only interesting where it differs from the table's.
+     * Null on a column that holds no text, and on a server too old to have been asked.
+     */
+    val collation: String? = null,
+    /**
+     * The expression a generated column is computed from, already unquoted; null for an ordinary
+     * column and on any server that does not know about generated columns.
+     */
+    val generationExpression: String? = null,
+) {
+    /**
+     * VIRTUAL, STORED, or null for an ordinary column.
+     *
+     * Read off [extra] rather than off [generationExpression], because a server old enough not to
+     * have been asked for the expression still announces the column as generated, and a column
+     * marked generated with no expression to show is still worth marking.
+     */
+    val generatedKind: GeneratedKind? get() = SchemaExtras.generatedKind(extra)
+}
 
 data class SchemaIndex(
     val name: String,
@@ -99,15 +118,70 @@ data class ForeignKey(
     val referencedDatabase: String,
     val referencedTable: String,
     val referencedColumn: String,
+    /** CASCADE, SET NULL, SET DEFAULT, RESTRICT or NO ACTION, as the server reports it. */
+    val onDelete: String? = null,
+    val onUpdate: String? = null,
+) {
+    /**
+     * The rules as one line, or null where they are the defaults.
+     *
+     * Deleting a row under a `CASCADE` key deletes rows in other tables too, which is exactly the
+     * kind of thing nobody wants to discover afterwards — §7.6 makes writes visible before they
+     * happen, and this is the same idea applied to the schema.
+     */
+    val ruleSummary: String? get() = SchemaExtras.foreignKeyRules(onDelete, onUpdate)
+}
+
+/**
+ * A CHECK constraint (MySQL 8.0.16+, MariaDB 10.2+).
+ *
+ * Older servers parse `CHECK` and then ignore it, so there is nothing to list there and nothing
+ * to warn about either: the schema genuinely has none.
+ */
+data class CheckConstraint(
+    val name: String,
+    /** The condition, already unwrapped from the server's own quoting. */
+    val expression: String?,
+    /**
+     * False for a constraint declared `NOT ENFORCED`, which MySQL keeps in the schema but never
+     * applies. MariaDB has no such state and always reports true.
+     */
+    val enforced: Boolean = true,
+)
+
+/**
+ * One partition of a partitioned table.
+ *
+ * [approximateRows] is per partition, and is what makes the list worth reading: a `RANGE`
+ * partitioning whose rows all sit in one partition is doing nothing for the queries it was added
+ * for, and that only shows up when the partitions are listed side by side.
+ */
+data class TablePartition(
+    val name: String,
+    /** Set only where the partition is itself subdivided. */
+    val subName: String? = null,
+    /** RANGE, LIST, HASH, KEY, and their COLUMNS and LINEAR variants. */
+    val method: String? = null,
+    /** The expression or column list the rows are distributed on. */
+    val expression: String? = null,
+    val approximateRows: Long? = null,
 )
 
 data class TableStructure(
     val columns: List<SchemaColumn>,
     val indexes: List<SchemaIndex>,
     val foreignKeys: List<ForeignKey>,
+    /** Empty on a server without CHECK constraints, and on a table that declares none. */
+    val checks: List<CheckConstraint> = emptyList(),
+    /** Empty for an unpartitioned table, which is nearly all of them. */
+    val partitions: List<TablePartition> = emptyList(),
+    /** The table's default collation, against which a column's own collation is compared. */
+    val collation: String? = null,
 ) {
     /** §7.6 will refuse to edit rows of a table with no primary key; the browser says so too. */
     val primaryKey: List<String> get() = columns.filter { it.isPrimaryKey }.map { it.name }
+
+    val partitioned: Boolean get() = partitions.isNotEmpty()
 }
 
 /**

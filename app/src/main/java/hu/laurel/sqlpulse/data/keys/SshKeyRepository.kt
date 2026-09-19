@@ -96,6 +96,43 @@ class SshKeyRepository @Inject constructor(
         }
     }
 
+    /**
+     * Unwraps a stored key so it can be re-sealed into an encrypted backup file.
+     *
+     * §6 says the app offers no way to export a private key, and that stays true of anything a
+     * user could accidentally hand over: this returns the bare material only to the backup writer,
+     * which immediately re-seals it under the passphrase the user typed. It raises the same
+     * biometric prompt as connecting does, once per key, and the caller must wipe what it gets.
+     */
+    suspend fun exportMaterial(key: SshKeyEntity): ByteArray {
+        val sealed = Sealed.decode(key.sealedPrivateKey)
+        val cipher = crypto.decryptCipher(KeystoreCrypto.USER_KEY_ALIAS, sealed.iv)
+        val authenticated = unlock.authenticate(
+            cipher = cipher,
+            title = context.getString(R.string.unlock_title),
+            subtitle = context.getString(R.string.unlock_subtitle, key.name),
+        )
+        return withContext(io) { crypto.open(authenticated, sealed) }
+    }
+
+    /**
+     * Seals key material that arrived in a backup into *this* device's keystore, and returns the
+     * blob for [SshKeyEntity.sealedPrivateKey].
+     *
+     * Nothing is written to the database here: the import wants every row it is going to write
+     * ready before it opens its transaction, and sealing is the part that may stop to ask the user
+     * for a fingerprint.
+     */
+    suspend fun sealImportedMaterial(material: ByteArray, name: String): ByteArray {
+        val cipher = crypto.encryptCipher(KeystoreCrypto.USER_KEY_ALIAS)
+        val authenticated = unlock.authenticate(
+            cipher = cipher,
+            title = context.getString(R.string.unlock_title),
+            subtitle = context.getString(R.string.unlock_subtitle, name),
+        )
+        return withContext(io) { crypto.seal(authenticated, material).encode() }
+    }
+
     suspend fun delete(id: Long) = withContext(io) {
         val inUse = dao.connectionsUsing(id)
         if (inUse > 0) throw KeyInUseException(inUse)

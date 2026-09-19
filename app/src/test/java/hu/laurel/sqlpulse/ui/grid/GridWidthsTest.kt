@@ -40,6 +40,36 @@ class GridWidthsTest {
     }
 
     @Test
+    fun `a larger grid font makes the text room larger, not the touch targets`() {
+        val normal = GridWidths.columnWidthDp(labelLength = 4, widestValueLength = 20)
+        val larger = GridWidths.columnWidthDp(labelLength = 4, widestValueLength = 20, fontScale = 1.5f)
+        assertEquals(
+            (20 * GridWidths.CHAR_WIDTH_DP * 1.5f).toInt() + GridWidths.HEADER_CONTROLS_DP,
+            larger,
+        )
+        // The icon and the handle are a finger's width whatever the text does, so the whole
+        // difference is text.
+        assertEquals(
+            ((larger - GridWidths.HEADER_CONTROLS_DP).toFloat() /
+                (normal - GridWidths.HEADER_CONTROLS_DP)).toDouble(),
+            1.5,
+            0.01,
+        )
+    }
+
+    @Test
+    fun `no font size can push a column past its limits`() {
+        assertEquals(
+            GridWidths.MAX_WIDTH_DP,
+            GridWidths.columnWidthDp(labelLength = 4, widestValueLength = 4_000, fontScale = 4f),
+        )
+        assertEquals(
+            GridWidths.MIN_WIDTH_DP,
+            GridWidths.columnWidthDp(labelLength = 1, widestValueLength = 1, fontScale = 0.5f),
+        )
+    }
+
+    @Test
     fun `a column dragged to its narrowest still fits the header's controls`() {
         // Below this the sort icon and the handle would be all there is, and the title would be
         // an ellipsis with nothing before it.

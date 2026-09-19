@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The richer schema facts on the Structure tab (§7.3): CHECK constraints, the referential
+        rules of a foreign key, generated columns, collation and partitioning. Kept in their own
+        file so the table page's strings stay together; Android merges every values file anyway.
+    -->
+    <string name="structure_collation_table">Table collation: %1$s</string>
+    <string name="structure_collation_column">collation %1$s</string>
+    <string name="structure_generated_virtual">generated (virtual)</string>
+    <string name="structure_generated_stored">generated (stored)</string>
+    <string name="structure_checks">CHECK constraints</string>
+    <string name="structure_check_not_enforced">not enforced</string>
+    <string name="structure_partitions">Partitioning</string>
+    <string name="structure_partition_count">partitions: %1$d</string>
+    <string name="structure_partition_total_rows">~%1$d rows in total</string>
+</resources>

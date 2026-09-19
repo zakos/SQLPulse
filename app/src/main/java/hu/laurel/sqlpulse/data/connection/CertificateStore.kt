@@ -49,6 +49,28 @@ class CertificateStore @Inject constructor(
         fileName
     }
 
+    /**
+     * The PEM text of a stored certificate, for the backup writer. Null when the connection names
+     * a certificate that is no longer on disk, which a backup should record as absent rather than
+     * fail over.
+     */
+    fun read(name: String): String? =
+        File(directory, safeName(name)).takeIf { it.isFile }?.readText()
+
+    /**
+     * Writes a certificate that arrived in a backup, under the name it had on the other device.
+     *
+     * A CA certificate is public material and identical wherever it came from, so an existing file
+     * of the same name is simply overwritten — there is nothing of the user's to lose.
+     *
+     * @return the name it was stored under, which [safeName] may have cleaned up.
+     */
+    fun write(name: String, pem: String): String {
+        val fileName = safeName(name)
+        File(directory, fileName).writeText(pem)
+        return fileName
+    }
+
     fun delete(name: String) {
         runCatching { File(directory, safeName(name)).delete() }
     }

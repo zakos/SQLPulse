@@ -42,6 +42,11 @@ import hu.laurel.sqlpulse.ui.theme.ThemePreference
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenKeyStore: () -> Unit,
+    /**
+     * Opens the backup screen (Routes.BACKUP). Defaulted to nothing so the navigation graph — owned
+     * elsewhere — can be pointed at it in its own change without this file having to land first.
+     */
+    onOpenBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -70,6 +75,12 @@ fun SettingsScreen(
             Section(stringResource(R.string.keys_title)) {
                 OutlinedButton(onClick = onOpenKeyStore, shape = Shapes.button) {
                     Text(stringResource(R.string.settings_manage_keys))
+                }
+            }
+
+            Section(stringResource(R.string.settings_backup)) {
+                OutlinedButton(onClick = onOpenBackup, shape = Shapes.button) {
+                    Text(stringResource(R.string.settings_open_backup))
                 }
             }
 
@@ -178,7 +189,13 @@ fun SettingsScreen(
             }
 
             Section(stringResource(R.string.settings_grid_font)) {
-                Text("${settings.gridFontScale}%", style = MonoStyles.cell)
+                // Drawn at the size it sets, so the slider shows what it does while it is moved.
+                Text(
+                    text = "${settings.gridFontScale}%",
+                    style = MonoStyles.cell.copy(
+                        fontSize = MonoStyles.cell.fontSize * (settings.gridFontScale / 100f),
+                    ),
+                )
                 Slider(
                     value = settings.gridFontScale.toFloat(),
                     onValueChange = { viewModel.setGridFontScale(it.toInt()) },

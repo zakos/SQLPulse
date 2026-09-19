@@ -76,7 +76,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            SqlPulseTheme(preference = settings.theme) {
+            SqlPulseTheme(preference = settings.theme, gridFontScale = settings.gridFontScale) {
                 if (locked) {
                     LockScreen(onUnlock = ::requestUnlock)
                 } else {

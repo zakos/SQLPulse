@@ -57,9 +57,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.export.ExportFormat
+import hu.laurel.sqlpulse.data.schema.CheckConstraint
 import hu.laurel.sqlpulse.data.schema.ForeignKey
+import hu.laurel.sqlpulse.data.schema.GeneratedKind
+import hu.laurel.sqlpulse.data.schema.LookupOutcome
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
+import hu.laurel.sqlpulse.data.schema.SchemaExtras
 import hu.laurel.sqlpulse.data.schema.SchemaIndex
+import hu.laurel.sqlpulse.data.schema.TablePartition
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnEditors
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
@@ -69,6 +74,9 @@ import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
+import hu.laurel.sqlpulse.ui.grid.LinkChildEntry
+import hu.laurel.sqlpulse.ui.grid.LinkOffer
+import hu.laurel.sqlpulse.ui.grid.LinkWalkSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.grid.RowDetailSheet
 import hu.laurel.sqlpulse.ui.grid.asText
@@ -238,20 +246,41 @@ fun TableDetailScreen(
 
                 TableTab.STRUCTURE -> state.structure?.let { structure ->
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(structure.columns, key = { it.name }) { column ->
-                            ColumnRow(column)
+                        // The table's own collation sits above the columns, because it is what a
+                        // column's collation is read against: only the columns that differ from
+                        // it carry a collation of their own.
+                        structure.collation?.let { collation ->
+                            item { TableCollationRow(collation) }
+                        }
+                        items(structure.columns, key = { "column:" + it.name }) { column ->
+                            ColumnRow(column, structure.collation)
                             HorizontalDivider(color = semantic.hairline)
                         }
                         if (structure.indexes.isNotEmpty()) {
                             item { SectionHeader(stringResource(R.string.structure_indexes)) }
-                            items(structure.indexes, key = { it.name }) { IndexRow(it) }
+                            items(structure.indexes, key = { "index:" + it.name }) { IndexRow(it) }
                         }
                         if (structure.foreignKeys.isNotEmpty()) {
                             item { SectionHeader(stringResource(R.string.structure_foreign_keys)) }
-                            items(structure.foreignKeys, key = { it.constraintName + it.column }) { fk ->
+                            items(structure.foreignKeys, key = { "fk:" + it.constraintName + it.column }) { fk ->
                                 // §7.3: touching a foreign key jumps to the referenced table.
                                 ForeignKeyRow(fk) { onOpenTable(fk.referencedDatabase, fk.referencedTable) }
                             }
+                        }
+                        // A server without CHECK constraints reports none, which looks exactly
+                        // like a table that declares none — so the section simply does not
+                        // appear, rather than claiming anything either way.
+                        if (structure.checks.isNotEmpty()) {
+                            item { SectionHeader(stringResource(R.string.structure_checks)) }
+                            items(structure.checks, key = { "check:" + it.name }) { CheckRow(it) }
+                        }
+                        if (structure.partitioned) {
+                            item { SectionHeader(stringResource(R.string.structure_partitions)) }
+                            item { PartitionSummaryRow(structure.partitions) }
+                            items(
+                                structure.partitions,
+                                key = { "partition:" + it.name + "/" + it.subName.orEmpty() },
+                            ) { PartitionRow(it) }
                         }
                         if (structure.primaryKey.isEmpty()) {
                             item {
@@ -313,6 +342,13 @@ fun TableDetailScreen(
                 selectedCell = null
             },
             onDismiss = { selectedCell = null },
+            // §7.3: a foreign key cell offers the row it points at; a NULL one offers nothing.
+            linkOffer = viewModel.parentLinkFor(selection.rowIndex, selection.column.label)
+                ?.let { LinkOffer(it.parentTable, it.guessed) },
+            onOpenLink = {
+                viewModel.openParent(selection.rowIndex, selection.column.label)
+                selectedCell = null
+            },
         )
     }
 
@@ -349,8 +385,52 @@ fun TableDetailScreen(
                     detailRow = null
                 },
                 onDismiss = { detailRow = null },
+                onShowChildren = {
+                    viewModel.showChildrenOf(rowIndex)
+                    detailRow = null
+                },
             )
         }
+    }
+
+    state.walk?.let { walk ->
+        val step = walk.step
+        LinkWalkSheet(
+            title = step?.label.orEmpty(),
+            guessed = walk.trail.hasGuessedStep,
+            canGoBack = walk.trail.canGoBack,
+            loading = walk.loading,
+            error = walk.error,
+            columns = walk.rows?.columns.orEmpty(),
+            rows = walk.rows?.rows.orEmpty(),
+            notice = when (walk.outcome) {
+                LookupOutcome.MISSING -> stringResource(R.string.link_missing)
+                LookupOutcome.SEVERAL -> stringResource(
+                    R.string.link_several,
+                    walk.rows?.rowCount ?: 0,
+                )
+                else -> null
+            },
+            selectedRow = walk.selectedRow,
+            children = walk.children.map { child ->
+                LinkChildEntry(
+                    table = child.link.childTable,
+                    columns = child.link.childColumns.joinToString(", "),
+                    rows = child.rows,
+                    guessed = child.link.guessed,
+                    onOpen = { viewModel.openChildren(child.link) },
+                )
+            },
+            childrenLoading = walk.childrenLoading,
+            offerFor = { rowIndex, column ->
+                viewModel.walkParentLinkFor(rowIndex, column)
+                    ?.let { LinkOffer(it.parentTable, it.guessed) }
+            },
+            onOpenParent = viewModel::openParentFromWalk,
+            onSelectRow = viewModel::selectWalkRow,
+            onBack = viewModel::walkBack,
+            onDismiss = viewModel::closeWalk,
+        )
     }
 
     state.pendingEdit?.let { edit ->
@@ -480,9 +560,18 @@ private fun SectionHeader(title: String) {
     )
 }
 
+/**
+ * One column, and everything about it that fits on two lines.
+ *
+ * A generated column is marked beside its name rather than inside the type line, because it is
+ * the one property here that changes what writing to the column means: it cannot be written to at
+ * all. Its expression follows on a line of its own, shortened — the whole of it is in the DDL tab.
+ */
 @Composable
-private fun ColumnRow(column: SchemaColumn) {
+private fun ColumnRow(column: SchemaColumn, tableCollation: String?) {
     val semantic = LocalSemanticColors.current
+    val generated = column.generatedKind
+    val collation = SchemaExtras.columnCollation(tableCollation, column.collation)
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
@@ -497,6 +586,18 @@ private fun ColumnRow(column: SchemaColumn) {
                         color = semantic.success,
                     )
                 }
+                if (generated != null) {
+                    Text(
+                        text = stringResource(
+                            when (generated) {
+                                GeneratedKind.VIRTUAL -> R.string.structure_generated_virtual
+                                GeneratedKind.STORED -> R.string.structure_generated_stored
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
+                    )
+                }
             }
             Text(
                 text = buildString {
@@ -505,6 +606,108 @@ private fun ColumnRow(column: SchemaColumn) {
                     column.defaultValue?.let { append(" · DEFAULT $it") }
                     column.extra?.let { append(" · $it") }
                 },
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+            column.generationExpression?.let { expression ->
+                Text(
+                    text = "= ${SchemaExtras.shorten(expression)}",
+                    style = MonoStyles.cell,
+                    color = semantic.textSecondary,
+                )
+            }
+            // Only where it differs from the table's: a column collating differently is what
+            // silently breaks a join, and it is invisible unless it is said out loud.
+            collation?.let {
+                Text(
+                    text = stringResource(R.string.structure_collation_column, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.warning,
+                )
+            }
+        }
+    }
+}
+
+/** The table's default collation, shown once above the columns. */
+@Composable
+private fun TableCollationRow(collation: String) {
+    val semantic = LocalSemanticColors.current
+    Text(
+        text = stringResource(R.string.structure_collation_table, collation),
+        style = MaterialTheme.typography.bodySmall,
+        color = semantic.textSecondary,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+    )
+}
+
+/**
+ * One CHECK constraint: its name, its condition, and whether the server actually applies it.
+ *
+ * A `NOT ENFORCED` constraint is called out in the warning colour, because it reads as protection
+ * in the DDL and is none: the rows it forbids go in anyway.
+ */
+@Composable
+private fun CheckRow(check: CheckConstraint) {
+    val semantic = LocalSemanticColors.current
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            Text(check.name, style = MonoStyles.cell)
+            if (!check.enforced) {
+                Text(
+                    text = stringResource(R.string.structure_check_not_enforced),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.warning,
+                )
+            }
+        }
+        check.expression?.let {
+            Text(
+                text = SchemaExtras.shorten(it),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+    }
+}
+
+/** How the table is cut up, and how many rows the server thinks are in the pieces together. */
+@Composable
+private fun PartitionSummaryRow(partitions: List<TablePartition>) {
+    val semantic = LocalSemanticColors.current
+    val total = SchemaExtras.partitionRowTotal(partitions)
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
+        SchemaExtras.partitionSummary(partitions)?.let {
+            Text(text = it, style = MonoStyles.cell)
+        }
+        Text(
+            text = buildList {
+                add(stringResource(R.string.structure_partition_count, partitions.size))
+                total?.let { add(stringResource(R.string.structure_partition_total_rows, it)) }
+            }.joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+    }
+}
+
+/**
+ * One partition, with the rows the server estimates are in it.
+ *
+ * The per-partition estimate is the point of the list: it is how an unbalanced partitioning —
+ * every row in one piece, the rest empty — becomes visible.
+ */
+@Composable
+private fun PartitionRow(partition: TablePartition) {
+    val semantic = LocalSemanticColors.current
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
+        Text(
+            text = partition.subName?.let { "${partition.name} / $it" } ?: partition.name,
+            style = MonoStyles.cell,
+        )
+        partition.approximateRows?.let {
+            Text(
+                text = stringResource(R.string.schema_rows_approx, it),
                 style = MaterialTheme.typography.bodySmall,
                 color = semantic.textSecondary,
             )
@@ -540,6 +743,15 @@ private fun ForeignKeyRow(foreignKey: ForeignKey, onClick: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = semantic.textSecondary,
         )
+        // Only the rules that do something: RESTRICT and NO ACTION are what every key without a
+        // declared rule does, and printing them under each one would hide the CASCADE.
+        foreignKey.ruleSummary?.let { rules ->
+            Text(
+                text = rules,
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
     }
 }
 

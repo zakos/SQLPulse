@@ -222,6 +222,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
+    // A real SQLite engine on the JVM, so the schema migrations can be executed in the ordinary
+    // check run rather than only on a device. See MigrationSqlTest.
+    testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     // Compose UI tests run on a device (instrumentation.yml), never in the ordinary check run.

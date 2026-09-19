@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import hu.laurel.sqlpulse.ui.connections.ConnectionEditorScreen
 import hu.laurel.sqlpulse.ui.connections.ConnectionListScreen
+import hu.laurel.sqlpulse.ui.backup.BackupScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
 import hu.laurel.sqlpulse.ui.map.SchemaMapScreen
 import hu.laurel.sqlpulse.ui.pulse.PulseScreen
@@ -28,6 +29,7 @@ object Routes {
     const val SERVER = "server"
     const val PULSE = "pulse"
     const val MAP = "map"
+    const val BACKUP = "backup"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -74,6 +76,10 @@ fun SqlPulseApp() {
             PulseScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { navController.popBackStack() })
+        }
+
         composable(Routes.MAP) {
             SchemaMapScreen(
                 onBack = { navController.popBackStack() },
@@ -87,6 +93,7 @@ fun SqlPulseApp() {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
             )
         }
 

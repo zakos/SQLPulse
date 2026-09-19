@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="structure_collation_table">Tábla egybevetése: %1$s</string>
+    <string name="structure_collation_column">egybevetés: %1$s</string>
+    <string name="structure_generated_virtual">generált (virtuális)</string>
+    <string name="structure_generated_stored">generált (tárolt)</string>
+    <string name="structure_checks">CHECK megszorítások</string>
+    <string name="structure_check_not_enforced">nincs kikényszerítve</string>
+    <string name="structure_partitions">Particionálás</string>
+    <string name="structure_partition_count">partíciók száma: %1$d</string>
+    <string name="structure_partition_total_rows">összesen ~%1$d sor</string>
+</resources>

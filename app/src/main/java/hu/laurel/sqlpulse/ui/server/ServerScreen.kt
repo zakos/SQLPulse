@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -44,6 +45,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.diagnostics.DiagnosticsDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.grid.asText
@@ -66,6 +68,9 @@ fun ServerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
     var killTarget by remember { mutableStateOf<Pair<Long, String>?>(null) }
+    // The diagnostics report lives here because this is where somebody stands when something is
+    // wrong with the server, and because it is read once and copied rather than navigated to.
+    var showDiagnostics by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -77,6 +82,14 @@ fun ServerScreen(
                     }
                 },
                 actions = {
+                    // Not tied to a live session: a report about a connection that will not open
+                    // is the one somebody most wants to send.
+                    IconButton(onClick = { showDiagnostics = true }) {
+                        Icon(
+                            Icons.Default.BugReport,
+                            contentDescription = stringResource(R.string.diag_open),
+                        )
+                    }
                     IconButton(onClick = viewModel::refresh, enabled = state.connected) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
@@ -201,6 +214,10 @@ fun ServerScreen(
                 }
             },
         )
+    }
+
+    if (showDiagnostics) {
+        DiagnosticsDialog(onDismiss = { showDiagnostics = false })
     }
 
     killTarget?.let { (id, info) ->

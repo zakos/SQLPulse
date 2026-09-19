@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="filter_search_hint">Search in the loaded rows</string>
+    <string name="filter_clear_search">Clear the search</string>
+    <string name="filter_add_condition">Condition</string>
+    <string name="filter_remove_condition">Remove the condition</string>
+    <string name="filter_condition_title">Filter a column</string>
+    <string name="filter_column">Column</string>
+    <string name="filter_operator">Condition</string>
+    <string name="filter_value">Value</string>
+    <string name="filter_apply">Apply</string>
+    <string name="filter_shown">%1$d of %2$d loaded rows</string>
+    <string name="filter_loaded_only">filters only what is loaded</string>
+    <string name="filter_show">Filter</string>
+    <string name="filter_hide">Close the filter</string>
+    <string name="filter_op_contains">contains</string>
+    <string name="filter_op_not_contains">does not contain</string>
+    <string name="filter_op_equals">is</string>
+    <string name="filter_op_not_equals">is not</string>
+    <string name="filter_op_greater">greater than</string>
+    <string name="filter_op_less">less than</string>
+    <string name="filter_op_empty">is empty</string>
+    <string name="filter_op_not_empty">is not empty</string>
+</resources>

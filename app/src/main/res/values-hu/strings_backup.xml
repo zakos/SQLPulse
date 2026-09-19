@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_title">Mentés és visszaállítás</string>
+    <string name="backup_intro">A kapcsolatok, az SSH-gépek, a kulcsok és a tanúsítványok csak ezen a telefonon léteznek, olyan kulcsokkal lezárva, amelyek nem hagyhatják el a készüléket. A mentés átviszi őket egy másik eszközre, egy általad választott jelmondattal védve.</string>
+
+    <string name="backup_export_section">Mentés készítése</string>
+    <string name="backup_scope_title">Mi kerüljön bele</string>
+    <string name="backup_scope_settings">Csak a beállítások</string>
+    <string name="backup_scope_settings_note">Kapcsolatok, SSH- és adatbázis-beállítások, mentett lekérdezések, CA-tanúsítványok, valamint a kulcsok neve és ujjlenyomata. Jelszavak és privát kulcsok nélkül — azokat a másik eszközön újra meg kell adni.</string>
+    <string name="backup_scope_secrets">A titkokkal együtt</string>
+    <string name="backup_scope_secrets_note">A fentiek, valamint az adatbázis- és SSH-jelszavak és maguk a privát kulcsok. Mindegyiket fel kell nyitni, ezért a telefon azonosítást kér, kulcsonként egyszer. Akinél a fájl és a jelmondat is megvan, annak mindegyik a kezében van.</string>
+
+    <string name="backup_passphrase">Jelmondat</string>
+    <string name="backup_passphrase_confirm">Jelmondat mégegyszer</string>
+    <string name="backup_passphrase_note">A jelmondatot sehol nem tároljuk. Ha elveszik, a fájl nem nyitható meg — nálunk sem.</string>
+    <string name="backup_passphrase_too_short">Legalább %1$d karakter. A hosszúság teszi a jelmondatot nehezen kitalálhatóvá.</string>
+    <string name="backup_passphrase_mismatch">A két jelmondat nem egyezik.</string>
+    <string name="backup_save_file">Mentési fájl mentése…</string>
+    <string name="backup_export_done">A mentés elkészült.</string>
+
+    <string name="backup_import_section">Mentés visszaállítása</string>
+    <string name="backup_import_intro">Semmi nem íródik ki addig, amíg nem láttad, mi van a fájlban, és nem mondtad meg, mi legyen a már meglévő kapcsolatokkal.</string>
+    <string name="backup_choose_file">Mentési fájl kiválasztása…</string>
+    <string name="backup_file_made">Készítette: %1$s, ekkor: %2$s</string>
+    <string name="backup_file_contents">%1$d kapcsolat, %2$d SSH-kulcs, %3$d tanúsítvány, %4$d mentett lekérdezés</string>
+    <string name="backup_file_with_secrets">Jelszavakat és privát kulcsokat is tartalmaz</string>
+    <string name="backup_file_without_secrets">Csak beállítások — jelszavak és privát kulcsok nélkül</string>
+    <string name="backup_unlock">Feloldás és előnézet</string>
+    <string name="backup_ready">%1$d kapcsolat importálásra kész.</string>
+    <string name="backup_nothing_inside">Ez a mentés üres — nincs mit importálni.</string>
+
+    <string name="backup_conflicts_title">Már létező nevek</string>
+    <string name="backup_conflicts_note">Válaszd ki, mi legyen mindegyikkel, vagy állítsd be egyszerre az összesre.</string>
+    <string name="backup_all_keep_both">Mind: mindkettő marad</string>
+    <string name="backup_all_replace">Mind: felülírás</string>
+    <string name="backup_all_skip">Mind: kihagyás</string>
+    <string name="backup_keep_both">Mindkettő marad</string>
+    <string name="backup_replace">Felülírás</string>
+    <string name="backup_skip">Kihagyás</string>
+    <string name="backup_will_be_named">„%1$s” néven kerül be</string>
+    <string name="backup_will_replace">Felváltja a mostani kapcsolatot</string>
+    <string name="backup_will_be_skipped">Nem kerül be</string>
+    <string name="backup_import_now">Importálás</string>
+    <string name="backup_start_over">Elölről</string>
+
+    <string name="backup_import_done">%1$d kapcsolat importálva (%2$d felülírva, %3$d kihagyva) és %4$d mentett lekérdezés.</string>
+    <string name="backup_import_keys">%1$d SSH-kulcs importálva és újra lezárva ezen az eszközön.</string>
+    <string name="backup_import_keys_absent">%1$d SSH-kulcs csak leírásként szerepelt: ez csak beállításokat tartalmazó mentés volt. Importáld őket újra kézzel.</string>
+    <string name="backup_import_missing_key">%1$d kapcsolat olyan SSH-kulcsra hivatkozik, amely ezen az eszközön nincs meg. Nyisd meg őket, és csatlakozás előtt rendelj hozzájuk kulcsot.</string>
+
+    <string name="backup_error_not_a_backup">Ez a fájl nem SQLPulse-mentés.</string>
+    <string name="backup_error_future_version">Ezt a mentést a SQLPulse újabb változata írta (formátum: %1$d; ez a build %2$d verzióig olvas). Frissítsd az alkalmazást, és próbáld újra.</string>
+    <string name="backup_error_wrong_passphrase">Hibás jelmondat, vagy a fájlt megváltoztatták az írása után. Semmi nem változott.</string>
+    <string name="backup_error_damaged">A mentési fájl sérült: %1$s</string>
+    <string name="backup_error_failed">A művelet nem fejeződött be: %1$s</string>
+    <string name="backup_working">Folyamatban…</string>
+
+    <string name="settings_backup">Mentés</string>
+    <string name="settings_open_backup">Mentés és visszaállítás</string>
+</resources>

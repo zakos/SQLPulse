@@ -7,6 +7,10 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -132,4 +136,160 @@ interface SavedQueryDao {
 
     @Query("DELETE FROM saved_query WHERE id = :id")
     suspend fun delete(id: Long)
+}
+
+/**
+ * The offline schema cache (§11).
+ *
+ * One DAO for all five tables rather than one each: they are never read or written separately —
+ * a capture writes a whole level at once and a refresh replaces one — and splitting them would
+ * only spread a single transaction across five interfaces.
+ *
+ * The writes are `@Upsert` plus an explicit delete of what the server no longer has, driven by
+ * [hu.laurel.sqlpulse.data.schema.SchemaCache.merge]. Deleting everything and re-inserting would
+ * be shorter, but it empties the cache for the duration of the write, and the one moment this
+ * data is needed is the moment the link is unreliable.
+ */
+@Dao
+interface SchemaCacheDao {
+
+    @Query("SELECT * FROM cached_database WHERE connectionId = :connectionId ORDER BY name")
+    suspend fun databases(connectionId: Long): List<CachedDatabaseEntity>
+
+    /**
+     * The capture time of the database list, as a flow: the marker on the screen has to move the
+     * moment a refresh lands, and it is the only thing on that screen that does.
+     */
+    @Query("SELECT MAX(capturedAt) FROM cached_database WHERE connectionId = :connectionId")
+    fun observeDatabasesCapturedAt(connectionId: Long): Flow<Long?>
+
+    @Upsert
+    suspend fun upsertDatabases(databases: List<CachedDatabaseEntity>)
+
+    @Query("DELETE FROM cached_database WHERE connectionId = :connectionId AND name IN (:names)")
+    suspend fun deleteDatabases(connectionId: Long, names: List<String>)
+
+    @Query(
+        "SELECT * FROM cached_table WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY name",
+    )
+    suspend fun tables(connectionId: Long, database: String): List<CachedTableEntity>
+
+    @Query(
+        "SELECT MAX(capturedAt) FROM cached_table WHERE connectionId = :connectionId" +
+            " AND `database` = :database",
+    )
+    fun observeTablesCapturedAt(connectionId: Long, database: String): Flow<Long?>
+
+    @Query(
+        "SELECT structureCapturedAt FROM cached_table WHERE connectionId = :connectionId" +
+            " AND `database` = :database AND name = :table",
+    )
+    suspend fun structureCapturedAt(connectionId: Long, database: String, table: String): Long?
+
+    @Upsert
+    suspend fun upsertTables(tables: List<CachedTableEntity>)
+
+    @Query(
+        "DELETE FROM cached_table WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND name IN (:names)",
+    )
+    suspend fun deleteTables(connectionId: Long, database: String, names: List<String>)
+
+    @Query(
+        "UPDATE cached_table SET structureCapturedAt = :capturedAt WHERE connectionId = :connectionId" +
+            " AND `database` = :database AND name = :table",
+    )
+    suspend fun markStructureCaptured(
+        connectionId: Long,
+        database: String,
+        table: String,
+        capturedAt: Long,
+    )
+
+    @Query(
+        "SELECT * FROM cached_column WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table ORDER BY position",
+    )
+    suspend fun columns(connectionId: Long, database: String, table: String): List<CachedColumnEntity>
+
+    @Upsert
+    suspend fun upsertColumns(columns: List<CachedColumnEntity>)
+
+    @Query(
+        "DELETE FROM cached_column WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table",
+    )
+    suspend fun deleteColumns(connectionId: Long, database: String, table: String)
+
+    @Query(
+        "SELECT * FROM cached_index WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table ORDER BY position",
+    )
+    suspend fun indexes(connectionId: Long, database: String, table: String): List<CachedIndexEntity>
+
+    @Upsert
+    suspend fun upsertIndexes(indexes: List<CachedIndexEntity>)
+
+    @Query(
+        "DELETE FROM cached_index WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table",
+    )
+    suspend fun deleteIndexes(connectionId: Long, database: String, table: String)
+
+    @Query(
+        "SELECT * FROM cached_foreign_key WHERE connectionId = :connectionId" +
+            " AND `database` = :database AND tableName = :table ORDER BY constraintName, `column`",
+    )
+    suspend fun foreignKeys(
+        connectionId: Long,
+        database: String,
+        table: String,
+    ): List<CachedForeignKeyEntity>
+
+    @Upsert
+    suspend fun upsertForeignKeys(keys: List<CachedForeignKeyEntity>)
+
+    @Query(
+        "DELETE FROM cached_foreign_key WHERE connectionId = :connectionId" +
+            " AND `database` = :database AND tableName = :table",
+    )
+    suspend fun deleteForeignKeys(connectionId: Long, database: String, table: String)
+
+    /**
+     * Everything cached for one connection, dropped.
+     *
+     * The rows would go anyway when the connection does, by the cascade; this exists for the
+     * user who wants what they browsed forgotten without giving up the connection itself, and for
+     * a capture that has passed [hu.laurel.sqlpulse.data.schema.SchemaCachePolicy.expireAfterMillis].
+     */
+    @Query("DELETE FROM cached_database WHERE connectionId = :connectionId")
+    suspend fun deleteAllDatabases(connectionId: Long)
+
+    @Query("DELETE FROM cached_table WHERE connectionId = :connectionId")
+    suspend fun deleteAllTables(connectionId: Long)
+
+    @Query("DELETE FROM cached_column WHERE connectionId = :connectionId")
+    suspend fun deleteAllColumns(connectionId: Long)
+
+    @Query("DELETE FROM cached_index WHERE connectionId = :connectionId")
+    suspend fun deleteAllIndexes(connectionId: Long)
+
+    @Query("DELETE FROM cached_foreign_key WHERE connectionId = :connectionId")
+    suspend fun deleteAllForeignKeys(connectionId: Long)
+}
+
+/**
+ * The schema cache's DAO binding.
+ *
+ * Here rather than in di.DatabaseModule for the same reason [JumpCredentialModule] is here: the
+ * schema and the binding arrived together, and keeping them in one file is one fewer file two
+ * people have to edit at the same time.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+object SchemaCacheDaoModule {
+
+    @Provides
+    fun provideSchemaCacheDao(db: SqlPulseDatabase): SchemaCacheDao = db.schemaCache()
 }

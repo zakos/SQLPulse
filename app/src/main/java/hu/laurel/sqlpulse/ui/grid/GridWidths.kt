@@ -28,8 +28,16 @@ internal object GridWidths {
     const val MIN_WIDTH_DP = 96
     const val MAX_WIDTH_DP = 480
 
-    fun columnWidthDp(labelLength: Int, widestValueLength: Int): Int {
+    /**
+     * [fontScale] is the grid's own text scale, 1.0 at the default size.
+     *
+     * Only the text part of the width scales: the sort icon and the drag handle are touch targets
+     * and stay the size a finger is. Scaling the whole column would make the controls grow with
+     * the letters and the columns drift wider than the text in them needs.
+     */
+    fun columnWidthDp(labelLength: Int, widestValueLength: Int, fontScale: Float = 1f): Int {
         val characters = maxOf(labelLength, widestValueLength).coerceIn(MIN_CHARS, MAX_CHARS)
-        return characters * CHAR_WIDTH_DP + HEADER_CONTROLS_DP
+        val text = (characters * CHAR_WIDTH_DP * fontScale).toInt()
+        return (text + HEADER_CONTROLS_DP).coerceIn(MIN_WIDTH_DP, MAX_WIDTH_DP)
     }
 }

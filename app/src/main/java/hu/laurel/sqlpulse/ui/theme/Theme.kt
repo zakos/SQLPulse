@@ -61,9 +61,20 @@ val LocalSemanticColors = staticCompositionLocalOf {
 
 enum class ThemePreference { System, Light, Dark }
 
+/**
+ * The grid's text size, as a percentage of the default.
+ *
+ * A composition local rather than a parameter threaded through every screen: the grid appears in
+ * four places, and the setting has to reach all of them or it is the kind of slider that moves
+ * and changes nothing.
+ */
+val LocalGridFontScale = staticCompositionLocalOf { 100 }
+
 @Composable
 fun SqlPulseTheme(
     preference: ThemePreference = ThemePreference.System,
+    /** The result grid's text size, as a percentage of the default. */
+    gridFontScale: Int = 100,
     content: @Composable () -> Unit,
 ) {
     // Dark is the default: the typical use is in poor light, on the move (§8).
@@ -93,7 +104,10 @@ fun SqlPulseTheme(
             surfaceRaised = SqlPulseColors.LightSurfaceRaised,
         )
     }
-    CompositionLocalProvider(LocalSemanticColors provides semantic) {
+    CompositionLocalProvider(
+        LocalSemanticColors provides semantic,
+        LocalGridFontScale provides gridFontScale,
+    ) {
         MaterialTheme(
             colorScheme = if (dark) DarkScheme else LightScheme,
             typography = SqlPulseTypography,

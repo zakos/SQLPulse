@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Walking the data along its relationships (§7.3). -->
+    <string name="link_open_parent">Open %1$s</string>
+    <string name="link_children">What points at this row</string>
+    <string name="link_children_none">Nothing points at this row.</string>
+    <string name="link_child_rows">%1$d rows</string>
+    <string name="link_child_rows_unknown">rows unknown</string>
+    <string name="link_back">Back</string>
+    <string name="link_loading">Loading…</string>
+    <string name="link_guessed_note">guessed from the column name, not a declared foreign key</string>
+    <string name="link_missing">No row matches. The value points at a row that is not there.</string>
+    <string name="link_several">%1$d rows match, where one was expected.</string>
+</resources>

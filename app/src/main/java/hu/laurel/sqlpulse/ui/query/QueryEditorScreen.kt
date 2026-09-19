@@ -23,17 +23,23 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -44,6 +50,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -86,8 +93,6 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
-import hu.laurel.sqlpulse.data.sql.ExplainAdvice
-import hu.laurel.sqlpulse.data.sql.ExplainNote
 import hu.laurel.sqlpulse.data.sql.ParameterType
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
@@ -95,10 +100,17 @@ import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
+import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
+import hu.laurel.sqlpulse.data.chart.ChartSpec
+import hu.laurel.sqlpulse.data.grid.ResultFilter
+import hu.laurel.sqlpulse.data.grid.ResultFilters
+import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
 import hu.laurel.sqlpulse.ui.grid.CellSelection
+import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
+import hu.laurel.sqlpulse.ui.snapshot.SnapshotSheet
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -124,7 +136,9 @@ fun QueryEditorScreen(
     var favouriteDialogOpen by remember { mutableStateOf(false) }
     var exportMenuOpen by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
+    var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
+    var snapshotMenuOpen by remember { mutableStateOf(false) }
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
     LaunchedEffect(state.shareIntent) {
@@ -226,6 +240,60 @@ fun QueryEditorScreen(
                     ) {
                         Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
                     }
+                    // The time machine (roadmap): freeze this result, and later hold the same
+                    // query's answer up against it. A menu rather than a button because taking a
+                    // snapshot and comparing with one are two different moments, and the second
+                    // one only exists once the first has happened.
+                    if (state.result != null || state.snapshot != null) {
+                        Box {
+                            IconButton(onClick = { snapshotMenuOpen = true }) {
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = stringResource(R.string.snapshot_menu),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = snapshotMenuOpen,
+                                onDismissRequest = { snapshotMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (state.snapshot == null) {
+                                                    R.string.snapshot_take
+                                                } else {
+                                                    R.string.snapshot_retake
+                                                },
+                                            ),
+                                        )
+                                    },
+                                    enabled = state.result != null,
+                                    onClick = {
+                                        snapshotMenuOpen = false
+                                        viewModel.takeSnapshot()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.snapshot_compare)) },
+                                    enabled = state.snapshot != null,
+                                    onClick = {
+                                        snapshotMenuOpen = false
+                                        viewModel.compareWithSnapshot()
+                                    },
+                                )
+                                if (state.snapshot != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.snapshot_discard)) },
+                                        onClick = {
+                                            snapshotMenuOpen = false
+                                            viewModel.discardSnapshot()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     if (state.result != null) {
                         Box {
                             IconButton(onClick = { exportMenuOpen = true }) {
@@ -259,6 +327,17 @@ fun QueryEditorScreen(
         // Two columns where there is room for two: on a tablet the result no longer has to share
         // the height with the editor, and neither has to be scrolled to reach the other.
         val editorPane: @Composable ColumnScope.() -> Unit = {
+                QueryTabBar(
+                    tabs = state.tabs,
+                    activeId = state.activeTabId,
+                    wide = wide,
+                    onSelect = viewModel::selectTab,
+                    onNew = viewModel::newTab,
+                    onRename = { renameDialogOpen = true },
+                    onDuplicate = { viewModel.duplicateTab(it) },
+                    onClose = viewModel::requestCloseTab,
+                )
+
                 // §7.3 lets you browse any database, so the editor has to be able to follow it. The
                 // chips belong to writing a query, so they fold away with the editor.
                 if (state.databases.isNotEmpty() && !state.editorCollapsed) {
@@ -286,7 +365,9 @@ fun QueryEditorScreen(
                 // TextFieldValue rather than a plain String: the selection is what decides whether
                 // "run" means the whole script or only the part the user marked.
                 var field by remember { mutableStateOf(TextFieldValue(state.sql)) }
-                LaunchedEffect(state.sql, state.selectionStart) {
+                // The tab id is part of the key: two tabs can hold the same text, and switching
+                // between them still has to move the cursor to where that tab left it.
+                LaunchedEffect(state.activeTabId, state.sql, state.selectionStart) {
                     // The text can also change from outside the field: a completion, the key row, a
                     // favourite. The cursor then goes where the view model put it, not to the end.
                     if (field.text != state.sql) {
@@ -310,12 +391,7 @@ fun QueryEditorScreen(
                         value = field,
                         onValueChange = { value ->
                             field = value
-                            viewModel.setSql(value.text)
-                            viewModel.setSelection(value.selection.min, value.selection.max)
-                            viewModel.suggest(
-                                value.text.take(value.selection.min)
-                                    .takeLastWhile { it.isLetterOrDigit() || it == '_' },
-                            )
+                            viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
                         },
                         textStyle = MonoStyles.editor,
                         visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
@@ -495,10 +571,10 @@ fun QueryEditorScreen(
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when {
                         state.connectionName == null -> NoSessionState(onBack)
-                        state.panel == QueryPanel.HISTORY -> HistoryPanel(history, viewModel::load)
+                        state.panel == QueryPanel.HISTORY -> HistoryPanel(history) { viewModel.load(it, saved = false) }
                         state.panel == QueryPanel.FAVOURITES -> FavouritesPanel(
                             favourites = favourites,
-                            onLoad = viewModel::load,
+                            onLoad = { viewModel.load(it, saved = true) },
                             onDelete = viewModel::deleteFavourite,
                         )
 
@@ -506,6 +582,10 @@ fun QueryEditorScreen(
                             state = state,
                             onCellSelected = { selectedCell = it },
                             onSort = viewModel::sortResult,
+                            onFilterChange = viewModel::setResultFilter,
+                            onChartSpec = viewModel::setChartSpec,
+                            onToggleFilter = viewModel::toggleFilterBar,
+                            onToggleChart = viewModel::toggleChart,
                         )
                     }
                 }
@@ -572,6 +652,73 @@ fun QueryEditorScreen(
         )
     }
 
+    state.closing?.let { tab ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCloseTab,
+            title = { Text(stringResource(R.string.query_tab_close_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    Text(stringResource(R.string.query_tab_close_body))
+                    Text(
+                        text = tab.sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
+                        style = MonoStyles.cell,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.closeTab(tab.id) }) {
+                    Text(stringResource(R.string.query_tab_close_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissCloseTab) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (state.tabLimitReached) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissTabLimit,
+            title = { Text(stringResource(R.string.query_tab_limit_title)) },
+            text = { Text(stringResource(R.string.query_tab_limit_body, QueryTabs.MAX_TABS)) },
+            confirmButton = {
+                Button(onClick = viewModel::dismissTabLimit) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    if (renameDialogOpen) {
+        TabNameDialog(
+            initial = state.active.title.orEmpty(),
+            onSave = { name ->
+                viewModel.renameTab(state.activeTabId, name)
+                renameDialogOpen = false
+            },
+            onDismiss = { renameDialogOpen = false },
+        )
+    }
+
+    state.comparison?.let { outcome ->
+        SnapshotSheet(outcome = outcome, onDismiss = viewModel::dismissComparison)
+    }
+
+    state.snapshotNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissSnapshotNotice,
+            title = { Text(stringResource(R.string.snapshot_notice_title)) },
+            text = { Text(snapshotNoticeText(notice)) },
+            confirmButton = {
+                Button(onClick = viewModel::dismissSnapshotNotice) {
+                    Text(stringResource(R.string.snapshot_close))
+                }
+            },
+        )
+    }
+
     if (favouriteDialogOpen) {
         FavouriteNameDialog(
             onSave = { name ->
@@ -581,6 +728,29 @@ fun QueryEditorScreen(
             onDismiss = { favouriteDialogOpen = false },
         )
     }
+}
+
+/**
+ * What the dialog after a snapshot says.
+ *
+ * Three sentences at most, and the second one is the important one: a snapshot that kept only
+ * part of the result has to say so at the moment it is taken, not later when the comparison it
+ * produced turns out to be about a slice nobody knew about.
+ */
+@Composable
+private fun snapshotNoticeText(notice: SnapshotNotice): String = when (notice) {
+    is SnapshotNotice.Taken -> listOfNotNull(
+        stringResource(R.string.snapshot_notice_taken, notice.rows),
+        notice.trimmedFrom?.let {
+            stringResource(R.string.snapshot_notice_trimmed, it, notice.rows)
+        },
+        stringResource(R.string.snapshot_notice_partial_source).takeIf { notice.sourceTruncated },
+    ).joinToString("\n\n")
+
+    is SnapshotNotice.TooWide ->
+        stringResource(R.string.snapshot_notice_too_wide, notice.columnCount, notice.maxColumns)
+
+    SnapshotNotice.NoResult -> stringResource(R.string.snapshot_notice_no_result)
 }
 
 @Composable
@@ -614,6 +784,10 @@ private fun ResultPanel(
     state: QueryEditorUiState,
     onCellSelected: (CellSelection) -> Unit,
     onSort: (String) -> Unit,
+    onFilterChange: (ResultFilter) -> Unit,
+    onChartSpec: (ChartSpec) -> Unit,
+    onToggleFilter: () -> Unit,
+    onToggleChart: () -> Unit,
 ) {
     val result = state.result
     when {
@@ -621,39 +795,102 @@ private fun ResultPanel(
         result == null -> Placeholder(R.string.query_no_result_yet)
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
+            val visible = remember(result, state.resultFilter) {
+                ResultFilters.apply(result, state.resultFilter)
+            }
+
             // A plan is worth reading before the rows are: these are the parts of it that decide
-            // whether the query is a good idea.
-            val notes = remember(result) { ExplainAdvice.of(result) }
-            if (notes.isNotEmpty()) {
+            // whether the query is a good idea. A JSON plan is shown as the tree it is; anything
+            // else falls back to the flat reading, which is what an older server gives.
+            ExplainPlanSection(result)
+
+            // One line, not two: the note about the added LIMIT belongs with the row count, and
+            // the two ways of looking at the rows sit at the end of the same line.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = Spacing.l),
+            ) {
                 Text(
-                    // map is inline, joinToString is not: stringResource needs the former.
-                    text = notes.map { stringResource(it.textRes()) }.joinToString("\n"),
+                    text = listOfNotNull(
+                        stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
+                        stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = LocalSemanticColors.current.warning,
-                    modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.xs),
+                    color = LocalSemanticColors.current.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onToggleFilter) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = stringResource(
+                            if (state.filterOpen) R.string.filter_hide else R.string.filter_show,
+                        ),
+                        // A filter that is narrowing the rows says so even while its bar is
+                        // folded away, so an empty-looking result is never a mystery.
+                        tint = if (state.resultFilter.isActive) {
+                            LocalSemanticColors.current.warning
+                        } else {
+                            LocalContentColor.current
+                        },
+                    )
+                }
+                IconButton(onClick = onToggleChart) {
+                    Icon(
+                        imageVector = if (state.showChart) Icons.Default.TableRows else Icons.Default.BarChart,
+                        contentDescription = stringResource(
+                            if (state.showChart) R.string.chart_hide else R.string.chart_show,
+                        ),
+                    )
+                }
+            }
+
+            // A snapshot leaves no mark on the result it was taken from, and an unmarked
+            // snapshot is one that gets compared against by accident an hour later. When it
+            // was taken, and how much of it there is, is the whole of what has to be said here.
+            state.snapshot?.let { snapshot ->
+                Text(
+                    text = stringResource(
+                        R.string.snapshot_state,
+                        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(snapshot.takenAt)),
+                        snapshot.rowCount,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalSemanticColors.current.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = Spacing.l),
+                )
+            }
+            if (state.filterOpen) {
+                ResultFilterBar(
+                    table = result,
+                    filter = state.resultFilter,
+                    shownRows = visible.rowCount,
+                    onFilterChange = onFilterChange,
                 )
             }
 
-            // One line, not two: the note about the added LIMIT belongs with the row count.
-            Text(
-                text = listOfNotNull(
-                    stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
-                    stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = LocalSemanticColors.current.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = Spacing.l),
-            )
-            ResultGrid(
-                table = result,
-                showLimitNote = false,
-                modifier = Modifier.fillMaxSize(),
-                onCellClick = { onCellSelected(it) },
-                sort = state.resultSort,
-                onSort = onSort,
-            )
+            if (state.showChart) {
+                // The chart draws the rows that are on screen, so narrowing the grid narrows the
+                // picture with it — two readings of one thing, never of two different things.
+                ResultChartPanel(
+                    table = visible,
+                    spec = state.chartSpec,
+                    onSpecChange = onChartSpec,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                ResultGrid(
+                    table = visible,
+                    showLimitNote = false,
+                    modifier = Modifier.fillMaxSize(),
+                    onCellClick = { onCellSelected(it) },
+                    sort = state.resultSort,
+                    onSort = onSort,
+                )
+            }
         }
     }
 }
@@ -1054,16 +1291,6 @@ private fun TransactionBar(onCommit: () -> Unit, onRollback: () -> Unit) {
     }
 }
 
-@StringRes
-private fun ExplainNote.textRes(): Int = when (this) {
-    ExplainNote.FULL_TABLE_SCAN -> R.string.explain_full_scan
-    ExplainNote.FULL_INDEX_SCAN -> R.string.explain_index_scan
-    ExplainNote.NO_INDEX -> R.string.explain_no_index
-    ExplainNote.FILESORT -> R.string.explain_filesort
-    ExplainNote.TEMPORARY_TABLE -> R.string.explain_temporary
-    ExplainNote.MANY_ROWS -> R.string.explain_many_rows
-}
-
 /**
  * The key names [QueryShortcuts] speaks. Everything else is text, or somebody else's shortcut.
  */
@@ -1077,3 +1304,227 @@ private fun Key.shortcutName(): String = when (this) {
 
 /** The editor gets a little less than half: the result is the wider of the two things to read. */
 private const val EDITOR_PANE_WEIGHT = 0.42f
+
+/**
+ * The tab strip, in the two shapes it needs.
+ *
+ * On a wide window the tabs are a scrolling row of chips: there is room for several names, and
+ * seeing them all at once is the point of having them.
+ *
+ * On a phone there is no such room, and a strip of chips there is actively harmful. At 360dp a row
+ * of four names either elides every one of them down to "SEL…" — which tells you nothing about
+ * which tab is which — or scrolls sideways, directly above an editor that also scrolls sideways,
+ * so a horizontal swipe becomes a guess about which of the two will take it. Worse, the strip
+ * grows as tabs are added, eating the four or five lines of SQL the editor has to begin with.
+ *
+ * So the phone gets one row that never grows: the name of the tab you are in, "3/5" so you know
+ * there are others and where you are among them, and a tap to open the full list as a menu, where
+ * every name has the whole width and closing one is a deliberate second target. Vertical space is
+ * fixed, the names are legible, and nothing competes with the editor for a sideways swipe.
+ */
+@Composable
+private fun QueryTabBar(
+    tabs: List<QueryTab>,
+    activeId: Long,
+    wide: Boolean,
+    onSelect: (Long) -> Unit,
+    onNew: () -> Unit,
+    onRename: (Long) -> Unit,
+    onDuplicate: (Long) -> Unit,
+    onClose: (Long) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    var listOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val activeIndex = tabs.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Spacing.l, end = Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        if (wide) {
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
+                    FilterChip(
+                        selected = tab.id == activeId,
+                        onClick = { onSelect(tab.id) },
+                        label = {
+                            Text(
+                                text = tabLabel(tab, index),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        // The dot is the whole mark: a tab whose text is not a favourite yet.
+                        leadingIcon = if (tab.unsaved) {
+                            {
+                                Text(
+                                    text = stringResource(R.string.query_tab_unsaved_mark),
+                                    color = semantic.warning,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        trailingIcon = if (tabs.size > 1) {
+                            {
+                                IconButton(onClick = { onClose(tab.id) }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.query_tab_close),
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+        } else {
+            Box(modifier = Modifier.weight(1f)) {
+                TextButton(onClick = { listOpen = true }) {
+                    if (tabs[activeIndex].unsaved) {
+                        Text(
+                            text = stringResource(R.string.query_tab_unsaved_mark),
+                            color = semantic.warning,
+                            modifier = Modifier.padding(end = Spacing.xs),
+                        )
+                    }
+                    Text(
+                        text = tabLabel(tabs[activeIndex], activeIndex),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.query_tab_position,
+                            activeIndex + 1,
+                            tabs.size,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
+                        modifier = Modifier.padding(start = Spacing.xs),
+                    )
+                    Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.query_tab_switch))
+                }
+                DropdownMenu(expanded = listOpen, onDismissRequest = { listOpen = false }) {
+                    tabs.forEachIndexed { index, tab ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = tabLabel(tab, index),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (tab.id == activeId) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                            },
+                            leadingIcon = if (tab.unsaved) {
+                                {
+                                    Text(
+                                        text = stringResource(R.string.query_tab_unsaved_mark),
+                                        color = semantic.warning,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                            trailingIcon = if (tabs.size > 1) {
+                                {
+                                    IconButton(
+                                        onClick = {
+                                            listOpen = false
+                                            onClose(tab.id)
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = stringResource(R.string.query_tab_close),
+                                        )
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                            onClick = {
+                                listOpen = false
+                                onSelect(tab.id)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        IconButton(onClick = onNew) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.query_tab_new))
+        }
+
+        // Rename, duplicate and close act on the tab you are in, so they are one menu in both
+        // layouts rather than a second control per chip.
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.query_tab_switch))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_rename)) },
+                    onClick = {
+                        menuOpen = false
+                        onRename(activeId)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_duplicate)) },
+                    onClick = {
+                        menuOpen = false
+                        onDuplicate(activeId)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.query_tab_close)) },
+                    onClick = {
+                        menuOpen = false
+                        onClose(activeId)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** A tab's name, its first line of SQL, or a number — in that order of preference. */
+@Composable
+private fun tabLabel(tab: QueryTab, index: Int): String =
+    QueryTabs.label(tab) ?: stringResource(R.string.query_tab_untitled, index + 1)
+
+@Composable
+private fun TabNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.query_tab_rename)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.query_tab_rename_label)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onSave(name) }) { Text(stringResource(R.string.connection_save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}

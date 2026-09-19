@@ -55,6 +55,9 @@ fun CellSheet(
     onPreviewBlob: (() -> Unit)? = null,
     blobPreview: BlobPreview.Preview? = null,
     loadingBlob: Boolean = false,
+    /** Set where this cell is a foreign key with a value; null offers nothing (§7.3). */
+    linkOffer: LinkOffer? = null,
+    onOpenLink: () -> Unit = {},
 ) {
     val semantic = LocalSemanticColors.current
     ModalBottomSheet(
@@ -110,6 +113,14 @@ fun CellSheet(
                 )
             }
 
+            linkOffer?.takeIf { it.guessed }?.let {
+                Text(
+                    text = "* " + stringResource(R.string.link_guessed_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.warning,
+                )
+            }
+
             editBlockedReason?.takeIf { !canEdit }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.warning)
             }
@@ -135,6 +146,15 @@ fun CellSheet(
                         shape = Shapes.button,
                     ) { Text(stringResource(R.string.cell_blob_preview)) }
                 }
+                // §7.3: the row this value points at, without typing a JOIN for it.
+                linkOffer?.let { offer ->
+                    OutlinedButton(onClick = onOpenLink, shape = Shapes.button) {
+                        Text(
+                            stringResource(R.string.link_open_parent, offer.targetTable) +
+                                if (offer.guessed) " *" else "",
+                        )
+                    }
+                }
                 if (canEdit) {
                     Button(onClick = onEdit, shape = Shapes.button) {
                         Text(stringResource(R.string.cell_edit))
@@ -158,6 +178,8 @@ fun RowDetailSheet(
     onCopy: (String) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
+    /** Null where the row has no schema behind it — a query result is not a table row (§7.3). */
+    onShowChildren: (() -> Unit)? = null,
 ) {
     val semantic = LocalSemanticColors.current
     ModalBottomSheet(
@@ -198,12 +220,185 @@ fun RowDetailSheet(
                     shape = Shapes.button,
                 ) { Text(stringResource(R.string.cell_copy)) }
 
+                onShowChildren?.let { show ->
+                    OutlinedButton(onClick = show, shape = Shapes.button) {
+                        Text(stringResource(R.string.link_children))
+                    }
+                }
+
                 if (canDelete) {
                     OutlinedButton(onClick = onDelete, shape = Shapes.button) {
                         Text(stringResource(R.string.row_delete))
                     }
                 }
             }
+        }
+    }
+}
+
+/** What following a link from one cell would open, or null where nothing is on offer. */
+data class LinkOffer(val targetTable: String, val guessed: Boolean)
+
+/** One table pointing at the row on screen, as the sheet lists it. */
+data class LinkChildEntry(
+    val table: String,
+    val columns: String,
+    val rows: Long?,
+    val guessed: Boolean,
+    val onOpen: () -> Unit,
+)
+
+/**
+ * The walk along the relationships (§7.3): the rows one link led to, what they point at in turn,
+ * and the way back.
+ *
+ * A step reached along a guessed link — one read off the column names, because the schema declares
+ * no foreign key — is marked with an asterisk and named as a guess, the same way the map marks it.
+ * Nothing here is followed silently.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LinkWalkSheet(
+    title: String,
+    guessed: Boolean,
+    canGoBack: Boolean,
+    loading: Boolean,
+    error: String?,
+    columns: List<ColumnMeta>,
+    rows: List<List<CellValue>>,
+    /** Set when a lookup that expected one row found none, or found several. */
+    notice: String?,
+    selectedRow: Int?,
+    children: List<LinkChildEntry>,
+    childrenLoading: Boolean,
+    offerFor: (rowIndex: Int, column: String) -> LinkOffer?,
+    onOpenParent: (rowIndex: Int, column: String) -> Unit,
+    onSelectRow: (Int) -> Unit,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        shape = Shapes.sheet,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.l)
+                .padding(bottom = Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (canGoBack) {
+                    OutlinedButton(onClick = onBack, shape = Shapes.button) {
+                        Text(stringResource(R.string.link_back))
+                    }
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium)
+            }
+
+            if (guessed) {
+                Text(
+                    text = "* " + stringResource(R.string.link_guessed_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.warning,
+                )
+            }
+
+            notice?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.warning)
+            }
+
+            error?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+
+            if (loading) {
+                Text(stringResource(R.string.link_loading), style = MaterialTheme.typography.bodySmall)
+            }
+
+            rows.forEachIndexed { rowIndex, row ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
+                    columns.forEachIndexed { index, column ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
+                            Text(
+                                text = column.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = semantic.textSecondary,
+                            )
+                            Text(row.getOrNull(index)?.asText().orEmpty(), style = MonoStyles.cell)
+                            offerFor(rowIndex, column.label)?.let { offer ->
+                                OutlinedButton(
+                                    onClick = { onOpenParent(rowIndex, column.label) },
+                                    shape = Shapes.button,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.link_open_parent, offer.targetTable) +
+                                            if (offer.guessed) " *" else "",
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedButton(onClick = { onSelectRow(rowIndex) }, shape = Shapes.button) {
+                        Text(stringResource(R.string.link_children))
+                    }
+
+                    if (selectedRow == rowIndex) {
+                        if (childrenLoading) {
+                            Text(
+                                stringResource(R.string.link_loading),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else if (children.isEmpty()) {
+                            Text(
+                                stringResource(R.string.link_children_none),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = semantic.textSecondary,
+                            )
+                        } else {
+                            children.forEach { entry -> ChildLinkRow(entry) }
+                        }
+                    }
+
+                    HorizontalDivider(color = semantic.hairline)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChildLinkRow(entry: LinkChildEntry) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = entry.onOpen, shape = Shapes.button) {
+            Text(entry.table + if (entry.guessed) " *" else "")
+        }
+        Column {
+            Text(
+                text = entry.rows?.let { stringResource(R.string.link_child_rows, it) }
+                    ?: stringResource(R.string.link_child_rows_unknown),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = entry.columns,
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
         }
     }
 }
