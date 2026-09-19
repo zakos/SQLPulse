@@ -24,6 +24,9 @@ import hu.laurel.sqlpulse.data.snapshot.ResultSnapshot
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
 import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
+import hu.laurel.sqlpulse.data.chart.ChartSpec
+import hu.laurel.sqlpulse.data.grid.ResultFilter
+import hu.laurel.sqlpulse.data.grid.ResultFilters
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ExplainJson
 import hu.laurel.sqlpulse.data.sql.ParameterValue
@@ -168,6 +171,20 @@ data class QueryEditorUiState(
     val database: String? get() = active.database
     val switchedTo: String? get() = active.switchedTo
     val resultSort: ColumnSort? get() = active.resultSort
+    val resultFilter: ResultFilter get() = active.resultFilter
+    val filterOpen: Boolean get() = active.filterOpen
+    val showChart: Boolean get() = active.showChart
+    val chartSpec: ChartSpec? get() = active.chartSpec
+
+    /**
+     * The rows the screen actually shows: the result, narrowed by this tab's filter.
+     *
+     * Everything the user acts on — what is drawn, exported, or kept as a snapshot — comes from
+     * here, so a filtered screen cannot quietly export or compare rows that are not on it.
+     */
+    val visibleResult: ResultTable? get() = active.result?.let {
+        ResultFilters.apply(it, active.resultFilter)
+    }
     val statements: List<StatementRun> get() = active.statements
     val selectedStatement: Int get() = active.selectedStatement
     val selectionStart: Int get() = active.selectionStart
@@ -677,6 +694,10 @@ class QueryEditorViewModel @Inject constructor(
                     result = null,
                     updateCount = null,
                     resultSort = null,
+                    // A filter belongs to the rows it was typed for. Carrying it onto the next
+                    // result would hide rows the user never chose to hide.
+                    resultFilter = ResultFilter(),
+                    chartSpec = null,
                 )
             }
 
@@ -835,6 +856,25 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
+    /** Narrows the rows on screen. Nothing is re-queried; what is not loaded stays unseen. */
+    fun setResultFilter(filter: ResultFilter) {
+        updateActive { it.copy(resultFilter = filter) }
+    }
+
+    /** Folds the filter bar away, keeping whatever it is filtering by. */
+    fun toggleFilterBar() {
+        updateActive { it.copy(filterOpen = !it.filterOpen) }
+    }
+
+    /** Switches between the rows and the picture of them. */
+    fun toggleChart() {
+        updateActive { it.copy(showChart = !it.showChart) }
+    }
+
+    fun setChartSpec(spec: ChartSpec) {
+        updateActive { it.copy(chartSpec = spec) }
+    }
+
     /**
      * The plan, asked for as JSON so it can be read as a tree, with the flat table as the answer
      * of last resort.
@@ -873,7 +913,9 @@ class QueryEditorViewModel @Inject constructor(
 
     /** §7.7: CSV or JSON of what is loaded, straight into the share sheet. */
     fun export(format: ExportFormat) {
-        val result = _uiState.value.active.result ?: return
+        // What is exported is what is on screen. Exporting rows a filter is hiding would be a
+        // file that does not match the thing the user was looking at when they asked for it.
+        val result = _uiState.value.visibleResult ?: return
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
@@ -945,7 +987,9 @@ class QueryEditorViewModel @Inject constructor(
         val state = _uiState.value
         val tabId = state.activeTabId
         val tab = state.active
-        val result = tab.result
+        // The snapshot is of what is on screen, filter and all: comparing against rows that were
+        // hidden at the moment it was taken would report changes nobody could have seen.
+        val result = state.visibleResult
         if (result == null || result.columns.isEmpty()) {
             _uiState.value = state.copy(snapshotNotice = SnapshotNotice.NoResult)
             return
@@ -987,7 +1031,8 @@ class QueryEditorViewModel @Inject constructor(
     fun compareWithSnapshot() {
         val state = _uiState.value
         val snapshot = state.snapshots[state.activeTabId] ?: return
-        val result = state.active.result
+        // Both sides are what the screen shows, for the same reason taking one is.
+        val result = state.visibleResult
         val outcome = if (result == null) {
             ComparisonOutcome.NoResult
         } else {

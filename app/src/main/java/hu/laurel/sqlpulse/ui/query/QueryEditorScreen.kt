@@ -24,11 +24,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -47,6 +50,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -97,7 +101,12 @@ import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
+import hu.laurel.sqlpulse.data.chart.ChartSpec
+import hu.laurel.sqlpulse.data.grid.ResultFilter
+import hu.laurel.sqlpulse.data.grid.ResultFilters
+import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
 import hu.laurel.sqlpulse.ui.grid.CellSelection
+import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
@@ -573,6 +582,10 @@ fun QueryEditorScreen(
                             state = state,
                             onCellSelected = { selectedCell = it },
                             onSort = viewModel::sortResult,
+                            onFilterChange = viewModel::setResultFilter,
+                            onChartSpec = viewModel::setChartSpec,
+                            onToggleFilter = viewModel::toggleFilterBar,
+                            onToggleChart = viewModel::toggleChart,
                         )
                     }
                 }
@@ -771,6 +784,10 @@ private fun ResultPanel(
     state: QueryEditorUiState,
     onCellSelected: (CellSelection) -> Unit,
     onSort: (String) -> Unit,
+    onFilterChange: (ResultFilter) -> Unit,
+    onChartSpec: (ChartSpec) -> Unit,
+    onToggleFilter: () -> Unit,
+    onToggleChart: () -> Unit,
 ) {
     val result = state.result
     when {
@@ -778,23 +795,56 @@ private fun ResultPanel(
         result == null -> Placeholder(R.string.query_no_result_yet)
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
+            val visible = remember(result, state.resultFilter) {
+                ResultFilters.apply(result, state.resultFilter)
+            }
+
             // A plan is worth reading before the rows are: these are the parts of it that decide
             // whether the query is a good idea. A JSON plan is shown as the tree it is; anything
             // else falls back to the flat reading, which is what an older server gives.
             ExplainPlanSection(result)
 
-            // One line, not two: the note about the added LIMIT belongs with the row count.
-            Text(
-                text = listOfNotNull(
-                    stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
-                    stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = LocalSemanticColors.current.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = Spacing.l),
-            )
+            // One line, not two: the note about the added LIMIT belongs with the row count, and
+            // the two ways of looking at the rows sit at the end of the same line.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = Spacing.l),
+            ) {
+                Text(
+                    text = listOfNotNull(
+                        stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
+                        stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalSemanticColors.current.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onToggleFilter) {
+                    Icon(
+                        imageVector = Icons.Default.FilterList,
+                        contentDescription = stringResource(
+                            if (state.filterOpen) R.string.filter_hide else R.string.filter_show,
+                        ),
+                        // A filter that is narrowing the rows says so even while its bar is
+                        // folded away, so an empty-looking result is never a mystery.
+                        tint = if (state.resultFilter.isActive) {
+                            LocalSemanticColors.current.warning
+                        } else {
+                            LocalContentColor.current
+                        },
+                    )
+                }
+                IconButton(onClick = onToggleChart) {
+                    Icon(
+                        imageVector = if (state.showChart) Icons.Default.TableRows else Icons.Default.BarChart,
+                        contentDescription = stringResource(
+                            if (state.showChart) R.string.chart_hide else R.string.chart_show,
+                        ),
+                    )
+                }
+            }
 
             // A snapshot leaves no mark on the result it was taken from, and an unmarked
             // snapshot is one that gets compared against by accident an hour later. When it
@@ -813,14 +863,34 @@ private fun ResultPanel(
                     modifier = Modifier.padding(horizontal = Spacing.l),
                 )
             }
-            ResultGrid(
-                table = result,
-                showLimitNote = false,
-                modifier = Modifier.fillMaxSize(),
-                onCellClick = { onCellSelected(it) },
-                sort = state.resultSort,
-                onSort = onSort,
-            )
+            if (state.filterOpen) {
+                ResultFilterBar(
+                    table = result,
+                    filter = state.resultFilter,
+                    shownRows = visible.rowCount,
+                    onFilterChange = onFilterChange,
+                )
+            }
+
+            if (state.showChart) {
+                // The chart draws the rows that are on screen, so narrowing the grid narrows the
+                // picture with it — two readings of one thing, never of two different things.
+                ResultChartPanel(
+                    table = visible,
+                    spec = state.chartSpec,
+                    onSpecChange = onChartSpec,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                ResultGrid(
+                    table = visible,
+                    showLimitNote = false,
+                    modifier = Modifier.fillMaxSize(),
+                    onCellClick = { onCellSelected(it) },
+                    sort = state.resultSort,
+                    onSort = onSort,
+                )
+            }
         }
     }
 }

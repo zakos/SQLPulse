@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chart_show">Chart</string>
+    <string name="chart_hide">Back to the rows</string>
+    <string name="chart_kind_bars">Bars</string>
+    <string name="chart_kind_line">Line</string>
+    <string name="chart_label_rows">Row number</string>
+    <string name="chart_value">Value</string>
+    <string name="chart_truncated">The first %1$d of %2$d rows are drawn</string>
+    <string name="chart_no_rows">Nothing to draw: the result has no rows.</string>
+    <string name="chart_no_numbers">Nothing to draw: no column of this result holds numbers.</string>
+</resources>

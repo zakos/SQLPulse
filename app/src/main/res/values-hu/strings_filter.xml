@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="filter_search_hint">Keresés a betöltött sorokban</string>
+    <string name="filter_clear_search">Keresés törlése</string>
+    <string name="filter_add_condition">Feltétel</string>
+    <string name="filter_remove_condition">Feltétel eltávolítása</string>
+    <string name="filter_condition_title">Oszlop szűrése</string>
+    <string name="filter_column">Oszlop</string>
+    <string name="filter_operator">Feltétel</string>
+    <string name="filter_value">Érték</string>
+    <string name="filter_apply">Alkalmaz</string>
+    <string name="filter_shown">%1$d / %2$d betöltött sor</string>
+    <string name="filter_loaded_only">csak a betöltöttre szűr</string>
+    <string name="filter_show">Szűrés</string>
+    <string name="filter_hide">Szűrő bezárása</string>
+    <string name="filter_op_contains">tartalmazza</string>
+    <string name="filter_op_not_contains">nem tartalmazza</string>
+    <string name="filter_op_equals">egyenlő</string>
+    <string name="filter_op_not_equals">nem egyenlő</string>
+    <string name="filter_op_greater">nagyobb mint</string>
+    <string name="filter_op_less">kisebb mint</string>
+    <string name="filter_op_empty">üres</string>
+    <string name="filter_op_not_empty">nem üres</string>
+</resources>

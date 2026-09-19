@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.query
 
+import hu.laurel.sqlpulse.data.chart.ChartSpec
+import hu.laurel.sqlpulse.data.grid.ResultFilter
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
@@ -52,6 +54,14 @@ data class QueryTab(
     val errorDetail: String? = null,
     val switchedTo: String? = null,
     val resultSort: ColumnSort? = null,
+    /** What narrows the rows on screen. It touches the loaded rows only, never the server. */
+    val resultFilter: ResultFilter = ResultFilter(),
+    /** Whether the filter bar is unfolded. The filter itself survives folding it away. */
+    val filterOpen: Boolean = false,
+    /** True while the result is drawn rather than listed. */
+    val showChart: Boolean = false,
+    /** Null lets the chart guess its columns from the result; set once the user chooses. */
+    val chartSpec: ChartSpec? = null,
     val panel: QueryPanel = QueryPanel.RESULT,
     val editorCollapsed: Boolean = false,
     val suggestions: List<String> = emptyList(),

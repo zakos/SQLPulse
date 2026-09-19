@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chart_show">Diagram</string>
+    <string name="chart_hide">Vissza a sorokhoz</string>
+    <string name="chart_kind_bars">Oszlopok</string>
+    <string name="chart_kind_line">Vonal</string>
+    <string name="chart_label_rows">Sorszám</string>
+    <string name="chart_value">Érték</string>
+    <string name="chart_truncated">%2$d sorból az első %1$d van kirajzolva</string>
+    <string name="chart_no_rows">Nincs mit kirajzolni: az eredménynek nincs sora.</string>
+    <string name="chart_no_numbers">Nincs mit kirajzolni: az eredmény egyik oszlopa sem szám.</string>
+</resources>
