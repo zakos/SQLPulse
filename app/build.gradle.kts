@@ -232,3 +232,19 @@ dependencies {
     // under test.
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+// A failing test should say why in the log, not only where.
+//
+// Gradle's default prints the exception's class and the line it came from, which for an
+// integration test against a real server is the least useful half of the answer: "SQLException at
+// line 45" could be a refused login, a missing grant or a protocol the driver will not speak, and
+// those have nothing to do with each other. CI is the only place these tests ever run, so the
+// message and its causes have to be in the log or they are lost.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}
