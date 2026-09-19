@@ -11,4 +11,5 @@ fun ExportFormat.labelRes(): Int = when (this) {
     ExportFormat.TSV -> R.string.export_tsv
     ExportFormat.JSON -> R.string.export_json
     ExportFormat.SQL -> R.string.export_sql
+    ExportFormat.XLSX -> R.string.export_xlsx
 }

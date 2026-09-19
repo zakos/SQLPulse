@@ -68,6 +68,13 @@ jobs:
     # per pull request would make the graph flap. A fork's pull request could not write it anyway.
     if: github.event_name == 'push'
 
+    # Submitting a snapshot needs the repository's dependency graph to be switched on; without it
+    # the API refuses the upload and this job goes red on every merge. A red main nobody can clear
+    # from the repository is the check people learn to ignore — the same argument as at the top of
+    # this file — so the job reports and does not block. Turn it on at
+    # Settings → Code security → Dependency graph and the snapshot starts landing for real.
+    continue-on-error: true
+
     permissions:
       contents: write
 

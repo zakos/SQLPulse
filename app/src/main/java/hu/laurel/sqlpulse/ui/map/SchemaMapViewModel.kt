@@ -1,13 +1,16 @@
 package hu.laurel.sqlpulse.ui.map
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.schema.GraphEdge
 import hu.laurel.sqlpulse.data.schema.LinkGuesser
 import hu.laurel.sqlpulse.data.schema.SchemaGraph
 import hu.laurel.sqlpulse.data.schema.SchemaLayout
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
+import hu.laurel.sqlpulse.data.schema.SchemaSvg
 import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import javax.inject.Inject
@@ -27,6 +30,8 @@ data class SchemaMapUiState(
     /** How many links the server itself reported, and how many were only guessed at. */
     val declaredCount: Int = 0,
     val guessedCount: Int = 0,
+    /** Set while the share sheet is being opened with the map's SVG. */
+    val shareIntent: Intent? = null,
 ) {
     /** A schema with no foreign keys at all — old, or built before InnoDB was the default. */
     val hasNoDeclaredLinks: Boolean get() = declaredCount == 0
@@ -41,8 +46,40 @@ data class SchemaMapUiState(
 @HiltViewModel
 class SchemaMapViewModel @Inject constructor(
     private val schema: SchemaRepository,
+    private val exports: ExportManager,
     private val sessions: SqlSessionManager,
 ) : ViewModel() {
+
+    /**
+     * The map as a file, handed to the share sheet.
+     *
+     * SVG rather than a picture of the screen: the map is usually wider than the phone, and what
+     * gets shared should be the whole schema at a size somebody can read, not the part that
+     * happened to be visible.
+     */
+    fun share() {
+        val state = _uiState.value
+        val database = state.database ?: return
+        if (state.graph.isEmpty) return
+        viewModelScope.launch {
+            try {
+                _uiState.value = state.copy(
+                    shareIntent = exports.shareText(
+                        content = SchemaSvg.render(state.graph, database),
+                        baseName = database,
+                        extension = "svg",
+                        mimeType = "image/svg+xml",
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: e.toString())
+            }
+        }
+    }
+
+    fun shareIntentHandled() {
+        _uiState.value = _uiState.value.copy(shareIntent = null)
+    }
 
     private val _uiState = MutableStateFlow(SchemaMapUiState())
     val uiState: StateFlow<SchemaMapUiState> = _uiState.asStateFlow()

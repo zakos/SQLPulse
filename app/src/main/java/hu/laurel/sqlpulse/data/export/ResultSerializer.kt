@@ -11,6 +11,18 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
     JSON("json", "application/json"),
     /** INSERT statements, to carry a handful of rows to another database. */
     SQL("sql", "application/sql"),
+
+    /**
+     * An Excel workbook, which is the one format nothing at the other end has to guess about.
+     *
+     * Binary, unlike the four above, so it is built by [Xlsx] and written as bytes; asking
+     * [ResultSerializer] for it is a mistake the compiler cannot catch, so it says so.
+     */
+    XLSX("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ;
+
+    /** True for the formats that are text, which is all of them but one. */
+    val isText: Boolean get() = this != XLSX
 }
 
 /**
@@ -27,6 +39,7 @@ object ResultSerializer {
             ExportFormat.TSV -> toTsv(table)
             ExportFormat.JSON -> toJson(table)
             ExportFormat.SQL -> toSqlInserts(table, tableName)
+            ExportFormat.XLSX -> error("xlsx is binary; use Xlsx.workbook")
         }
 
     /** RFC 4180: comma separated, quotes doubled, CRLF line endings. */

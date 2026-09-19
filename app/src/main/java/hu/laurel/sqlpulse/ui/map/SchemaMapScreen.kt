@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.map
 
+import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextMeasurer
@@ -60,6 +63,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.schema.GraphNode
+import hu.laurel.sqlpulse.data.schema.MapGeometry
 import hu.laurel.sqlpulse.data.schema.SchemaGraph
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
@@ -91,6 +95,16 @@ fun SchemaMapScreen(
     // Bumped to frame the map again: once when a schema arrives, and whenever "fit" is tapped.
     var fitRequest by remember { mutableIntStateOf(0) }
 
+    // The map leaves through the system share sheet, like every other export: the app keeps
+    // no file of its own beyond the cache copy the next lock wipes.
+    val context = LocalContext.current
+    LaunchedEffect(state.shareIntent) {
+        state.shareIntent?.let { intent ->
+            context.startActivity(Intent.createChooser(intent, null))
+            viewModel.shareIntentHandled()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -115,6 +129,15 @@ fun SchemaMapScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = viewModel::share,
+                        enabled = !state.graph.isEmpty,
+                    ) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = stringResource(R.string.map_share),
+                        )
+                    }
                     IconButton(onClick = { fitRequest++ }) {
                         Icon(
                             Icons.Default.CenterFocusStrong,
@@ -477,11 +500,12 @@ private fun SchemaGraph.bounds(): Rect {
     )
 }
 
-private const val NODE_WIDTH = 190f
-private const val NODE_HEIGHT = 44f
-private const val GAP_X = 24f
-private const val GAP_Y = 90f
-private const val CORNER = 10f
+// Shared with SchemaSvg, so what is drawn here and what is written to a file are the same map.
+private const val NODE_WIDTH = MapGeometry.NODE_WIDTH
+private const val NODE_HEIGHT = MapGeometry.NODE_HEIGHT
+private const val GAP_X = MapGeometry.GAP_X
+private const val GAP_Y = MapGeometry.GAP_Y
+private const val CORNER = MapGeometry.CORNER
 private const val ARROW = 6f
 private const val LABEL_PADDING = 8f
 private const val MIN_SCALE = 0.2f

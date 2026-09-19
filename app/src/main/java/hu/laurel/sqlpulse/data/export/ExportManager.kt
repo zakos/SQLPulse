@@ -37,11 +37,43 @@ class ExportManager @Inject constructor(
     ): Intent = withContext(io) {
         val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
         val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
-        file.writeText(ResultSerializer.serialize(table, format, tableName))
+        // The four text formats are written as text; the workbook is a zip and has to go out as
+        // the bytes it is, or the recipient gets a file Excel will not open.
+        when {
+            format.isText -> file.writeText(ResultSerializer.serialize(table, format, tableName))
+            else -> file.writeBytes(
+                Xlsx.workbook(table, Xlsx.sheetName(tableName ?: baseName)),
+            )
+        }
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
         Intent(Intent.ACTION_SEND).apply {
             type = format.mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /**
+     * The same share sheet for anything already written out as text — the schema map's SVG.
+     *
+     * It goes through the cache directory and the FileProvider exactly as a result export does,
+     * so it is wiped on the next lock along with everything else.
+     */
+    suspend fun shareText(
+        content: String,
+        baseName: String,
+        extension: String,
+        mimeType: String,
+    ): Intent = withContext(io) {
+        val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
+        val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.$extension")
+        file.writeText(content)
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
+        Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
