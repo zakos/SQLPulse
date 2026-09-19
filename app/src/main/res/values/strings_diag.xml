@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The JSON query plan and the diagnostics report. A file of its own so the shared strings.xml
+     stays out of the way of parallel work; it is merged with the rest at build time. -->
+<resources>
+
+    <!-- Query plan, read from EXPLAIN FORMAT=JSON -->
+    <string name="plan_title">Query plan</string>
+    <string name="plan_fallback">This server did not return a JSON plan, so what follows is the tabular one.</string>
+    <string name="plan_total_cost">Plan cost: %1$s</string>
+    <string name="plan_no_cost">This server reports no cost figures, so the heaviest step is picked by rows read.</string>
+    <string name="plan_expensive">The heaviest step of the plan</string>
+    <string name="plan_expand">Open</string>
+    <string name="plan_collapse">Close</string>
+
+    <string name="plan_label_access">access</string>
+    <string name="plan_label_key">key</string>
+    <string name="plan_label_no_key">no index</string>
+    <string name="plan_label_rows_examined">rows read</string>
+    <string name="plan_label_rows_produced">rows kept</string>
+    <string name="plan_label_filtered">kept by the condition</string>
+    <string name="plan_label_cost">cost</string>
+    <string name="plan_label_possible_keys">indexes available</string>
+    <string name="plan_condition">Condition</string>
+
+    <string name="plan_flag_covering">The index answers this on its own; the table is never read.</string>
+    <string name="plan_flag_join_buffer">The join is buffered: the inner table has no index to look up in.</string>
+    <string name="plan_flag_dependent">Runs again for every row of the query around it.</string>
+
+    <string name="plan_node_query_block">Query</string>
+    <string name="plan_node_table">Table</string>
+    <string name="plan_node_nested_loop">Nested loop</string>
+    <string name="plan_node_ordering">Sorting</string>
+    <string name="plan_node_grouping">Grouping</string>
+    <string name="plan_node_distinct">Duplicates removed</string>
+    <string name="plan_node_union">Union</string>
+    <string name="plan_node_subquery">Subquery</string>
+    <string name="plan_node_materialised">Materialised</string>
+
+    <!-- Diagnostics report -->
+    <string name="diag_title">Diagnostics</string>
+    <string name="diag_open">Diagnostics report</string>
+    <string name="diag_intro">What a bug report needs: the build, the device, the driver, the transport and the last error. No host names, user names, database names, queries or secrets — those cannot be part of this report at all.</string>
+    <string name="diag_copy">Copy report</string>
+    <string name="diag_copied">The report is on the clipboard.</string>
+    <string name="diag_close">Close</string>
+    <string name="diag_no_connection">No live connection, so the report covers the app and the device only.</string>
+
+</resources>

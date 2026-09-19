@@ -25,6 +25,7 @@ import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
 import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.ColumnSort
+import hu.laurel.sqlpulse.data.sql.ExplainJson
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
@@ -631,6 +632,13 @@ class QueryEditorViewModel @Inject constructor(
         statements: List<String>,
         parameters: Map<String, ParameterValue>,
         confirmed: Boolean = false,
+        /**
+         * A second wording to try when the first one is refused, or null to let the failure stand.
+         *
+         * It exists for `EXPLAIN FORMAT=JSON`, which a server older than 5.6 answers with a
+         * syntax error. Deciding that from here would mean teaching this function about EXPLAIN.
+         */
+        fallback: ((String, SQLException) -> String?)? = null,
     ) {
         val state = _uiState.value
         val tabId = state.activeTabId
@@ -673,27 +681,48 @@ class QueryEditorViewModel @Inject constructor(
             }
 
             val runs = mutableListOf<StatementRun>()
+
+            suspend fun runOne(statement: String): StatementRun {
+                val outcome = executor.run(
+                    connectionId = id,
+                    sql = statement,
+                    parameters = parameters,
+                    rowLimit = _uiState.value.rowLimit,
+                    readOnly = _uiState.value.readOnly,
+                )
+                return StatementRun(
+                    sql = statement,
+                    // A USE changes nothing on screen except where the next query will run.
+                    table = outcome.table.takeIf { outcome.switchedDatabase == null },
+                    updateCount = outcome.updateCount,
+                    switchedTo = outcome.switchedDatabase,
+                )
+            }
+
             for (sql in statements) {
-                try {
-                    val outcome = executor.run(
-                        connectionId = id,
-                        sql = sql,
-                        parameters = parameters,
-                        rowLimit = _uiState.value.rowLimit,
-                        readOnly = _uiState.value.readOnly,
-                    )
-                    runs += StatementRun(
-                        sql = sql,
-                        // A USE changes nothing on screen except where the next query will run.
-                        table = outcome.table.takeIf { outcome.switchedDatabase == null },
-                        updateCount = outcome.updateCount,
-                        switchedTo = outcome.switchedDatabase,
-                    )
+                val run = try {
+                    runOne(sql)
                 } catch (e: Exception) {
-                    runs += StatementRun(sql = sql, error = describe(e))
-                    updateTab(tabId) { it.copy(errorDetail = e.toString()) }
-                    break
+                    // At most one retry, and only where the caller says this particular failure
+                    // is about the statement's wording rather than about the data. Nothing else
+                    // is retried: a missing table or a refused privilege fails the same way twice.
+                    val instead = (e as? SQLException)?.let { fallback?.invoke(sql, it) }
+                    when (instead) {
+                        null -> {
+                            updateTab(tabId) { it.copy(errorDetail = e.toString()) }
+                            StatementRun(sql = sql, error = describe(e))
+                        }
+
+                        else -> try {
+                            runOne(instead)
+                        } catch (again: Exception) {
+                            updateTab(tabId) { it.copy(errorDetail = again.toString()) }
+                            StatementRun(sql = instead, error = describe(again))
+                        }
+                    }
                 }
+                runs += run
+                if (run.error != null) break
             }
 
             // Show the last statement that produced something, or the failure if there was one.
@@ -806,7 +835,14 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    /** §12/5 mentions EXPLAIN visualisation later; this is the plain output of it for now. */
+    /**
+     * The plan, asked for as JSON so it can be read as a tree, with the flat table as the answer
+     * of last resort.
+     *
+     * `FORMAT=JSON` needs MySQL 5.6, and the app still connects to servers older than that. A
+     * syntax error on the first attempt is what an old server calls "I have never heard of this
+     * word", so exactly that failure — and no other — runs the plain `EXPLAIN` instead.
+     */
     fun explain() {
         val sql = _uiState.value.active.sql.trim()
         if (sql.isBlank()) return
@@ -816,7 +852,15 @@ class QueryEditorViewModel @Inject constructor(
         }
         // The editor keeps the query: rewriting it to "EXPLAIN ..." left the user to delete the
         // word again before running it for real.
-        execute(SqlScript.split(sql).map { "EXPLAIN ${it.sql}" }, emptyMap())
+        execute(
+            statements = SqlScript.split(sql).map { "$EXPLAIN_JSON${it.sql}" },
+            parameters = emptyMap(),
+            fallback = { statement, e ->
+                statement.takeIf { it.startsWith(EXPLAIN_JSON) }
+                    ?.takeIf { ExplainJson.isUnsupported(e.errorCode, e.message) }
+                    ?.let { "EXPLAIN ${it.removePrefix(EXPLAIN_JSON)}" }
+            },
+        )
     }
 
     fun cancel() {
@@ -1068,6 +1112,9 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     private companion object {
+        /** The prefix the plan is asked for with, and the one the retry strips off again. */
+        const val EXPLAIN_JSON = "EXPLAIN FORMAT=JSON "
+
         const val MAX_ROW_LIMIT = 10_000
         const val MAX_SUGGESTIONS = 8
 

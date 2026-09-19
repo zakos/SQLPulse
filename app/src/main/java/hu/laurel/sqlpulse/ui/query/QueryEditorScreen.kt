@@ -89,8 +89,6 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
-import hu.laurel.sqlpulse.data.sql.ExplainAdvice
-import hu.laurel.sqlpulse.data.sql.ExplainNote
 import hu.laurel.sqlpulse.data.sql.ParameterType
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
@@ -98,6 +96,7 @@ import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
+import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
@@ -780,17 +779,9 @@ private fun ResultPanel(
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
             // A plan is worth reading before the rows are: these are the parts of it that decide
-            // whether the query is a good idea.
-            val notes = remember(result) { ExplainAdvice.of(result) }
-            if (notes.isNotEmpty()) {
-                Text(
-                    // map is inline, joinToString is not: stringResource needs the former.
-                    text = notes.map { stringResource(it.textRes()) }.joinToString("\n"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LocalSemanticColors.current.warning,
-                    modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.xs),
-                )
-            }
+            // whether the query is a good idea. A JSON plan is shown as the tree it is; anything
+            // else falls back to the flat reading, which is what an older server gives.
+            ExplainPlanSection(result)
 
             // One line, not two: the note about the added LIMIT belongs with the row count.
             Text(
@@ -1228,16 +1219,6 @@ private fun TransactionBar(onCommit: () -> Unit, onRollback: () -> Unit) {
             Text(stringResource(R.string.transaction_commit))
         }
     }
-}
-
-@StringRes
-private fun ExplainNote.textRes(): Int = when (this) {
-    ExplainNote.FULL_TABLE_SCAN -> R.string.explain_full_scan
-    ExplainNote.FULL_INDEX_SCAN -> R.string.explain_index_scan
-    ExplainNote.NO_INDEX -> R.string.explain_no_index
-    ExplainNote.FILESORT -> R.string.explain_filesort
-    ExplainNote.TEMPORARY_TABLE -> R.string.explain_temporary
-    ExplainNote.MANY_ROWS -> R.string.explain_many_rows
 }
 
 /**

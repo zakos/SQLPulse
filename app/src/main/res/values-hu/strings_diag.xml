@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Végrehajtási terv az EXPLAIN FORMAT=JSON kimenetéből -->
+    <string name="plan_title">Végrehajtási terv</string>
+    <string name="plan_fallback">Ez a kiszolgáló nem adott JSON tervet, ezért a táblázatos terv látszik.</string>
+    <string name="plan_total_cost">A terv költsége: %1$s</string>
+    <string name="plan_no_cost">Ez a kiszolgáló nem ad költségadatot, ezért a legdrágább lépés az olvasott sorok száma szerint kerül kiemelésre.</string>
+    <string name="plan_expensive">A terv legdrágább lépése</string>
+    <string name="plan_expand">Kinyitás</string>
+    <string name="plan_collapse">Összecsukás</string>
+
+    <string name="plan_label_access">elérés</string>
+    <string name="plan_label_key">index</string>
+    <string name="plan_label_no_key">nincs index</string>
+    <string name="plan_label_rows_examined">olvasott sor</string>
+    <string name="plan_label_rows_produced">továbbadott sor</string>
+    <string name="plan_label_filtered">a feltétel ennyit tart meg</string>
+    <string name="plan_label_cost">költség</string>
+    <string name="plan_label_possible_keys">szóba jöhető indexek</string>
+    <string name="plan_condition">Feltétel</string>
+
+    <string name="plan_flag_covering">Az index önmagában megválaszolja; a táblához hozzá sem nyúl.</string>
+    <string name="plan_flag_join_buffer">Pufferelt illesztés: a belső táblához nincs használható index.</string>
+    <string name="plan_flag_dependent">A körülötte lévő lekérdezés minden sorára újra lefut.</string>
+
+    <string name="plan_node_query_block">Lekérdezés</string>
+    <string name="plan_node_table">Tábla</string>
+    <string name="plan_node_nested_loop">Egymásba ágyazott illesztés</string>
+    <string name="plan_node_ordering">Rendezés</string>
+    <string name="plan_node_grouping">Csoportosítás</string>
+    <string name="plan_node_distinct">Ismétlődések elhagyása</string>
+    <string name="plan_node_union">Unió</string>
+    <string name="plan_node_subquery">Alkérdés</string>
+    <string name="plan_node_materialised">Ideiglenes táblába kiírva</string>
+
+    <!-- Diagnosztikai jelentés -->
+    <string name="diag_title">Diagnosztika</string>
+    <string name="diag_open">Diagnosztikai jelentés</string>
+    <string name="diag_intro">Amire egy hibajelentéshez szükség van: a verzió, a készülék, a driver, a kapcsolat módja és az utolsó hiba. Gépnevek, felhasználónevek, adatbázisnevek, lekérdezések és titkok nélkül — ezek nem is kerülhetnek bele.</string>
+    <string name="diag_copy">Jelentés másolása</string>
+    <string name="diag_copied">A jelentés a vágólapra került.</string>
+    <string name="diag_close">Bezárás</string>
+    <string name="diag_no_connection">Nincs élő kapcsolat, ezért a jelentés csak az alkalmazásról és a készülékről szól.</string>
+
+</resources>
