@@ -12,8 +12,14 @@ import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.csv.CsvImporter
 import hu.laurel.sqlpulse.data.csv.ImportPlan
+import hu.laurel.sqlpulse.data.schema.LinkTrail
+import hu.laurel.sqlpulse.data.schema.LookupOutcome
+import hu.laurel.sqlpulse.data.schema.RowFilter
+import hu.laurel.sqlpulse.data.schema.RowLink
+import hu.laurel.sqlpulse.data.schema.RowLinks
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableStructure
+import hu.laurel.sqlpulse.data.schema.TrailStep
 import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
@@ -85,7 +91,36 @@ data class TableDetailUiState(
     val undoable: RowEdit? = null,
     val isProduction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Links a row of this table can be walked along to its parents; may be guessed (§7.3). */
+    val parentLinks: List<RowLink> = emptyList(),
+    /** Set while the walk along the relationships is open; null when it is not. */
+    val walk: WalkState? = null,
 )
+
+/** One table pointing at the row being looked at, and how many of its rows match. */
+data class ChildCount(val link: RowLink, val rows: Long?)
+
+/**
+ * The walk from row to row (§7.3), held in memory for as long as the screen lives.
+ *
+ * [trail] always begins with the table the walk started from, so stepping back off the first
+ * linked step lands where the user was rather than nowhere.
+ */
+data class WalkState(
+    val trail: LinkTrail,
+    val rows: ResultTable? = null,
+    val loading: Boolean = false,
+    /** How many rows the lookup found, where one row was expected. Null for a child listing. */
+    val outcome: LookupOutcome? = null,
+    /** The parent links of the table now on screen, so the walk can carry on from here. */
+    val links: List<RowLink> = emptyList(),
+    val selectedRow: Int? = null,
+    val children: List<ChildCount> = emptyList(),
+    val childrenLoading: Boolean = false,
+    val error: String? = null,
+) {
+    val step: TrailStep? get() = trail.current
+}
 
 enum class EditBlock { READ_ONLY, NO_PRIMARY_KEY }
 
@@ -348,6 +383,192 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The link a cell belongs to, or null where following it is not on offer.
+     *
+     * Null for a column that references nothing, and null for a NULL value: a NULL foreign key
+     * points at nothing at all, and offering to open it would promise a row that cannot exist.
+     */
+    fun parentLinkFor(rowIndex: Int, columnLabel: String): RowLink? =
+        linkFor(_uiState.value.parentLinks, _uiState.value.rows, rowIndex, columnLabel)
+
+    /** The same question about a row of the walk, which is a different table's row. */
+    fun walkParentLinkFor(rowIndex: Int, columnLabel: String): RowLink? {
+        val walk = _uiState.value.walk ?: return null
+        return linkFor(walk.links, walk.rows, rowIndex, columnLabel)
+    }
+
+    /** Opens the row a cell of the table points at. */
+    fun openParent(rowIndex: Int, columnLabel: String) {
+        val rows = _uiState.value.rows ?: return
+        val link = parentLinkFor(rowIndex, columnLabel) ?: return
+        walkToParent(baseTrail(), rows, rowIndex, link)
+    }
+
+    /** The same, from a row already reached by walking. */
+    fun openParentFromWalk(rowIndex: Int, columnLabel: String) {
+        val walk = _uiState.value.walk ?: return
+        val rows = walk.rows ?: return
+        val link = walkParentLinkFor(rowIndex, columnLabel) ?: return
+        walkToParent(walk.trail, rows, rowIndex, link)
+    }
+
+    /** Opens the walk on a row of the table and counts what points at it. */
+    fun showChildrenOf(rowIndex: Int) {
+        val rows = _uiState.value.rows ?: return
+        val state = _uiState.value
+        val trail = baseTrail()
+        _uiState.value = state.copy(
+            walk = WalkState(
+                trail = trail,
+                rows = rows,
+                links = state.parentLinks,
+                selectedRow = rowIndex,
+                childrenLoading = true,
+            ),
+        )
+        countChildren(database, table, rowMap(rows, rowIndex))
+    }
+
+    /** The same for a row of the walk: what points at the row now on screen. */
+    fun selectWalkRow(rowIndex: Int) {
+        val walk = _uiState.value.walk ?: return
+        val rows = walk.rows ?: return
+        val step = walk.step ?: return
+        _uiState.value = _uiState.value.copy(
+            walk = walk.copy(selectedRow = rowIndex, children = emptyList(), childrenLoading = true),
+        )
+        countChildren(step.database, step.table, rowMap(rows, rowIndex))
+    }
+
+    /** Shows the rows of one child table that point at the selected row. */
+    fun openChildren(link: RowLink) {
+        val walk = _uiState.value.walk ?: return
+        val rows = walk.rows ?: return
+        val rowIndex = walk.selectedRow ?: return
+        val filter = RowLinks.childFilter(link, rowMap(rows, rowIndex)) ?: return
+        walkTo(
+            trail = walk.trail,
+            step = TrailStep(
+                database = link.childDatabase,
+                table = link.childTable,
+                filter = filter,
+                label = link.childTable,
+                guessed = link.guessed,
+            ),
+            limit = RowLinks.CHILD_LIMIT,
+            expectOne = false,
+        )
+    }
+
+    /** One step back along the trail; stepping off the first linked step closes the walk. */
+    fun walkBack() {
+        val walk = _uiState.value.walk ?: return
+        val back = walk.trail.pop()
+        val step = back.current
+        if (!walk.trail.canGoBack || step == null || step.filter == null) {
+            closeWalk()
+            return
+        }
+        loadStep(back, step, RowLinks.CHILD_LIMIT, expectOne = false)
+    }
+
+    fun closeWalk() {
+        _uiState.value = _uiState.value.copy(walk = null)
+    }
+
+    private fun baseTrail() = LinkTrail(listOf(TrailStep(database, table, filter = null, label = table)))
+
+    private fun walkToParent(trail: LinkTrail, rows: ResultTable, rowIndex: Int, link: RowLink) {
+        val filter = RowLinks.parentFilter(link, rowMap(rows, rowIndex)) ?: return
+        walkTo(
+            trail = trail,
+            step = TrailStep(
+                database = link.parentDatabase,
+                table = link.parentTable,
+                filter = filter,
+                label = link.parentTable,
+                guessed = link.guessed,
+            ),
+            limit = RowLinks.PARENT_LIMIT,
+            expectOne = true,
+        )
+    }
+
+    private fun walkTo(trail: LinkTrail, step: TrailStep, limit: Int, expectOne: Boolean) {
+        loadStep(trail.push(step), step, limit, expectOne)
+    }
+
+    private fun loadStep(trail: LinkTrail, step: TrailStep, limit: Int, expectOne: Boolean) {
+        val filter: RowFilter = step.filter ?: return
+        _uiState.value = _uiState.value.copy(
+            walk = WalkState(trail = trail, loading = true),
+        )
+        viewModelScope.launch {
+            try {
+                val rows = schema.rowsMatching(step.database, step.table, filter, limit)
+                val links = runCatching { schema.parentLinks(step.database, step.table) }
+                    .getOrDefault(emptyList())
+                _uiState.value = _uiState.value.copy(
+                    walk = WalkState(
+                        trail = trail,
+                        rows = rows,
+                        links = links,
+                        outcome = RowLinks.outcome(rows.rowCount).takeIf { expectOne },
+                    ),
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    walk = WalkState(trail = trail, error = describe(e)),
+                )
+            }
+        }
+    }
+
+    private fun countChildren(database: String, table: String, row: Map<String, String?>) {
+        viewModelScope.launch {
+            val counts = try {
+                schema.childLinks(database, table).mapNotNull { link ->
+                    val filter = RowLinks.childFilter(link, row) ?: return@mapNotNull null
+                    ChildCount(
+                        link = link,
+                        rows = runCatching {
+                            schema.countMatching(link.childDatabase, link.childTable, filter)
+                        }.getOrNull(),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    walk = _uiState.value.walk?.copy(childrenLoading = false, error = describe(e)),
+                )
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(
+                walk = _uiState.value.walk?.copy(children = counts, childrenLoading = false),
+            )
+        }
+    }
+
+    private fun linkFor(
+        links: List<RowLink>,
+        rows: ResultTable?,
+        rowIndex: Int,
+        columnLabel: String,
+    ): RowLink? {
+        if (rows == null) return null
+        val link = RowLinks.linkForColumn(links, columnLabel) ?: return null
+        return link.takeIf { RowLinks.parentFilter(it, rowMap(rows, rowIndex)) != null }
+    }
+
+    /** One loaded row as column name to value, which is all a link lookup needs. */
+    private fun rowMap(rows: ResultTable, rowIndex: Int): Map<String, String?> {
+        val row = rows.rows.getOrNull(rowIndex) ?: return emptyMap()
+        return rows.columns.mapIndexed { index, column ->
+            val cell = row.getOrNull(index)
+            column.label to if (cell == null || cell is CellValue.Null) null else cell.asText()
+        }.toMap()
+    }
+
     fun export(format: ExportFormat) {
         val rows = _uiState.value.rows ?: return
         viewModelScope.launch {
@@ -411,8 +632,10 @@ class TableDetailViewModel @Inject constructor(
     private suspend fun loadStructure() {
         val structure = runCatching { schema.structure(database, table) }.getOrNull() ?: return
         val readOnly = (sessions.state.value as? SqlSessionState.Ready)?.connection?.readOnly ?: true
+        val links = runCatching { schema.parentLinks(database, table) }.getOrDefault(emptyList())
         _uiState.value = _uiState.value.copy(
             structure = structure,
+            parentLinks = links,
             canEdit = !readOnly && structure.primaryKey.isNotEmpty(),
             editBlockedReason = when {
                 readOnly -> EditBlock.READ_ONLY

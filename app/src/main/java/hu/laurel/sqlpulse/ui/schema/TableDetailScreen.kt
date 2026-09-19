@@ -58,6 +58,7 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.schema.ForeignKey
+import hu.laurel.sqlpulse.data.schema.LookupOutcome
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.schema.SchemaIndex
 import hu.laurel.sqlpulse.data.sql.CellValue
@@ -69,6 +70,9 @@ import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
+import hu.laurel.sqlpulse.ui.grid.LinkChildEntry
+import hu.laurel.sqlpulse.ui.grid.LinkOffer
+import hu.laurel.sqlpulse.ui.grid.LinkWalkSheet
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.grid.RowDetailSheet
 import hu.laurel.sqlpulse.ui.grid.asText
@@ -313,6 +317,13 @@ fun TableDetailScreen(
                 selectedCell = null
             },
             onDismiss = { selectedCell = null },
+            // §7.3: a foreign key cell offers the row it points at; a NULL one offers nothing.
+            linkOffer = viewModel.parentLinkFor(selection.rowIndex, selection.column.label)
+                ?.let { LinkOffer(it.parentTable, it.guessed) },
+            onOpenLink = {
+                viewModel.openParent(selection.rowIndex, selection.column.label)
+                selectedCell = null
+            },
         )
     }
 
@@ -349,8 +360,52 @@ fun TableDetailScreen(
                     detailRow = null
                 },
                 onDismiss = { detailRow = null },
+                onShowChildren = {
+                    viewModel.showChildrenOf(rowIndex)
+                    detailRow = null
+                },
             )
         }
+    }
+
+    state.walk?.let { walk ->
+        val step = walk.step
+        LinkWalkSheet(
+            title = step?.label.orEmpty(),
+            guessed = walk.trail.hasGuessedStep,
+            canGoBack = walk.trail.canGoBack,
+            loading = walk.loading,
+            error = walk.error,
+            columns = walk.rows?.columns.orEmpty(),
+            rows = walk.rows?.rows.orEmpty(),
+            notice = when (walk.outcome) {
+                LookupOutcome.MISSING -> stringResource(R.string.link_missing)
+                LookupOutcome.SEVERAL -> stringResource(
+                    R.string.link_several,
+                    walk.rows?.rowCount ?: 0,
+                )
+                else -> null
+            },
+            selectedRow = walk.selectedRow,
+            children = walk.children.map { child ->
+                LinkChildEntry(
+                    table = child.link.childTable,
+                    columns = child.link.childColumns.joinToString(", "),
+                    rows = child.rows,
+                    guessed = child.link.guessed,
+                    onOpen = { viewModel.openChildren(child.link) },
+                )
+            },
+            childrenLoading = walk.childrenLoading,
+            offerFor = { rowIndex, column ->
+                viewModel.walkParentLinkFor(rowIndex, column)
+                    ?.let { LinkOffer(it.parentTable, it.guessed) }
+            },
+            onOpenParent = viewModel::openParentFromWalk,
+            onSelectRow = viewModel::selectWalkRow,
+            onBack = viewModel::walkBack,
+            onDismiss = viewModel::closeWalk,
+        )
     }
 
     state.pendingEdit?.let { edit ->

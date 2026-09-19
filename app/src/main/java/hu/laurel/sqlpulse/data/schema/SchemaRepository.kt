@@ -5,6 +5,8 @@ import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
+import hu.laurel.sqlpulse.data.sql.PreparedSql
+import java.sql.PreparedStatement
 import java.sql.ResultSet
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -409,6 +411,105 @@ class SchemaRepository @Inject constructor(
                         primaryKey = columns.filter { it.third == "PRI" }.map { it.second },
                     )
                 }
+        }
+
+    /**
+     * The links a row of this table can be walked along to its parents (§7.3).
+     *
+     * The declared foreign keys where there are any. Where the schema declares none — MyISAM, or
+     * anything older than InnoDB's default — [LinkGuesser] reads them off the column names
+     * instead, and everything it finds is marked [RowLink.guessed] all the way to the screen.
+     */
+    suspend fun parentLinks(database: String, table: String): List<RowLink> {
+        val declared = RowLinks.parentLinks(database, table, structure(database, table).foreignKeys)
+        if (declared.isNotEmpty()) return declared
+        val columns = columnNames(database)
+        return RowLinks.guessedLinks(
+            database = database,
+            table = table,
+            guesses = LinkGuesser.infer(columns),
+            primaryKeys = columns.associate { it.table to it.primaryKey },
+        )
+    }
+
+    /**
+     * The links pointing at this table: what a row of it is the parent of.
+     *
+     * One statement for the whole schema's inbound keys rather than one per candidate table, and
+     * the same guessing fallback as [parentLinks] where nothing is declared.
+     */
+    suspend fun childLinks(database: String, table: String): List<RowLink> {
+        val declared = RowLinks.group(referencingKeys(database, table))
+        if (declared.isNotEmpty()) return declared
+        val columns = columnNames(database)
+        val keys = columns.associate { it.table to it.primaryKey }
+        val guesses = LinkGuesser.infer(columns).filter { it.to == table }
+        return guesses.flatMap { edge ->
+            RowLinks.guessedLinks(database, edge.from, listOf(edge), keys)
+        }
+    }
+
+    /** Rows of [table] matching a keyed filter, with every value bound (§7.3). */
+    suspend fun rowsMatching(
+        database: String,
+        table: String,
+        filter: RowFilter,
+        limit: Int = RowLinks.CHILD_LIMIT,
+    ): ResultTable = execute(RowLinks.selectRows(database, table, filter, limit), limit)
+
+    /** How many rows match — the number shown beside a table in "what points at this". */
+    suspend fun countMatching(database: String, table: String, filter: RowFilter): Long =
+        sessions.withConnection { connection ->
+            val prepared = RowLinks.countRows(database, table, filter)
+            connection.prepareStatement(prepared.sql).use { statement ->
+                bind(statement, prepared.parameters)
+                statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else 0L }
+            }
+        }
+
+    private suspend fun execute(prepared: PreparedSql, limit: Int): ResultTable =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(prepared.sql).use { statement ->
+                statement.fetchSize = limit
+                bind(statement, prepared.parameters)
+                val started = System.currentTimeMillis()
+                statement.executeQuery().use { rows ->
+                    ResultTable.from(rows, limit)
+                        .copy(durationMs = System.currentTimeMillis() - started)
+                }
+            }
+        }
+
+    private fun bind(statement: PreparedStatement, parameters: List<String?>) {
+        parameters.forEachIndexed { index, value -> statement.setString(index + 1, value) }
+    }
+
+    /** Foreign keys held by other tables and pointing at [table], in constraint column order. */
+    private suspend fun referencingKeys(database: String, table: String): List<KeyColumnUsage> =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(
+                """
+                SELECT CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME,
+                       REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?
+                ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, database)
+                statement.setString(2, table)
+                statement.executeQuery().collect { rows ->
+                    KeyColumnUsage(
+                        constraintName = rows.getString("CONSTRAINT_NAME"),
+                        childDatabase = rows.getString("TABLE_SCHEMA"),
+                        childTable = rows.getString("TABLE_NAME"),
+                        childColumn = rows.getString("COLUMN_NAME"),
+                        parentDatabase = rows.getString("REFERENCED_TABLE_SCHEMA"),
+                        parentTable = rows.getString("REFERENCED_TABLE_NAME"),
+                        parentColumn = rows.getString("REFERENCED_COLUMN_NAME"),
+                    )
+                }
+            }
         }
 
     private suspend fun foreignKeys(database: String, table: String): List<ForeignKey> =

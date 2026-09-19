@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="link_open_parent">%1$s megnyitása</string>
+    <string name="link_children">Mi mutat erre a sorra</string>
+    <string name="link_children_none">Semmi nem mutat erre a sorra.</string>
+    <string name="link_child_rows">%1$d sor</string>
+    <string name="link_child_rows_unknown">ismeretlen sorszám</string>
+    <string name="link_back">Vissza</string>
+    <string name="link_loading">Betöltés…</string>
+    <string name="link_guessed_note">oszlopnévből kitalálva, nem deklarált idegen kulcs</string>
+    <string name="link_missing">Nincs találat. Az érték olyan sorra mutat, ami nincs meg.</string>
+    <string name="link_several">%1$d sor illeszkedik, pedig egyet vártunk.</string>
+</resources>
