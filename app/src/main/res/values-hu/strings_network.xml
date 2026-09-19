@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="network_connection_lost">Megszakadt a kapcsolat</string>
+    <string name="network_reconnect">Újracsatlakozás</string>
+    <string name="network_lost">Elment a hálózat, így a kapcsolat megszűnt.</string>
+    <string name="network_changed">A telefon másik hálózatra váltott, így a kapcsolat megszűnt.</string>
+    <string name="network_lost_body">A(z) %1$s kapcsolat már nem él.</string>
+    <string name="network_reconnecting">Újracsatlakozás…</string>
+    <string name="network_reconnecting_attempt">Újracsatlakozás, %1$d. próbálkozás…</string>
+    <string name="network_transaction_rolled_back">A nyitott tranzakciót a szerver visszagörgette. Csatlakozz újra, ha készen állsz újrakezdeni.</string>
+    <string name="network_manual_writable">A(z) %1$s kapcsolat írhat, ezért nem csatlakozik újra magától.</string>
+    <string name="network_manual_in_flight">Egy utasítás éppen futott, és nem tudni, hogy a szerver befejezte-e.</string>
+    <string name="network_manual_exhausted">Az újracsatlakozás nem sikerült. Próbáld újra, ha van térerő.</string>
+</resources>

@@ -14,6 +14,8 @@ import hu.laurel.sqlpulse.data.db.DbCredentialEntity
 import hu.laurel.sqlpulse.data.db.KnownHostDao
 import hu.laurel.sqlpulse.data.db.SshCredentialDao
 import hu.laurel.sqlpulse.data.db.SshCredentialEntity
+import hu.laurel.sqlpulse.data.db.SshJumpCredentialDao
+import hu.laurel.sqlpulse.data.db.SshJumpCredentialEntity
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.di.IoDispatcher
 import hu.laurel.sqlpulse.security.BiometricUnlock
@@ -34,6 +36,7 @@ class ConnectionRepository @Inject constructor(
     private val connections: ConnectionDao,
     private val credentials: DbCredentialDao,
     private val sshCredentials: SshCredentialDao,
+    private val sshJumpCredentials: SshJumpCredentialDao,
     private val knownHosts: KnownHostDao,
     private val crypto: KeystoreCrypto,
     private val unlock: BiometricUnlock,
@@ -54,11 +57,21 @@ class ConnectionRepository @Inject constructor(
         connection: ConnectionEntity,
         password: CharArray?,
         sshPassword: CharArray? = null,
+        jumpSshPassword: CharArray? = null,
     ): ConnectionEntity {
         val usesKey = SshAuthMethod.fromName(connection.sshAuthMethod) == SshAuthMethod.KEY
         require(!connection.useSshTunnel || !usesKey || connection.sshKeyId != null) {
             "a tunnelled connection without a key cannot be saved (§5)"
         }
+        // The same rule one hop earlier, for a jump host that no longer shares the credential.
+        require(
+            connection.sshJumpAuthMethod != SshAuthMethod.KEY.name ||
+                connection.sshJumpKeyId != null,
+        ) {
+            "a jump host entered with a key of its own cannot be saved without one (§5)"
+        }
+        val refusal = ProductionPolicy.refusal(connection.productionShape())
+        require(refusal == null) { "production policy refused this connection: $refusal" }
         val saved = withContext(io) {
             if (connection.id == 0L) {
                 connection.copy(id = connections.insert(connection))
@@ -69,6 +82,7 @@ class ConnectionRepository @Inject constructor(
         }
         if (password != null) storePassword(saved.id, password)
         if (sshPassword != null) storeSshPassword(saved.id, sshPassword)
+        if (jumpSshPassword != null) storeJumpSshPassword(saved.id, jumpSshPassword)
         return saved
     }
 
@@ -76,6 +90,7 @@ class ConnectionRepository @Inject constructor(
         // History rows cascade; the credentials and the pinned host key are ours to clean up (§9).
         credentials.delete(connection.id)
         sshCredentials.delete(connection.id)
+        sshJumpCredentials.delete(connection.id)
         knownHosts.delete(connection.sshHost, connection.sshPort)
         connections.delete(connection)
     }
@@ -95,6 +110,9 @@ class ConnectionRepository @Inject constructor(
 
     suspend fun hasSshPassword(connectionId: Long): Boolean =
         withContext(io) { sshCredentials.byConnection(connectionId) != null }
+
+    suspend fun hasJumpSshPassword(connectionId: Long): Boolean =
+        withContext(io) { sshJumpCredentials.byConnection(connectionId) != null }
 
     /**
      * Unwraps the MySQL password for one connection attempt.
@@ -128,6 +146,35 @@ class ConnectionRepository @Inject constructor(
             String(bytes, Charsets.UTF_8).toCharArray()
         } finally {
             bytes.wipe()
+        }
+    }
+
+    /**
+     * The jump host's own SSH password, unwrapped for one connection attempt.
+     *
+     * Only for a connection whose first hop has a credential of its own; where the two hops share
+     * one, [sshPassword] is what both of them use, exactly as before this column existed.
+     */
+    suspend fun jumpSshPassword(connectionId: Long, connectionName: String): CharArray? {
+        val stored = withContext(io) { sshJumpCredentials.byConnection(connectionId) } ?: return null
+        return unseal(Sealed.decode(stored.sealedPassword), connectionName)
+    }
+
+    private suspend fun storeJumpSshPassword(connectionId: Long, password: CharArray) {
+        if (password.isEmpty()) {
+            withContext(io) { sshJumpCredentials.delete(connectionId) }
+            password.wipe()
+            return
+        }
+        val bytes = String(password).toByteArray(Charsets.UTF_8)
+        try {
+            val sealed = sealWithUnlock(bytes, context.getString(R.string.ssh_password))
+            withContext(io) {
+                sshJumpCredentials.upsert(SshJumpCredentialEntity(connectionId, sealed.encode()))
+            }
+        } finally {
+            bytes.wipe()
+            password.wipe()
         }
     }
 

@@ -26,7 +26,11 @@ interface SshKeyDao {
     @Query("DELETE FROM ssh_key WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("SELECT COUNT(*) FROM connection WHERE sshKeyId = :keyId")
+    /**
+     * Both columns: a key used only as a jump host's key is still in use, and deleting it would
+     * break that connection's first hop.
+     */
+    @Query("SELECT COUNT(*) FROM connection WHERE sshKeyId = :keyId OR sshJumpKeyId = :keyId")
     suspend fun connectionsUsing(keyId: Long): Int
 
     @Query("DELETE FROM ssh_key")
@@ -78,6 +82,18 @@ interface SshCredentialDao {
     suspend fun upsert(credential: SshCredentialEntity)
 
     @Query("DELETE FROM ssh_credential WHERE connectionId = :connectionId")
+    suspend fun delete(connectionId: Long)
+}
+
+@Dao
+interface SshJumpCredentialDao {
+    @Query("SELECT * FROM ssh_jump_credential WHERE connectionId = :connectionId")
+    suspend fun byConnection(connectionId: Long): SshJumpCredentialEntity?
+
+    @Upsert
+    suspend fun upsert(credential: SshJumpCredentialEntity)
+
+    @Query("DELETE FROM ssh_jump_credential WHERE connectionId = :connectionId")
     suspend fun delete(connectionId: Long)
 }
 

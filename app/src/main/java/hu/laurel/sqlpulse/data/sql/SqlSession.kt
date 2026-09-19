@@ -22,6 +22,13 @@ data class JdbcConfig(
     val caCertificatePath: String? = null,
     val connectTimeoutMs: Int = 10_000,
     val socketTimeoutMs: Int = 30_000,
+    /**
+     * Whether something already encrypts this link — an SSH tunnel, in practice.
+     *
+     * It decides one thing: whether the driver may ask the server for its RSA public key. See
+     * [SqlSession.openWith].
+     */
+    val tunnelled: Boolean = false,
 )
 
 /**
@@ -130,6 +137,17 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
             // §11: a dropped connection is never retried behind the user's back.
             setProperty("autoReconnect", "false")
             setProperty("tcpKeepAlive", "true")
+            // MySQL 8 authenticates with caching_sha2_password by default. Over an unencrypted
+            // link the driver will not send the password unless it can encrypt it with the
+            // server's RSA public key, and it refuses to fetch that key on its own — a server
+            // that handed over its own key could be an impostor collecting the password. Inside
+            // an SSH tunnel that objection is already answered: the whole conversation is
+            // encrypted and the host key was pinned when the tunnel was built. So the retrieval
+            // is allowed there and nowhere else; a direct, unencrypted connection to such a
+            // server is told to turn on TLS instead (see SqlFailures.AUTHENTICATION_UNPROTECTED).
+            if (config.tunnelled && config.sslMode == SslMode.DISABLED) {
+                setProperty("allowPublicKeyRetrieval", "true")
+            }
             // A malicious or compromised server can otherwise ask the client for local files.
             when (kind) {
                 JdbcDriverKind.MODERN -> setProperty("allowLocalInfile", "false")

@@ -79,13 +79,27 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
 
+      # The real artifact: minified and resource-shrunk, signed with the same key as the debug one
+      # so either can replace the other on a phone. The APK is what gets installed by hand; the
+      # AAB is what a store would take, and building both here keeps them from drifting apart.
+      - name: Assemble release (APK and AAB)
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ env.KEYSTORE_FILE }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
+
       # Prints the signer certificate, not the key: a quick way to confirm that every build is
-      # signed with the same certificate, which is what makes updates possible.
+      # signed with the same certificate, which is what makes updates possible. Both artifacts are
+      # checked, because a release signed with a different key cannot update an installed debug.
       - name: Show the signing certificate
         run: |
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/*.apk \
-            | grep -i "SHA-256 digest" || true
+          for apk in app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk; do
+            echo "$apk"
+            "$APKSIGNER" verify --print-certs "$apk" | grep -i "SHA-256 digest" || true
+          done
 
       - name: Remove the keystore
         if: always()
@@ -116,14 +130,37 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # Kept separate from the debug artifact so nobody downloads the wrong one by accident.
+      - name: Upload release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlpulse-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload release AAB
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlpulse-release-bundle-${{ github.run_number }}
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Summarise the install
         if: success()
         run: |
           {
-            echo "### SQLPulse debug build ${{ github.run_number }}"
+            echo "### SQLPulse build ${{ github.run_number }}"
             echo
-            echo "Artifact: **sqlpulse-debug-${{ github.run_number }}** (version code ${{ github.run_number }})."
+            echo "Version code ${{ github.run_number }}. Three artifacts:"
             echo
-            echo "Download it, unzip, and open the APK on the phone to install over the existing app."
+            echo "- **sqlpulse-release-${{ github.run_number }}** — the APK to install; minified and signed."
+            echo "- **sqlpulse-release-bundle-${{ github.run_number }}** — the same build as an AAB, for a store."
+            echo "- **sqlpulse-debug-${{ github.run_number }}** — unminified, for reproducing a crash with readable stack traces."
+            echo
+            echo "Download one, unzip, and open the APK on the phone to install over the existing app."
             echo "Every build is signed with the key held in repository secrets, so updates replace each other."
           } >> "$GITHUB_STEP_SUMMARY"

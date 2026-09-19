@@ -10,6 +10,7 @@ import hu.laurel.sqlpulse.data.sql.SqlFailureKind
 @StringRes
 fun SqlFailureKind.explanationRes(): Int? = when (this) {
     SqlFailureKind.AUTHENTICATION -> R.string.sql_error_authentication
+    SqlFailureKind.AUTHENTICATION_UNPROTECTED -> R.string.sql_error_authentication_unprotected
     SqlFailureKind.PRIVILEGE -> R.string.sql_error_privilege
     SqlFailureKind.UNKNOWN_DATABASE -> R.string.sql_error_unknown_database
     SqlFailureKind.UNKNOWN_OBJECT -> R.string.sql_error_unknown_object

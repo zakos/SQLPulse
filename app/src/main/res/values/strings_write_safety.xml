@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Confirming a hand-typed write, and the types a :parameter can be given (§7.4, §7.7). -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="write_confirm_title">Run this write?</string>
+    <string name="write_confirm_run">Run it</string>
+    <string name="write_confirm_rows">About %1$d rows would change.</string>
+    <string name="write_confirm_rows_unknown">How many rows this changes could not be worked out.</string>
+    <string name="write_confirm_over_limit">This is more than the %1$d rows allowed at once. Narrow the WHERE, or raise the limit in Settings.</string>
+    <string name="write_confirm_type_database">Type "%1$s" to confirm</string>
+
+    <string name="settings_max_affected">Maximum rows changed at once</string>
+    <string name="settings_max_affected_off">No limit</string>
+    <string name="settings_max_affected_note">A write estimated to change more rows than this is refused before it runs. A write whose count cannot be worked out is never refused by it. 0 turns it off.</string>
+
+    <string name="parameter_type_text">Text</string>
+    <string name="parameter_type_number">Number</string>
+    <string name="parameter_type_date">Date</string>
+    <string name="parameter_type_boolean">Yes/no</string>
+    <string name="parameter_type_null">NULL</string>
+</resources>

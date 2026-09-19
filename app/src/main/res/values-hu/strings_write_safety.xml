@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="write_confirm_title">Lefusson ez az írás?</string>
+    <string name="write_confirm_run">Futtatás</string>
+    <string name="write_confirm_rows">Körülbelül %1$d sor változik meg.</string>
+    <string name="write_confirm_rows_unknown">Nem sikerült kiszámolni, hány sort érint.</string>
+    <string name="write_confirm_over_limit">Ez több a megengedett %1$d sornál. Szűkítsd a WHERE feltételt, vagy emeld meg a korlátot a Beállításokban.</string>
+    <string name="write_confirm_type_database">Írd be a megerősítéshez: „%1$s”</string>
+
+    <string name="settings_max_affected">Egyszerre módosítható sorok száma</string>
+    <string name="settings_max_affected_off">Nincs korlát</string>
+    <string name="settings_max_affected_note">Ha egy írás becsült sorszáma ennél több, futás előtt elutasítjuk. Amelyik írásnál nem tudjuk kiszámolni a sorszámot, azt sosem utasítja el. A 0 kikapcsolja.</string>
+
+    <string name="parameter_type_text">Szöveg</string>
+    <string name="parameter_type_number">Szám</string>
+    <string name="parameter_type_date">Dátum</string>
+    <string name="parameter_type_boolean">Igen/nem</string>
+    <string name="parameter_type_null">NULL</string>
+</resources>

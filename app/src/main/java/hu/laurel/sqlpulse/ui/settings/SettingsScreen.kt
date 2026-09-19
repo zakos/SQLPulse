@@ -86,6 +86,29 @@ fun SettingsScreen(
                 }
             }
 
+            Section(stringResource(R.string.settings_max_affected)) {
+                Text(
+                    text = if (settings.maxAffectedRows == 0) {
+                        stringResource(R.string.settings_max_affected_off)
+                    } else {
+                        "${settings.maxAffectedRows}"
+                    },
+                    style = MonoStyles.cell,
+                )
+                Slider(
+                    value = settings.maxAffectedRows.toFloat(),
+                    onValueChange = { viewModel.setMaxAffectedRows(it.toInt()) },
+                    valueRange = 0f..5000f,
+                    // Steps of 500, so the slider can reach 0 — the way the ceiling is turned off.
+                    steps = 9,
+                )
+                Text(
+                    text = stringResource(R.string.settings_max_affected_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
+
             Section(stringResource(R.string.settings_privacy)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="policy_refused_title">Élesként nem menthető</string>
+    <string name="policy_unprotected">Éles kapcsolat nem mehet titkosítatlanul. Kapcsold be az SSH alagutat, vagy állíts be a kikapcsolttól eltérő TLS módot.</string>
+    <string name="policy_query_timeout_too_long">Éles kapcsolaton egy utasítás legfeljebb %1$d másodpercig futhat; itt %2$d van beállítva.</string>
+
+    <string name="policy_read_only_offer_title">Élesnek jelölöd?</string>
+    <string name="policy_read_only_offer_body">Az éles kapcsolatok csak olvashatóként indulnak. Írni továbbra is lehet: ahhoz egy magától lejáró feloldás kell.</string>
+    <string name="policy_read_only_offer_accept">Legyen csak olvasható</string>
+    <string name="policy_read_only_offer_decline">Maradjon írható</string>
+
+    <string name="write_unlock_action">Írás engedélyezése 15 percre</string>
+    <string name="write_unlock_extend">Még 15 perc</string>
+    <string name="write_unlock_lock_now">Írás zárolása most</string>
+    <string name="write_unlock_remaining">Írás engedélyezve · még %1$d perc</string>
+    <string name="write_unlock_locked">Az írás zárolva</string>
+    <string name="write_unlock_expired">Az írási ablak lejárt</string>
+    <string name="write_unlock_read_only">Csak olvasható</string>
+
+    <string name="ssh_jump_separate_credential">Az ugróhosztnak saját belépése van</string>
+    <string name="ssh_jump_shared_note">Mindkét ugrás a fenti kulcsot vagy jelszót használja.</string>
+    <string name="ssh_jump_separate_note">Az első ugrás külön lép be; a második marad a fenti belépésnél.</string>
+    <string name="ssh_jump_key">Ugróhoszt kulcsa</string>
+    <string name="ssh_jump_password">Ugróhoszt jelszava</string>
+    <string name="error_writes_locked">Ezen az éles kapcsolaton az írás zárolva van. A kapcsolat kártyájáról oldható fel tizenöt percre.</string>
+</resources>

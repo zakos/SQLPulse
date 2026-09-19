@@ -1,19 +1,19 @@
 package hu.laurel.sqlpulse.ssh
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.db.ConnectionDao
+import hu.laurel.sqlpulse.data.connection.JumpCredential
+import hu.laurel.sqlpulse.data.connection.JumpHostCredentials
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.KnownHostDao
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.di.IoDispatcher
+import hu.laurel.sqlpulse.net.NetworkChange
+import hu.laurel.sqlpulse.net.NetworkWatcher
 import hu.laurel.sqlpulse.security.NoDeviceCredentialException
 import hu.laurel.sqlpulse.security.UnlockCancelledException
 import java.io.IOException
@@ -30,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.transport.TransportException
@@ -50,6 +51,7 @@ class TunnelManager @Inject constructor(
     private val secrets: ConnectionRepository,
     private val knownHosts: KnownHostDao,
     private val keys: SshKeyRepository,
+    private val network: NetworkWatcher,
     @IoDispatcher private val io: CoroutineDispatcher,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
@@ -68,17 +70,41 @@ class TunnelManager @Inject constructor(
     private var pendingHostKeyDecision: CompletableDeferred<Boolean>? = null
     private var connectJob: Job? = null
     private var backgroundTimeoutJob: Job? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var networkJob: Job? = null
+
+    /**
+     * The connection that was last asked for, so [reconnect] can go through the ordinary connect
+     * path again without the caller having to remember which one it was.
+     */
+    @Volatile
+    private var lastConnectionId: Long? = null
 
     fun connect(connectionId: Long) {
         if (connectJob?.isActive == true) return
+        lastConnectionId = connectionId
         connectJob = scope.launch { runConnect(connectionId) }
+    }
+
+    /**
+     * Dials the last connection again, unlock and all.
+     *
+     * Deliberately nothing more than [connect]: a reconnect has to unwrap the key, verify the host
+     * key and re-probe MySQL exactly as the first attempt did — the decrypted key is dropped after
+     * each handshake (§5), so there is no shorter path, and a second one would be a second thing
+     * to keep correct.
+     *
+     * @return false when there is nothing to reconnect to.
+     */
+    fun reconnect(): Boolean {
+        val id = lastConnectionId ?: return false
+        connect(id)
+        return true
     }
 
     fun disconnect() {
         connectJob?.cancel()
         backgroundTimeoutJob?.cancel()
-        unregisterNetworkCallback()
+        stopWatchingNetwork()
         withTunnel { it.close() }
         tunnel = null
         _serverVersion.value = null
@@ -140,6 +166,8 @@ class TunnelManager @Inject constructor(
         } else {
             TunnelState.Failed(current.connectionId, networkDropFailure())
         }
+        // Nothing left to watch over once the tunnel is gone; a fresh connect starts a new watch.
+        if (_state.value is TunnelState.Failed) stopWatchingNetwork()
     }
 
     private suspend fun runConnect(connectionId: Long) {
@@ -185,9 +213,24 @@ class TunnelManager @Inject constructor(
             return
         }
 
+        // The first hop's own credential, where it has one. Unlocked in the same breath as the
+        // second one's, so a two-hop connection still asks for authentication once.
+        val jumpCredential: SshCredential? = try {
+            jumpCredentialFor(connection)
+        } catch (e: UnlockCancelledException) {
+            _state.value = TunnelState.Disconnected
+            return
+        } catch (e: Exception) {
+            _state.value = TunnelState.Failed(
+                connectionId,
+                TunnelFailure(FailureLayer.KEY, keyFailureMessage(e), e.toString()),
+            )
+            return
+        }
+
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.SSH)
         val verifier = PinningHostKeyVerifier(knownHosts, ::askAboutHostKey)
-        val fresh = SshTunnel(connection.toTunnelConfig(), credential, verifier)
+        val fresh = SshTunnel(connection.toTunnelConfig(), credential, verifier, jumpCredential)
         tunnel = fresh
 
         val port = try {
@@ -226,7 +269,7 @@ class TunnelManager @Inject constructor(
             since = System.currentTimeMillis(),
             tunnelled = true,
         )
-        registerNetworkCallback()
+        startWatchingNetwork()
         TunnelService.start(context, connection.name, port, connection.dbHost, connection.dbPort)
     }
 
@@ -259,6 +302,9 @@ class TunnelManager @Inject constructor(
             since = System.currentTimeMillis(),
             tunnelled = false,
         )
+        // A direct connection has no forward to lose, but its JDBC pool is bound to the network
+        // just the same, so it is watched too.
+        startWatchingNetwork()
     }
 
     private suspend fun askAboutHostKey(prompt: HostKeyPrompt): Boolean {
@@ -307,49 +353,86 @@ class TunnelManager @Inject constructor(
     private fun keyFailureMessage(e: Exception): String =
         e.message ?: context.getString(R.string.error_key_unreadable)
 
-    private fun networkDropFailure() = TunnelFailure(
+    private fun networkDropFailure(change: NetworkChange? = null) = TunnelFailure(
         layer = FailureLayer.SSH_NETWORK,
-        message = context.getString(R.string.error_ssh_unreachable),
+        message = when (change) {
+            // Two different sentences, because they need two different reactions from the user:
+            // one is "wait for coverage", the other is "you are on another network now".
+            NetworkChange.SWITCHED -> context.getString(R.string.network_changed)
+            NetworkChange.LOST -> context.getString(R.string.network_lost)
+            else -> context.getString(R.string.error_ssh_unreachable)
+        },
     )
 
     /**
-     * Wi-Fi to mobile and back tears the TCP connection down. We do not silently reconnect: the
-     * key is no longer in memory, and an automatic retry during a write would be dangerous (§11).
+     * Wi-Fi to mobile and back tears the TCP connection down, and so does the default network
+     * simply being replaced by another one — the socket is bound to the network it was opened on.
+     *
+     * Neither throws anything at us: the forward and every JDBC connection behind it sit there
+     * looking healthy until a statement waits out its timeout. So the change itself is the signal,
+     * and we tear the tunnel down on it rather than waiting to be told (§5, §11).
+     *
+     * Whether anything is dialled again afterwards is not decided here — SqlSessionManager asks
+     * ReconnectPolicy, because only it knows whether a write or a transaction was in the air.
      */
-    private fun registerNetworkCallback() {
-        if (networkCallback != null) return
-        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onLost(network: Network) = checkLiveness()
-            override fun onAvailable(network: Network) = checkLiveness()
+    private fun startWatchingNetwork() {
+        if (networkJob?.isActive == true) return
+        // One change is all this job is for: the tunnel it was watching does not exist afterwards.
+        // Ending here is also what unregisters the ConnectivityManager callback, since the watcher
+        // registers only while something is collecting it.
+        networkJob = scope.launch {
+            val change = network.changes.first { it.invalidatesConnections }
+            onNetworkInvalidated(change)
         }
-        networkCallback = callback
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        runCatching { manager.registerNetworkCallback(request, callback) }
     }
 
-    private fun unregisterNetworkCallback() {
-        val manager = context.getSystemService(ConnectivityManager::class.java)
-        networkCallback?.let { runCatching { manager?.unregisterNetworkCallback(it) } }
-        networkCallback = null
+    private fun stopWatchingNetwork() {
+        networkJob?.cancel()
+        networkJob = null
     }
 
-    private fun checkLiveness() {
+    private fun onNetworkInvalidated(change: NetworkChange) {
         val current = _state.value
+        // Unlocking or Connecting fails on its own, with a better message than "network dropped".
         if (current !is TunnelState.Active && current !is TunnelState.Paused) return
-        // Only a tunnel can go stale here; a direct connection is the JDBC pool's business.
-        val tunnelled = (current as? TunnelState.Active)?.tunnelled
-            ?: (current as? TunnelState.Paused)?.tunnelled ?: false
-        if (!tunnelled) return
-        if (tunnel?.isAlive == true) return
         val id = current.connectionId ?: return
+        // No isAlive check: after a hand-over sshj still believes it is connected, and that belief
+        // is exactly what makes the next query hang for its full timeout.
         withTunnel { it.close() }
         tunnel = null
-        unregisterNetworkCallback()
         TunnelService.stop(context)
-        _state.value = TunnelState.Failed(id, networkDropFailure())
+        _state.value = TunnelState.Failed(id, networkDropFailure(change))
+    }
+
+    /**
+     * The credential for the first hop, or null when it shares the second one's.
+     *
+     * Null is the answer for every connection saved before the jump host could have its own, and
+     * for every one-hop connection — [SshTunnel] then authenticates both hops the way it always
+     * did.
+     */
+    private suspend fun jumpCredentialFor(connection: ConnectionEntity): SshCredential? {
+        if (connection.sshJumpHost.isNullOrBlank()) return null
+        return when (
+            val jump = JumpHostCredentials.resolve(
+                connection.sshJumpAuthMethod,
+                connection.sshJumpKeyId,
+            )
+        ) {
+            JumpCredential.SameAsSshHost -> null
+
+            is JumpCredential.Key -> {
+                val key = withContext(io) { keys.byId(jump.keyId) }
+                    ?: throw IllegalStateException("the jump host references a key that is gone")
+                SshCredential.Key(keys.unlockKeyPair(key))
+            }
+
+            JumpCredential.Password -> {
+                val password = secrets.jumpSshPassword(connection.id, connection.name)
+                    ?: throw IllegalStateException("no password stored for the jump host")
+                SshCredential.Password(password)
+            }
+        }
     }
 
     private inline fun withTunnel(block: (SshTunnel) -> Unit) {

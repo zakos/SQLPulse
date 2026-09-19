@@ -62,6 +62,13 @@ class SshTunnel(
     private val config: TunnelConfig,
     private val credential: SshCredential,
     private val verifier: PinningHostKeyVerifier,
+    /**
+     * What the first hop is entered with, when it is not the same as the second.
+     *
+     * Null means shared, which is what every connection did before the jump host could carry its
+     * own credential — and what most still do.
+     */
+    private val jumpCredential: SshCredential? = null,
 ) {
 
     private var client: SSHClient? = null
@@ -85,8 +92,9 @@ class SshTunnel(
      * With a jump host the first hop is dialled and authenticated, and the second is opened
      * *through* it: sshj carries the second SSH connection inside a channel of the first, so the
      * database's SSH host never has to be reachable from the phone. Both hops are verified
-     * against the known-hosts store, and both use the same credential — which is what a jump host
-     * is normally set up for, and the app has exactly one key or password per connection anyway.
+     * against the known-hosts store. The first hop uses [jumpCredential] where one is stored — a
+     * jump host is often a different machine with its own account — and the second one's otherwise,
+     * which is how every connection behaved before that was possible.
      */
     fun connect() {
         // Idempotent, and the one place that must never run against Android's stripped provider.
@@ -98,12 +106,12 @@ class SshTunnel(
             val jump = newClient()
             jumpClient = jump
             jump.connect(config.jumpHost, config.jumpPort)
-            authenticate(jump, config.jumpUser!!)
+            authenticate(jump, config.jumpUser!!, jumpCredential ?: credential)
             ssh.connectVia(jump.newDirectConnection(config.sshHost, config.sshPort))
         } else {
             ssh.connect(config.sshHost, config.sshPort)
         }
-        authenticate(ssh, config.sshUser)
+        authenticate(ssh, config.sshUser, credential)
 
         // Cheap liveness signal: a dead mobile link is noticed without waiting for a query.
         ssh.connection.keepAlive.keepAliveInterval = KEEPALIVE_SECONDS
@@ -116,7 +124,7 @@ class SshTunnel(
         timeout = config.connectTimeoutMs
     }
 
-    private fun authenticate(ssh: SSHClient, user: String) {
+    private fun authenticate(ssh: SSHClient, user: String, credential: SshCredential) {
         when (credential) {
             is SshCredential.Key -> ssh.authPublickey(user, KeyPairProvider(credential.keyPair))
 

@@ -90,9 +90,20 @@ android {
     signingConfigs {
         /**
          * One key for every build, so an artifact can replace an installed app: Android refuses an
-         * update whose signature differs from what is installed.
+         * update whose signature differs from what is installed. Debug and release share it for
+         * the same reason — a debug build already installed on a phone has to be replaceable by
+         * the release one.
          */
         getByName("debug") {
+            if (hasExternalSigning) {
+                storeFile = file(signingKeystorePath!!)
+                storePassword = signingKeystorePassword
+                storeType = signingStoreType
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+        create("release") {
             if (hasExternalSigning) {
                 storeFile = file(signingKeystorePath!!)
                 storePassword = signingKeystorePassword
@@ -115,6 +126,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            /**
+             * Left unsigned when the secrets are absent, rather than falling back to the debug
+             * key: an unsigned release artifact refuses to install and says so, where one signed
+             * with a throwaway key installs and then cannot be updated. CI supplies the secrets,
+             * so what it publishes is always signed.
+             */
+            signingConfig = if (hasExternalSigning) signingConfigs.getByName("release") else null
         }
     }
 
@@ -206,4 +224,27 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // Compose UI tests run on a device (instrumentation.yml), never in the ordinary check run.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // The empty activity createComposeRule hosts its content in. It belongs to the debug variant
+    // rather than to the test, because the manifest it contributes has to be merged into the app
+    // under test.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// A failing test should say why in the log, not only where.
+//
+// Gradle's default prints the exception's class and the line it came from, which for an
+// integration test against a real server is the least useful half of the answer: "SQLException at
+// line 45" could be a refused login, a missing grant or a protocol the driver will not speak, and
+// those have nothing to do with each other. CI is the only place these tests ever run, so the
+// message and its causes have to be in the log or they are lost.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
 }

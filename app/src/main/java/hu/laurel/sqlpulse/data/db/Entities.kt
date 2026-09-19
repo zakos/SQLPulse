@@ -84,12 +84,30 @@ data class ConnectionEntity(
     val sshKeyId: Long?,
     /**
      * A first SSH host to reach [sshHost] through, where the database's own SSH host is not
-     * reachable from outside. Null for the ordinary single-hop case; the same credential is used
-     * for both hops.
+     * reachable from outside. Null for the ordinary single-hop case.
      */
     val sshJumpHost: String? = null,
     val sshJumpPort: Int = 22,
     val sshJumpUser: String? = null,
+    /**
+     * Name of an SshAuthMethod entry for the first hop, or null when the jump host is entered with
+     * the same credential as [sshHost].
+     *
+     * Null is the whole compatibility story: every row written before this column existed keeps
+     * sharing one credential across both hops, which is exactly what it did, and a two-hop
+     * connection only splits when the user asks it to.
+     */
+    val sshJumpAuthMethod: String? = null,
+    /**
+     * The key for the first hop when it has its own. Null with a shared credential, and null when
+     * the jump host is entered with a password of its own.
+     *
+     * No foreign key, unlike [sshKeyId]: SQLite cannot add one to an existing table without
+     * rebuilding it, and rebuilding the connection table is the one operation that can lose the
+     * user's saved connections. SshKeyDao.connectionsUsing counts this column instead, so a key
+     * that only a jump host uses still cannot be deleted from under it.
+     */
+    val sshJumpKeyId: Long? = null,
     /** With a tunnel, as seen from the SSH host; without one, as seen from the phone. */
     val dbHost: String,
     val dbPort: Int = 3306,
@@ -140,6 +158,24 @@ data class SshCredentialEntity(
 ) {
     override fun equals(other: Any?): Boolean =
         other is SshCredentialEntity && other.connectionId == connectionId
+
+    override fun hashCode(): Int = connectionId.hashCode()
+}
+
+/**
+ * The jump host's own SSH password, for a connection whose two hops do not share a credential.
+ *
+ * Its own table for the same reason [SshCredentialEntity] is one: the two are needed at different
+ * moments of the same connect, and a row exists only for the connections that actually have one.
+ */
+@Entity(tableName = "ssh_jump_credential")
+data class SshJumpCredentialEntity(
+    @PrimaryKey val connectionId: Long,
+    /** Sealed by the keystore user key, exactly as the other two passwords are. */
+    val sealedPassword: ByteArray,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is SshJumpCredentialEntity && other.connectionId == connectionId
 
     override fun hashCode(): Int = connectionId.hashCode()
 }

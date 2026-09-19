@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Production policy and the jump host's own credential. A separate file from strings.xml only
+  because two work packages were writing strings at the same time; Android merges the two.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+
+    <!-- Refusals -->
+    <string name="policy_refused_title">Cannot be saved as production</string>
+    <string name="policy_unprotected">A production connection may not travel in clear text. Turn the SSH tunnel on, or set TLS to anything other than off.</string>
+    <string name="policy_query_timeout_too_long">On production a statement may run for at most %1$d seconds; this one is set to %2$d.</string>
+
+    <!-- Read-only offer when a connection becomes production -->
+    <string name="policy_read_only_offer_title">Mark as production?</string>
+    <string name="policy_read_only_offer_body">Production connections start read-only. Writing stays possible: it needs an unlock that runs out by itself.</string>
+    <string name="policy_read_only_offer_accept">Turn read-only on</string>
+    <string name="policy_read_only_offer_decline">Leave it writable</string>
+
+    <!-- The write unlock -->
+    <string name="write_unlock_action">Allow writes for 15 minutes</string>
+    <string name="write_unlock_extend">Extend by another 15 minutes</string>
+    <string name="write_unlock_lock_now">Lock writes now</string>
+    <string name="write_unlock_remaining">Writes allowed · %1$d min left</string>
+    <string name="write_unlock_locked">Writes locked</string>
+    <string name="write_unlock_expired">The write window has run out</string>
+    <string name="write_unlock_read_only">Read-only</string>
+
+    <!-- The jump host's own credential -->
+    <string name="ssh_jump_separate_credential">The jump host has its own credential</string>
+    <string name="ssh_jump_shared_note">Both hops use the key or password above.</string>
+    <string name="ssh_jump_separate_note">The first hop is entered on its own; the second keeps the credential above.</string>
+    <string name="ssh_jump_key">Jump host key</string>
+    <string name="ssh_jump_password">Jump host password</string>
+    <string name="error_writes_locked">Writes are locked on this production connection. Unlock them for fifteen minutes from the connection card.</string>
+</resources>

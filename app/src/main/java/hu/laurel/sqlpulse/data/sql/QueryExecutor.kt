@@ -1,10 +1,15 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.WriteAccess
+import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
 import hu.laurel.sqlpulse.di.IoDispatcher
+import java.sql.PreparedStatement
 import java.sql.Statement
+import java.sql.Types
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -19,6 +24,14 @@ class UnsupportedStatementException : Exception("only queries and row edits are 
 
 /** An UPDATE or DELETE with no WHERE clause, refused by the setting that is on by default. */
 class UnguardedWriteException : Exception("this statement has no WHERE clause")
+
+/**
+ * A write on a production connection that has not been unlocked, or whose unlock has run out.
+ *
+ * Separate from [ReadOnlyConnectionException] because the answer is different: this one is undone
+ * by unlocking writes for fifteen minutes on the connection card, not by editing the connection.
+ */
+class WritesLockedException(val access: WriteAccess) : Exception("writes are locked on this connection")
 
 data class QueryOutcome(
     val table: ResultTable,
@@ -41,6 +54,7 @@ class QueryExecutor @Inject constructor(
     private val sessions: SqlSessionManager,
     private val history: QueryHistoryDao,
     private val settings: SettingsRepository,
+    private val writeUnlock: WriteUnlockStore,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -50,7 +64,7 @@ class QueryExecutor @Inject constructor(
     suspend fun run(
         connectionId: Long,
         sql: String,
-        parameters: Map<String, String> = emptyMap(),
+        parameters: Map<String, ParameterValue> = emptyMap(),
         rowLimit: Int = SqlGuards.DEFAULT_ROW_LIMIT,
         readOnly: Boolean,
     ): QueryOutcome {
@@ -68,6 +82,18 @@ class QueryExecutor @Inject constructor(
         val kind = SqlGuards.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()
+        if (kind == StatementKind.WRITE) {
+            // The production policy, checked where the statement actually runs rather than only in
+            // the dialog that offers to run it — the editor is not the only caller.
+            val access = writeUnlock.writeAccess(
+                connectionId = connectionId,
+                environment = ConnectionEnvironment.fromName(
+                    sessions.currentConnection()?.environment,
+                ),
+                readOnly = readOnly,
+            )
+            if (!access.allowed) throw WritesLockedException(access)
+        }
         if (settings.settings.first().blockWritesWithoutWhere && SqlGuards.isUnguardedWrite(sql)) {
             throw UnguardedWriteException()
         }
@@ -78,10 +104,7 @@ class QueryExecutor @Inject constructor(
         val started = System.currentTimeMillis()
         val outcome = sessions.withConnection { connection ->
             connection.prepareStatement(bound.sql).use { statement ->
-                bound.parameterOrder.forEachIndexed { index, name ->
-                    // Values arrive as text; MySQL coerces them against the column type.
-                    statement.setString(index + 1, parameters[name] ?: "")
-                }
+                bind(statement, bound.parameterOrder, parameters)
                 statement.queryTimeout = sessions.queryTimeoutSeconds()
                 running = statement
                 try {
@@ -106,6 +129,10 @@ class QueryExecutor @Inject constructor(
             }
         }
 
+        // A session that has written is never reconnected to automatically: the server rolled the
+        // work back and silently picking the connection up again would hide that.
+        if (kind == StatementKind.WRITE) sessions.noteWrite()
+
         val duration = System.currentTimeMillis() - started
         withContext(io) {
             // §9: the history keeps the SQL and the timings, never the result.
@@ -120,6 +147,54 @@ class QueryExecutor @Inject constructor(
             )
         }
         return outcome.copy(table = outcome.table.copy(durationMs = duration))
+    }
+
+    /**
+     * How many rows the write in [sql] would touch, or null when that cannot be said.
+     *
+     * Null covers both halves of "we do not know": a statement WriteImpact will not rewrite, and a
+     * count that failed to run. The caller shows the same "unknown" for either, because the user's
+     * next decision is the same one.
+     *
+     * The count runs on the session like any other query — through [SqlSessionManager.withConnection],
+     * so off the main thread — but is not recorded in the history: it is this app's question, not
+     * the user's.
+     */
+    suspend fun estimateAffectedRows(
+        sql: String,
+        parameters: Map<String, ParameterValue> = emptyMap(),
+    ): Long? {
+        val count = WriteImpact.countQuery(sql) ?: return null
+        val bound = SqlGuards.bindParameters(count)
+        return runCatching {
+            sessions.withConnection { connection ->
+                connection.prepareStatement(bound.sql).use { statement ->
+                    bind(statement, bound.parameterOrder, parameters)
+                    statement.queryTimeout = sessions.queryTimeoutSeconds()
+                    statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else null }
+                }
+            }
+        }.getOrNull()
+    }
+
+    /** Binds the values by the type the user gave each one (§7.4). */
+    private fun bind(
+        statement: PreparedStatement,
+        order: List<String>,
+        parameters: Map<String, ParameterValue>,
+    ) {
+        order.forEachIndexed { index, name ->
+            val position = index + 1
+            when (val binding = QueryParameters.binding(parameters[name] ?: ParameterValue())) {
+                // The driver ignores the type it is given for a null; VARCHAR is the one every
+                // column accepts.
+                ParameterBinding.Null -> statement.setNull(position, Types.VARCHAR)
+                is ParameterBinding.Text -> statement.setString(position, binding.value)
+                is ParameterBinding.Integer -> statement.setLong(position, binding.value)
+                is ParameterBinding.Decimal -> statement.setDouble(position, binding.value)
+                is ParameterBinding.Bool -> statement.setBoolean(position, binding.value)
+            }
+        }
     }
 
     /**

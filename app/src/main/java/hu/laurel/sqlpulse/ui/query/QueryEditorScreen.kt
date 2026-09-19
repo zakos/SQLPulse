@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -87,7 +88,11 @@ import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.sql.ExplainAdvice
 import hu.laurel.sqlpulse.data.sql.ExplainNote
+import hu.laurel.sqlpulse.data.sql.ParameterType
+import hu.laurel.sqlpulse.data.sql.ParameterValue
+import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellSelection
@@ -249,6 +254,7 @@ fun QueryEditorScreen(
         },
     ) { padding ->
         val wide = isWideWindow()
+        val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
 
         // Two columns where there is room for two: on a tablet the result no longer has to share
         // the height with the editor, and neither has to be scrolled to reach the other.
@@ -505,23 +511,32 @@ fun QueryEditorScreen(
                 }
         }
 
+        // Above both layouts: whatever is being read or typed stays on screen underneath it.
+        val lostBanner: @Composable () -> Unit = {
+            ConnectionLostBanner(state = sessionState, onReconnect = viewModel::reconnect)
+        }
+
         if (wide) {
-            Row(modifier = Modifier.fillMaxSize().padding(padding)) {
-                Column(
-                    modifier = Modifier
-                        .weight(EDITOR_PANE_WEIGHT)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    content = editorPane,
-                )
-                VerticalDivider()
-                Column(
-                    modifier = Modifier.weight(1f - EDITOR_PANE_WEIGHT).fillMaxHeight(),
-                    content = outputPane,
-                )
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                lostBanner()
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .weight(EDITOR_PANE_WEIGHT)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        content = editorPane,
+                    )
+                    VerticalDivider()
+                    Column(
+                        modifier = Modifier.weight(1f - EDITOR_PANE_WEIGHT).fillMaxHeight(),
+                        content = outputPane,
+                    )
+                }
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                lostBanner()
                 editorPane()
                 outputPane()
             }
@@ -546,6 +561,14 @@ fun QueryEditorScreen(
             names = state.pendingParameters,
             onRun = viewModel::run,
             onDismiss = viewModel::dismissParameters,
+        )
+    }
+
+    state.writeConfirmation?.let { confirmation ->
+        WriteConfirmDialog(
+            confirmation = confirmation,
+            onConfirm = viewModel::confirmWrite,
+            onDismiss = viewModel::dismissWriteConfirmation,
         )
     }
 
@@ -701,24 +724,143 @@ private fun FavouritesPanel(
     }
 }
 
-/** §7.4: a favourite with `:parameters` asks for the values on a small form before it runs. */
+/**
+ * §7.4: a favourite with `:parameters` asks for the values on a small form before it runs.
+ *
+ * Each value carries a type, because text is not always what was meant: an empty box for a number
+ * is "no value", and NULL is a value no amount of typing can express.
+ */
 @Composable
 private fun ParameterDialog(
     names: List<String>,
-    onRun: (Map<String, String>) -> Unit,
+    onRun: (Map<String, ParameterValue>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val values = remember(names) { mutableStateMapOf<String, String>() }
+    val values = remember(names) { mutableStateMapOf<String, ParameterValue>() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.query_parameters_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.m),
+            ) {
                 names.forEach { name ->
+                    val value = values[name] ?: ParameterValue()
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        OutlinedTextField(
+                            value = value.text,
+                            onValueChange = { values[name] = value.copy(text = it) },
+                            label = { Text(name) },
+                            // NULL has nothing to type, so the field says so by being closed.
+                            enabled = value.type != ParameterType.NULL,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        ) {
+                            ParameterType.entries.forEach { type ->
+                                FilterChip(
+                                    selected = value.type == type,
+                                    onClick = { values[name] = value.copy(type = type) },
+                                    label = { Text(stringResource(type.labelRes())) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onRun(names.associateWith { values[it] ?: ParameterValue() }) }) {
+                Text(stringResource(R.string.query_run))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@StringRes
+private fun ParameterType.labelRes(): Int = when (this) {
+    ParameterType.TEXT -> R.string.parameter_type_text
+    ParameterType.NUMBER -> R.string.parameter_type_number
+    ParameterType.DATE -> R.string.parameter_type_date
+    ParameterType.BOOLEAN -> R.string.parameter_type_boolean
+    ParameterType.NULL -> R.string.parameter_type_null
+}
+
+/**
+ * The last thing between a hand-typed write and the database (§7.4).
+ *
+ * It says what will run, how many rows that is estimated to be, and where — the connection, its
+ * environment and the database — because on a phone the three of them are a tab away from each
+ * other and nothing on screen otherwise repeats them. A production connection asks for the
+ * database name to be typed: it is the one gesture a thumb cannot make by accident.
+ */
+@Composable
+private fun WriteConfirmDialog(
+    confirmation: WriteConfirmation,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    var typed by remember(confirmation) { mutableStateOf("") }
+    val blocked = confirmation.exceedsLimit
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.write_confirm_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                Text(confirmation.sql, style = MonoStyles.cell)
+
+                Text(
+                    text = confirmation.estimatedRows
+                        ?.let { stringResource(R.string.write_confirm_rows, it) }
+                        ?: stringResource(R.string.write_confirm_rows_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (blocked) MaterialTheme.colorScheme.error else semantic.textSecondary,
+                )
+
+                Text(
+                    text = listOfNotNull(
+                        confirmation.connectionName,
+                        stringResource(confirmation.environment.shortLabel()),
+                        confirmation.database,
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (confirmation.environment.isProduction) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        semantic.textSecondary
+                    },
+                )
+
+                if (blocked) {
+                    Text(
+                        text = stringResource(
+                            R.string.write_confirm_over_limit,
+                            confirmation.maxAffectedRows,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (confirmation.requiresTypedDatabase) {
                     OutlinedTextField(
-                        value = values[name].orEmpty(),
-                        onValueChange = { values[name] = it },
-                        label = { Text(name) },
+                        value = typed,
+                        onValueChange = { typed = it },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.write_confirm_type_database,
+                                    confirmation.database.orEmpty(),
+                                ),
+                            )
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -726,8 +868,11 @@ private fun ParameterDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onRun(names.associateWith { values[it].orEmpty() }) }) {
-                Text(stringResource(R.string.query_run))
+            Button(
+                onClick = onConfirm,
+                enabled = !blocked && confirmation.confirms(typed),
+            ) {
+                Text(stringResource(R.string.write_confirm_run))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },

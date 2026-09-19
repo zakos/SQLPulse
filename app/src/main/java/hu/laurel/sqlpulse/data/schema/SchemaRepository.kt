@@ -250,9 +250,12 @@ class SchemaRepository @Inject constructor(
     /**
      * The first bytes of a BLOB, for the preview (§7.5).
      *
-     * At most [maxBytes], read with SUBSTRING on the server: a video in a LONGBLOB would otherwise
-     * travel down the tunnel in full to show sixteen lines of hex. The extra byte is asked for so
-     * that "there is more" can be said without a second query.
+     * Two values are asked of the server in one row: `LENGTH(col)`, which it answers from the copy
+     * it already holds, and `SUBSTRING(col, 1, maxBytes)`, which is the only part that travels
+     * back. Reading the column itself — `getBytes` on the unsliced value — would pull a video in a
+     * LONGBLOB down the tunnel in full just to show sixteen lines of hex, and asking the driver
+     * for its size is no cheaper: the size is only known once the bytes have arrived. The length
+     * is also what says "there is more", so not even one extra byte is fetched to find that out.
      */
     suspend fun blobBytes(
         database: String,
@@ -264,14 +267,18 @@ class SchemaRepository @Inject constructor(
         val where = key.keys.joinToString(prefix = " WHERE ", separator = " AND ") {
             "${quoteIdentifier(it)} = ?"
         }
-        val sql = "SELECT SUBSTRING(${quoteIdentifier(column)}, 1, ${maxBytes + 1}) FROM " +
+        val sql = "SELECT LENGTH(${quoteIdentifier(column)}), " +
+            "SUBSTRING(${quoteIdentifier(column)}, 1, $maxBytes) FROM " +
             "${quoteIdentifier(database)}.${quoteIdentifier(table)}$where"
         connection.prepareStatement(sql).use { statement ->
             key.values.forEachIndexed { index, value -> statement.setString(index + 1, value) }
             statement.executeQuery().use { rows ->
                 if (!rows.next()) return@withConnection ByteArray(0) to false
-                val bytes = rows.getBytes(1) ?: ByteArray(0)
-                if (bytes.size > maxBytes) bytes.copyOf(maxBytes) to true else bytes to false
+                // LENGTH() of a NULL column is NULL, which getLong reports as 0 — the same as an
+                // empty BLOB, and both preview as nothing at all.
+                val total = rows.getLong(1)
+                val bytes = rows.getBytes(2) ?: ByteArray(0)
+                bytes to (total > bytes.size)
             }
         }
     }

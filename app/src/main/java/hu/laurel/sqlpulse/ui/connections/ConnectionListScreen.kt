@@ -30,7 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +44,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.ProductionPolicy
+import hu.laurel.sqlpulse.data.connection.WriteAccess
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.ssh.ConnectStep
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
@@ -58,6 +62,7 @@ import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 
 /**
  * The launcher screen (§7.1). A card per connection; one tap starts the unlock and the tunnel, and
@@ -76,6 +81,16 @@ fun ConnectionListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val confirming by viewModel.confirming.collectAsStateWithLifecycle()
+
+    // A write window is the one thing on this screen that changes without anybody touching it, so
+    // the clock only ticks while one is open — and stops again the moment the last one closes.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.unlockedUntil.isNotEmpty()) {
+        while (state.unlockedUntil.isNotEmpty()) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -137,6 +152,9 @@ fun ConnectionListScreen(
                             ConnectionCard(
                                 connection = connection,
                                 tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
+                                writeAccess = state.writeAccess(connection, now),
+                                onUnlockWrites = { viewModel.unlockWrites(connection) },
+                                onLockWrites = { viewModel.lockWrites(connection) },
                                 onClick = {
                                     // An already open connection goes straight to the schema;
                                     // disconnecting lives in the long-press menu and the notification.
@@ -184,6 +202,9 @@ fun ConnectionListScreen(
 private fun ConnectionCard(
     connection: ConnectionEntity,
     tunnel: TunnelState?,
+    writeAccess: WriteAccess,
+    onUnlockWrites: () -> Unit,
+    onLockWrites: () -> Unit,
     onClick: () -> Unit,
     connected: Boolean,
     onDisconnect: () -> Unit,
@@ -247,6 +268,12 @@ private fun ConnectionCard(
                     color = semantic.textSecondary,
                 )
 
+                // Only production says anything here: everywhere else "writes allowed" is the
+                // normal state of affairs and would be noise on every card.
+                if (environment.isProduction) {
+                    WriteAccessLine(writeAccess)
+                }
+
                 val label = tunnel.label()
                 StatusDot(
                     color = when (tunnel) {
@@ -290,6 +317,30 @@ private fun ConnectionCard(
                             onClick = { menuOpen = false; onDisconnect() },
                         )
                     }
+                    // The write unlock lives with the connection, not with the query screen: the
+                    // decision belongs to "this database", not to the statement being typed.
+                    if (environment.isProduction && !connection.readOnly) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (writeAccess is WriteAccess.Unlocked) {
+                                            R.string.write_unlock_extend
+                                        } else {
+                                            R.string.write_unlock_action
+                                        },
+                                    ),
+                                )
+                            },
+                            onClick = { menuOpen = false; onUnlockWrites() },
+                        )
+                        if (writeAccess is WriteAccess.Unlocked) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.write_unlock_lock_now)) },
+                                onClick = { menuOpen = false; onLockWrites() },
+                            )
+                        }
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.connection_edit)) },
                         onClick = { menuOpen = false; onEdit() },
@@ -306,6 +357,39 @@ private fun ConnectionCard(
             }
         }
     }
+}
+
+/**
+ * What production is allowed to do at this moment, counted down to the minute.
+ *
+ * Rounded up rather than down, so a window with seconds left still reads "1 min": a countdown that
+ * shows zero while writes still go through is worse than no countdown.
+ */
+@Composable
+private fun WriteAccessLine(access: WriteAccess) {
+    // Nothing to say about a connection that is not production; the caller only asks about those,
+    // and this keeps the when below honest about the four states that do have something to say.
+    if (access is WriteAccess.Open) return
+    val semantic = LocalSemanticColors.current
+    val (text, color) = when (access) {
+        is WriteAccess.Unlocked -> stringResource(
+            R.string.write_unlock_remaining,
+            ProductionPolicy.minutesLeft(access.remainingMillis),
+        ) to semantic.warning
+
+        WriteAccess.ReadOnly -> stringResource(R.string.write_unlock_read_only) to
+            semantic.textSecondary
+
+        WriteAccess.Locked -> stringResource(R.string.write_unlock_locked) to
+            semantic.textSecondary
+
+        WriteAccess.Expired -> stringResource(R.string.write_unlock_expired) to
+            semantic.textSecondary
+
+        WriteAccess.Open -> return
+    }
+
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
 }
 
 @Composable

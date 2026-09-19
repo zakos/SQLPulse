@@ -28,12 +28,125 @@ object SqlGuards {
     private val WRITE_STARTERS = setOf("insert", "update", "delete", "replace")
 
     fun classify(sql: String): StatementKind {
-        val first = firstKeyword(strip(sql)) ?: return StatementKind.OTHER
+        val stripped = strip(sql)
+        val first = firstKeyword(stripped) ?: return StatementKind.OTHER
+        // A CTE says nothing about what the statement does: MySQL 8 lets an UPDATE or a DELETE
+        // follow one, and `WITH ... UPDATE` counted as a read is exactly the accident this guard
+        // is here to catch.
+        if (first == "with") return classifyAfterCte(stripped)
         return when (first) {
             in READ_STARTERS -> StatementKind.READ
             in WRITE_STARTERS -> StatementKind.WRITE
             else -> StatementKind.OTHER
         }
+    }
+
+    /**
+     * What a `WITH` statement really is, decided by the statement its definitions lead up to.
+     *
+     * When the prelude cannot be walked — a shape we do not know, or unbalanced parentheses — the
+     * fallback is a word scan outside every parenthesis: a CTE body always sits inside one, so a
+     * write keyword found at that level belongs to the statement itself. Erring towards WRITE
+     * there costs a confirmation dialog; erring towards READ would let the write past it.
+     */
+    private fun classifyAfterCte(strippedSql: String): StatementKind {
+        val tail = cteTail(strippedSql)
+            ?: return if (hasTopLevelWrite(strippedSql)) StatementKind.WRITE else StatementKind.READ
+        return when (firstKeyword(tail)) {
+            in WRITE_STARTERS -> StatementKind.WRITE
+            in READ_STARTERS -> StatementKind.READ
+            else -> if (hasTopLevelWrite(tail)) StatementKind.WRITE else StatementKind.READ
+        }
+    }
+
+    /**
+     * The statement that follows the CTE definitions of [strippedSql], or null when the prelude is
+     * not shaped the way MySQL writes one.
+     *
+     * Expects [strip]ped input, so every parenthesis it counts is a real one rather than a
+     * character inside a string or a comment.
+     */
+    private fun cteTail(strippedSql: String): String? {
+        var index = skipSpace(strippedSql, 0)
+        if (!readWord(strippedSql, index).equals("with", ignoreCase = true)) return null
+        index = skipSpace(strippedSql, index + "with".length)
+        if (readWord(strippedSql, index).equals("recursive", ignoreCase = true)) {
+            index = skipSpace(strippedSql, index + "recursive".length)
+        }
+        while (true) {
+            val name = readWord(strippedSql, index)
+            // A backticked CTE name is blanked out by strip, which leaves AS as the first word.
+            if (!name.equals("as", ignoreCase = true)) {
+                if (name.isEmpty()) return null
+                index = skipSpace(strippedSql, index + name.length)
+                // The column list a CTE may declare before its AS.
+                if (strippedSql.getOrNull(index) == '(') {
+                    index = skipSpace(strippedSql, endOfParens(strippedSql, index) ?: return null)
+                }
+                if (!readWord(strippedSql, index).equals("as", ignoreCase = true)) return null
+            }
+            index = skipSpace(strippedSql, index + "as".length)
+            // MySQL 8 allows the body to be marked MATERIALIZED or NOT MATERIALIZED.
+            while (true) {
+                val hint = readWord(strippedSql, index)
+                if (!hint.equals("not", true) && !hint.equals("materialized", true)) break
+                index = skipSpace(strippedSql, index + hint.length)
+            }
+            if (strippedSql.getOrNull(index) != '(') return null
+            index = skipSpace(strippedSql, endOfParens(strippedSql, index) ?: return null)
+            if (strippedSql.getOrNull(index) != ',') return strippedSql.substring(index)
+            index = skipSpace(strippedSql, index + 1)
+        }
+    }
+
+    private fun skipSpace(sql: String, from: Int): Int {
+        var index = from
+        while (index < sql.length && sql[index].isWhitespace()) index++
+        return index
+    }
+
+    /** The bare word starting at [from], empty when a word does not start there. */
+    private fun readWord(sql: String, from: Int): String {
+        var end = from
+        while (end < sql.length && (sql[end].isLetterOrDigit() || sql[end] == '_' || sql[end] == '$')) {
+            end++
+        }
+        return sql.substring(from, end)
+    }
+
+    /** @return the index just past the parenthesis group opening at [start], or null if unclosed. */
+    private fun endOfParens(sql: String, start: Int): Int? {
+        var depth = 0
+        var index = start
+        while (index < sql.length) {
+            when (sql[index]) {
+                '(' -> depth++
+                ')' -> if (--depth == 0) return index + 1
+            }
+            index++
+        }
+        return null
+    }
+
+    /** True when a write keyword stands outside every parenthesis of [strippedSql]. */
+    private fun hasTopLevelWrite(strippedSql: String): Boolean {
+        var depth = 0
+        var index = 0
+        while (index < strippedSql.length) {
+            val c = strippedSql[index]
+            when {
+                c == '(' -> { depth++; index++ }
+                c == ')' -> { depth--; index++ }
+                c.isLetter() || c == '_' -> {
+                    val word = readWord(strippedSql, index)
+                    if (depth <= 0 && word.lowercase() in WRITE_STARTERS) return true
+                    index += word.length
+                }
+
+                else -> index++
+            }
+        }
+        return false
     }
 
     /**
@@ -77,10 +190,14 @@ object SqlGuards {
     fun isUnguardedWrite(sql: String): Boolean {
         if (classify(sql) != StatementKind.WRITE) return false
         val stripped = strip(sql)
-        val starter = firstKeyword(stripped)
+        // A WHERE inside a CTE body guards the CTE, not the UPDATE that follows it. A prelude we
+        // cannot walk falls back to the whole statement, which errs towards letting it run — the
+        // confirmation dialog still stands in front of it.
+        val body = if (firstKeyword(stripped) == "with") cteTail(stripped) ?: stripped else stripped
+        val starter = firstKeyword(body)
         // INSERT and REPLACE add rows rather than rewriting existing ones.
         if (starter != "update" && starter != "delete") return false
-        return !Regex("(?i)\\bwhere\\b").containsMatchIn(stripped)
+        return !Regex("(?i)\\bwhere\\b").containsMatchIn(body)
     }
 
     /**
@@ -171,7 +288,7 @@ object SqlGuards {
     private fun Char.isValidParameterChar() = isLetterOrDigit() || this == '_'
 
     /** @return the index just past the closing quote of the literal starting at [start]. */
-    private fun endOfLiteral(sql: String, start: Int): Int {
+    internal fun endOfLiteral(sql: String, start: Int): Int {
         val closing = sql[start]
         var index = start + 1
         while (index < sql.length) {
