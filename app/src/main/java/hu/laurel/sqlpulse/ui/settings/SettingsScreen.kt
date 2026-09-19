@@ -189,7 +189,13 @@ fun SettingsScreen(
             }
 
             Section(stringResource(R.string.settings_grid_font)) {
-                Text("${settings.gridFontScale}%", style = MonoStyles.cell)
+                // Drawn at the size it sets, so the slider shows what it does while it is moved.
+                Text(
+                    text = "${settings.gridFontScale}%",
+                    style = MonoStyles.cell.copy(
+                        fontSize = MonoStyles.cell.fontSize * (settings.gridFontScale / 100f),
+                    ),
+                )
                 Slider(
                     value = settings.gridFontScale.toFloat(),
                     onValueChange = { viewModel.setGridFontScale(it.toInt()) },

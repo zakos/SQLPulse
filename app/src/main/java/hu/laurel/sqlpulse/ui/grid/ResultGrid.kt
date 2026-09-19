@@ -57,6 +57,7 @@ import hu.laurel.sqlpulse.data.sql.ColumnMeta
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
+import hu.laurel.sqlpulse.ui.theme.LocalGridFontScale
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -93,9 +94,11 @@ fun ResultGrid(
     val listState = rememberLazyListState()
     val semantic = LocalSemanticColors.current
     val density = LocalDensity.current
+    // The setting is a percentage; everything here works in multiples of the default size.
+    val scale = LocalGridFontScale.current / 100f
 
     // Widths start from the loaded page's content and are overridden once a user drags one.
-    val measured = remember(table.columns, table.rowCount) { columnWidths(table) }
+    val measured = remember(table.columns, table.rowCount, scale) { columnWidths(table, scale) }
     val overrides = remember(table.columns) { mutableStateMapOf<Int, Dp>() }
     fun widthOf(index: Int): Dp = overrides[index] ?: measured.getOrElse(index) { DEFAULT_WIDTH.dp }
 
@@ -124,6 +127,7 @@ fun ResultGrid(
         HeaderRow(
             table = table,
             horizontal = horizontal,
+            scale = scale,
             widthOf = ::widthOf,
             onResize = { index, deltaPx ->
                 val delta = with(density) { deltaPx.toDp() }
@@ -142,7 +146,8 @@ fun ResultGrid(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = ROW_HEIGHT.dp)
+                        // The row grows with the text but never shrinks below a touch target.
+                        .heightIn(min = maxOf(ROW_HEIGHT.dp, (ROW_HEIGHT * scale).dp))
                         .combinedClickable(
                             onClick = {},
                             onLongClick = { onRowLongPress(rowIndex) },
@@ -198,6 +203,7 @@ fun ResultGrid(
 private fun HeaderRow(
     table: ResultTable,
     horizontal: androidx.compose.foundation.ScrollState,
+    scale: Float,
     widthOf: (Int) -> Dp,
     onResize: (Int, Float) -> Unit,
     sort: ColumnSort?,
@@ -208,7 +214,7 @@ private fun HeaderRow(
             .fillMaxWidth()
             // Follows the theme: on the light theme a dark header was a black band (§8).
             .background(LocalSemanticColors.current.surfaceRaised)
-            .height(HEADER_HEIGHT.dp),
+            .height(maxOf(HEADER_HEIGHT.dp, (HEADER_HEIGHT * scale).dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         table.columns.firstOrNull()?.let { column ->
@@ -259,7 +265,11 @@ private fun HeaderCell(
     ) {
         Text(
             text = label,
-            style = MonoStyles.cell,
+            // The title scales with the cells under it: a header that stayed put while the rows
+            // grew would be the one row of the grid the setting did not reach.
+            style = MonoStyles.cell.copy(
+                fontSize = MonoStyles.cell.fontSize * (LocalGridFontScale.current / 100f),
+            ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -363,9 +373,10 @@ internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Mod
         }
     }
 
+    val base = if (column.type == CellType.NUMBER) MonoStyles.cellNumber else MonoStyles.cell
     Text(
         text = text,
-        style = if (column.type == CellType.NUMBER) MonoStyles.cellNumber else MonoStyles.cell,
+        style = base.copy(fontSize = base.fontSize * (LocalGridFontScale.current / 100f)),
         color = color,
         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
         maxLines = 1,
@@ -386,12 +397,13 @@ fun CellValue.asText(): String = when (this) {
 }
 
 /** Width from the widest value in the loaded page, clamped so one long column cannot take over. */
-private fun columnWidths(table: ResultTable): List<Dp> = table.columns.mapIndexed { index, column ->
-    val widest = table.rows.asSequence()
-        .mapNotNull { it.getOrNull(index) }
-        .maxOfOrNull { displayLength(it) } ?: 0
-    GridWidths.columnWidthDp(column.label.length, widest).dp
-}
+private fun columnWidths(table: ResultTable, fontScale: Float): List<Dp> =
+    table.columns.mapIndexed { index, column ->
+        val widest = table.rows.asSequence()
+            .mapNotNull { it.getOrNull(index) }
+            .maxOfOrNull { displayLength(it) } ?: 0
+        GridWidths.columnWidthDp(column.label.length, widest, fontScale).dp
+    }
 
 private fun displayLength(value: CellValue): Int = when (value) {
     is CellValue.Null -> 4
