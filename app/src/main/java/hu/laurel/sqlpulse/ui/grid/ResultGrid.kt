@@ -137,6 +137,9 @@ fun ResultGrid(
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
             itemsIndexed(table.rows) { rowIndex, row ->
                 Row(
+                    // Centred like the header: with cells of different heights a top-aligned row
+                    // reads as a second misalignment under the first one.
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = ROW_HEIGHT.dp)
@@ -245,14 +248,22 @@ private fun HeaderCell(
     val semantic = LocalSemanticColors.current
     val sorted = sort?.takeIf { it.column == label }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // The whole header cell is exactly one column wide, and the label takes what the sort icon
+    // and the drag handle leave. Giving the label the full width and hanging the other two off
+    // its end made every header 48dp wider than the cells under it, so the columns drifted
+    // further left of their titles with each one — a grid whose fourth column sat under the
+    // third one's name.
+    Row(
+        modifier = Modifier.width(width),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             text = label,
             style = MonoStyles.cell,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .width(width)
+                .weight(1f)
                 .padding(horizontal = Spacing.s),
         )
         if (onSort != null) {
@@ -379,8 +390,9 @@ private fun columnWidths(table: ResultTable): List<Dp> = table.columns.mapIndexe
     val widest = table.rows.asSequence()
         .mapNotNull { it.getOrNull(index) }
         .maxOfOrNull { displayLength(it) } ?: 0
-    val characters = maxOf(column.label.length, widest).coerceIn(MIN_CHARS, MAX_CHARS)
-    (characters * CHAR_WIDTH_DP).dp
+    GridWidths.columnWidthDp(column.label.length, widest).dp
+}
+
 }
 
 private fun displayLength(value: CellValue): Int = when (value) {
@@ -398,18 +410,11 @@ internal fun formatBytes(size: Long): String = when {
     else -> "${size / (1024 * 1024)} MB"
 }
 
-private const val MIN_CHARS = 6
-private const val MAX_CHARS = 32
-
-/** Rough advance width of JetBrains Mono at 13sp. */
-private const val CHAR_WIDTH_DP = 8
 private const val DEFAULT_WIDTH = 120
-private const val MIN_WIDTH = 48
-private const val MAX_WIDTH = 480
-private const val RESIZE_HANDLE = 12
+private const val MIN_WIDTH = GridWidths.MIN_WIDTH_DP
+private const val MAX_WIDTH = GridWidths.MAX_WIDTH_DP
 private const val HEADER_HEIGHT = 44
 private const val SORT_ICON = 16
-private const val SORT_ICON_TARGET = 36
 private const val ROW_HEIGHT = 44
 
 /** §7.5: the next page starts loading this many rows before the end. */
