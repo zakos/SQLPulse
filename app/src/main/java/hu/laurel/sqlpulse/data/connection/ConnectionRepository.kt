@@ -160,6 +160,23 @@ class ConnectionRepository @Inject constructor(
         return unseal(Sealed.decode(stored.sealedPassword), connectionName)
     }
 
+    /**
+     * Seals a password that arrived in a backup into *this* device's keystore, and returns the
+     * blob the credential tables hold.
+     *
+     * Public only for the backup import, which seals every secret it is going to write before it
+     * opens its transaction: sealing can stop to ask the user to authenticate, and a database
+     * transaction is the wrong place to be waiting for a fingerprint.
+     */
+    suspend fun sealImportedPassword(password: CharArray, subtitle: String): ByteArray {
+        val bytes = String(password).toByteArray(Charsets.UTF_8)
+        return try {
+            sealWithUnlock(bytes, subtitle).encode()
+        } finally {
+            bytes.wipe()
+        }
+    }
+
     private suspend fun storeJumpSshPassword(connectionId: Long, password: CharArray) {
         if (password.isEmpty()) {
             withContext(io) { sshJumpCredentials.delete(connectionId) }

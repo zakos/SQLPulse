@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration backup and restore. A file of its own so the shared strings.xml stays out of
+     the way of parallel work; it is merged with the rest at build time. -->
+<resources>
+    <string name="backup_title">Backup and restore</string>
+    <string name="backup_intro">Your connections, SSH hosts, keys and certificates live only on this phone, sealed by keys that cannot leave it. A backup carries them to another device, protected by a passphrase you choose.</string>
+
+    <string name="backup_export_section">Make a backup</string>
+    <string name="backup_scope_title">What to include</string>
+    <string name="backup_scope_settings">Settings only</string>
+    <string name="backup_scope_settings_note">Connections, SSH and database settings, saved queries, CA certificates, and the names and fingerprints of your keys. No passwords, no private keys — on the other device you enter those again.</string>
+    <string name="backup_scope_secrets">With secrets</string>
+    <string name="backup_scope_secrets_note">Everything above, plus the database and SSH passwords and the private keys themselves. Each one has to be unsealed first, so your phone will ask you to authenticate, once per key. Anyone with the file and the passphrase has them all.</string>
+
+    <string name="backup_passphrase">Passphrase</string>
+    <string name="backup_passphrase_confirm">Passphrase again</string>
+    <string name="backup_passphrase_note">The passphrase is not stored anywhere. Lose it and the file cannot be opened — not by us either.</string>
+    <string name="backup_passphrase_too_short">At least %1$d characters. Length is what makes a passphrase hard to guess.</string>
+    <string name="backup_passphrase_mismatch">The two passphrases are not the same.</string>
+    <string name="backup_save_file">Save backup file…</string>
+    <string name="backup_export_done">Backup saved.</string>
+
+    <string name="backup_import_section">Restore a backup</string>
+    <string name="backup_import_intro">Nothing is written until you have seen what the file contains and said what to do about any connection you already have.</string>
+    <string name="backup_choose_file">Choose a backup file…</string>
+    <string name="backup_file_made">Made by %1$s on %2$s</string>
+    <string name="backup_file_contents">%1$d connections, %2$d SSH keys, %3$d certificates, %4$d saved queries</string>
+    <string name="backup_file_with_secrets">Carries passwords and private keys</string>
+    <string name="backup_file_without_secrets">Settings only — no passwords, no private keys</string>
+    <string name="backup_unlock">Unlock and preview</string>
+    <string name="backup_ready">Ready to import %1$d connections.</string>
+    <string name="backup_nothing_inside">This backup is empty — there is nothing to import.</string>
+
+    <string name="backup_conflicts_title">Names you already have</string>
+    <string name="backup_conflicts_note">Choose what happens to each, or set them all at once.</string>
+    <string name="backup_all_keep_both">All: keep both</string>
+    <string name="backup_all_replace">All: replace</string>
+    <string name="backup_all_skip">All: skip</string>
+    <string name="backup_keep_both">Keep both</string>
+    <string name="backup_replace">Replace</string>
+    <string name="backup_skip">Skip</string>
+    <string name="backup_will_be_named">Imported as “%1$s”</string>
+    <string name="backup_will_replace">Replaces the connection you have now</string>
+    <string name="backup_will_be_skipped">Not imported</string>
+    <string name="backup_import_now">Import</string>
+    <string name="backup_start_over">Start over</string>
+
+    <string name="backup_import_done">Imported %1$d connections (%2$d replaced, %3$d skipped) and %4$d saved queries.</string>
+    <string name="backup_import_keys">%1$d SSH keys were imported and re-sealed on this device.</string>
+    <string name="backup_import_keys_absent">%1$d SSH keys were described but not carried: this was a settings-only backup. Import them again by hand.</string>
+    <string name="backup_import_missing_key">%1$d connections name an SSH key this device does not have. Open each one and attach a key before connecting.</string>
+
+    <string name="backup_error_not_a_backup">That file is not a SQLPulse backup.</string>
+    <string name="backup_error_future_version">This backup was written by a newer version of SQLPulse (format %1$d; this build reads up to %2$d). Update the app and try again.</string>
+    <string name="backup_error_wrong_passphrase">Wrong passphrase, or the file was altered after it was written. Nothing has been changed.</string>
+    <string name="backup_error_damaged">The backup file is damaged: %1$s</string>
+    <string name="backup_error_failed">The backup could not be completed: %1$s</string>
+    <string name="backup_working">Working…</string>
+
+    <string name="settings_backup">Backup</string>
+    <string name="settings_open_backup">Backup and restore</string>
+</resources>
