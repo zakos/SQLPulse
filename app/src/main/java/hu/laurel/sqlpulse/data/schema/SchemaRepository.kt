@@ -85,10 +85,20 @@ class SchemaRepository @Inject constructor(
     suspend fun structure(database: String, table: String, refresh: Boolean = false): TableStructure {
         val key = "$database.$table"
         if (!refresh) structureCache[key]?.let { return it }
+        // Five statements for the whole page, and no more: the columns, the indexes, the foreign
+        // keys with their rules, one statement that brings the partitions and the table collation
+        // back together, and the CHECK constraints, which are the only part a server may not
+        // have. Each of the five is one round trip through the tunnel, which on a phone is the
+        // cost worth counting — the rules, the collations and the generated columns cost nothing
+        // extra because they ride along in statements that were being sent anyway.
+        val extras = tableExtras(database, table)
         val structure = TableStructure(
             columns = columns(database, table),
             indexes = indexes(database, table),
             foreignKeys = foreignKeys(database, table),
+            checks = checkConstraints(database, table),
+            partitions = extras.partitions,
+            collation = extras.collation,
         )
         structureCache[key] = structure
         return structure
@@ -290,12 +300,33 @@ class SchemaRepository @Inject constructor(
         structureCache.clear()
     }
 
+    /**
+     * The columns, with the collation and the generation expression where the server has them.
+     *
+     * `GENERATION_EXPRESSION` arrived with generated columns themselves (MySQL 5.7.6, MariaDB
+     * 10.2); asking an older server for it fails the whole statement, and with it the Structure
+     * tab. So the second, shorter statement exists purely as the answer to that failure, and is
+     * only ever sent once the first one has been refused. `COLLATION_NAME` has been there since
+     * long before anything this app can connect to, and needs no such care.
+     */
     private suspend fun columns(database: String, table: String): List<SchemaColumn> =
+        try {
+            columns(database, table, withGeneration = true)
+        } catch (noGenerationColumn: java.sql.SQLException) {
+            columns(database, table, withGeneration = false)
+        }
+
+    private suspend fun columns(
+        database: String,
+        table: String,
+        withGeneration: Boolean,
+    ): List<SchemaColumn> =
         sessions.withConnection { connection ->
+            val generation = if (withGeneration) ", GENERATION_EXPRESSION" else ""
             connection.prepareStatement(
                 """
                 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY,
-                       EXTRA, COLUMN_COMMENT
+                       EXTRA, COLUMN_COMMENT, COLLATION_NAME$generation
                 FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
                 ORDER BY ORDINAL_POSITION
@@ -312,6 +343,12 @@ class SchemaRepository @Inject constructor(
                         isPrimaryKey = rows.getString("COLUMN_KEY") == "PRI",
                         extra = rows.getString("EXTRA")?.takeIf { it.isNotBlank() },
                         comment = rows.getString("COLUMN_COMMENT")?.takeIf { it.isNotBlank() },
+                        collation = rows.getString("COLLATION_NAME")?.takeIf { it.isNotBlank() },
+                        generationExpression = if (withGeneration) {
+                            SchemaExtras.generationExpression(rows.getString("GENERATION_EXPRESSION"))
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -512,15 +549,30 @@ class SchemaRepository @Inject constructor(
             }
         }
 
+    /**
+     * The table's foreign keys, each with what it does on a delete and on an update.
+     *
+     * The rules live in `REFERENTIAL_CONSTRAINTS`, one row per constraint, while the columns live
+     * in `KEY_COLUMN_USAGE`, one row per column — so they are joined server-side rather than
+     * fetched separately: a second statement here would be a second round trip for two words.
+     * The join is a LEFT JOIN because a key whose rules cannot be read is still a key worth
+     * showing; it simply shows without rules.
+     */
     private suspend fun foreignKeys(database: String, table: String): List<ForeignKey> =
         sessions.withConnection { connection ->
             connection.prepareStatement(
                 """
-                SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA,
-                       REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-                FROM information_schema.KEY_COLUMN_USAGE
-                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-                ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
+                SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_SCHEMA,
+                       k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME,
+                       r.DELETE_RULE, r.UPDATE_RULE
+                FROM information_schema.KEY_COLUMN_USAGE k
+                LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+                       ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA
+                      AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+                      AND r.TABLE_NAME = k.TABLE_NAME
+                WHERE k.TABLE_SCHEMA = ? AND k.TABLE_NAME = ?
+                  AND k.REFERENCED_TABLE_NAME IS NOT NULL
+                ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION
                 """.trimIndent(),
             ).use { statement ->
                 statement.setString(1, database)
@@ -532,10 +584,143 @@ class SchemaRepository @Inject constructor(
                         referencedDatabase = rows.getString("REFERENCED_TABLE_SCHEMA"),
                         referencedTable = rows.getString("REFERENCED_TABLE_NAME"),
                         referencedColumn = rows.getString("REFERENCED_COLUMN_NAME"),
+                        onDelete = rows.getString("DELETE_RULE"),
+                        onUpdate = rows.getString("UPDATE_RULE"),
                     )
                 }
             }
         }
+
+    /**
+     * The partitions and the table's own collation, in one statement.
+     *
+     * These two have nothing to do with each other except that both are one short fact about the
+     * table, and a round trip over an SSH tunnel on a mobile connection costs the same whether it
+     * brings back one column or seven. `PARTITIONS` has a row for every table — an unpartitioned
+     * one gets a single row with a NULL partition name — so the join brings back the collation
+     * either way, and the NULL-named row is dropped here rather than in a `WHERE`, which would
+     * have thrown the collation away with it.
+     */
+    private suspend fun tableExtras(database: String, table: String): TableExtras =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(
+                """
+                SELECT t.TABLE_COLLATION, p.PARTITION_NAME, p.SUBPARTITION_NAME,
+                       p.PARTITION_METHOD, p.PARTITION_EXPRESSION, p.TABLE_ROWS
+                FROM information_schema.TABLES t
+                LEFT JOIN information_schema.PARTITIONS p
+                       ON p.TABLE_SCHEMA = t.TABLE_SCHEMA AND p.TABLE_NAME = t.TABLE_NAME
+                WHERE t.TABLE_SCHEMA = ? AND t.TABLE_NAME = ?
+                ORDER BY p.PARTITION_ORDINAL_POSITION, p.SUBPARTITION_ORDINAL_POSITION
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, database)
+                statement.setString(2, table)
+                statement.executeQuery().use { rows ->
+                    var collation: String? = null
+                    val partitions = mutableListOf<TablePartition>()
+                    while (rows.next()) {
+                        collation = collation ?: rows.getString("TABLE_COLLATION")
+                        val name = rows.getString("PARTITION_NAME") ?: continue
+                        partitions += TablePartition(
+                            name = name,
+                            subName = rows.getString("SUBPARTITION_NAME"),
+                            method = rows.getString("PARTITION_METHOD"),
+                            expression = rows.getString("PARTITION_EXPRESSION")?.trim(),
+                            approximateRows = rows.getLong("TABLE_ROWS").takeUnless { rows.wasNull() },
+                        )
+                    }
+                    TableExtras(collation = collation, partitions = partitions)
+                }
+            }
+        }
+
+    /**
+     * CHECK constraints, where the server has any notion of them.
+     *
+     * `information_schema.CHECK_CONSTRAINTS` only exists from MySQL 8.0.16 and MariaDB 10.2; on
+     * anything older the statement fails with "table doesn't exist", and the honest answer for
+     * such a server is an empty list — it does not enforce CHECK at all, so the table really has
+     * none. That is why the failure is swallowed instead of surfacing: a red error on a 5.7
+     * server would be reporting our own question as the user's problem.
+     *
+     * The two servers do not even agree on how to find the table a constraint belongs to. MySQL's
+     * `CHECK_CONSTRAINTS` has no `TABLE_NAME` at all — the table is reached through
+     * `TABLE_CONSTRAINTS`, which is also where its `ENFORCED` lives, and a `NOT ENFORCED`
+     * constraint is worth seeing precisely because it looks like protection and is not. MariaDB
+     * has `TABLE_NAME` on the constraint itself and no `ENFORCED` anywhere. So there are two
+     * statements, one per dialect, and the second is sent only when the first has been refused:
+     * a working server answers on the first, and the fallbacks cost a round trip to nobody but
+     * the server that needs them.
+     */
+    private suspend fun checkConstraints(database: String, table: String): List<CheckConstraint> =
+        try {
+            mysqlCheckConstraints(database, table)
+        } catch (notMysql: java.sql.SQLException) {
+            try {
+                mariaCheckConstraints(database, table)
+            } catch (noCheckConstraints: java.sql.SQLException) {
+                emptyList()
+            }
+        }
+
+    /** MySQL 8.0.16+: the table and the enforcement come from `TABLE_CONSTRAINTS`. */
+    private suspend fun mysqlCheckConstraints(database: String, table: String): List<CheckConstraint> =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(
+                """
+                SELECT tc.CONSTRAINT_NAME, tc.ENFORCED, c.CHECK_CLAUSE
+                FROM information_schema.TABLE_CONSTRAINTS tc
+                JOIN information_schema.CHECK_CONSTRAINTS c
+                     ON c.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+                    AND c.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+                WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ?
+                  AND tc.CONSTRAINT_TYPE = 'CHECK'
+                ORDER BY tc.CONSTRAINT_NAME
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, database)
+                statement.setString(2, table)
+                statement.executeQuery().collect { rows ->
+                    CheckConstraint(
+                        name = rows.getString("CONSTRAINT_NAME"),
+                        expression = SchemaExtras.checkExpression(rows.getString("CHECK_CLAUSE")),
+                        enforced = rows.getString("ENFORCED") != "NO",
+                    )
+                }
+            }
+        }
+
+    /**
+     * MariaDB 10.2+: the constraint knows its own table, and every stored constraint is applied,
+     * so there is nothing to report about enforcement.
+     */
+    private suspend fun mariaCheckConstraints(database: String, table: String): List<CheckConstraint> =
+        sessions.withConnection { connection ->
+            connection.prepareStatement(
+                """
+                SELECT CONSTRAINT_NAME, CHECK_CLAUSE
+                FROM information_schema.CHECK_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME = ?
+                ORDER BY CONSTRAINT_NAME
+                """.trimIndent(),
+            ).use { statement ->
+                statement.setString(1, database)
+                statement.setString(2, table)
+                statement.executeQuery().collect { rows ->
+                    CheckConstraint(
+                        name = rows.getString("CONSTRAINT_NAME"),
+                        expression = SchemaExtras.checkExpression(rows.getString("CHECK_CLAUSE")),
+                    )
+                }
+            }
+        }
+
+    /** What one statement brings back about the table itself: its collation and its partitions. */
+    private data class TableExtras(
+        val collation: String?,
+        val partitions: List<TablePartition>,
+    )
 
     private inline fun <T> ResultSet.collect(mapper: (ResultSet) -> T): List<T> = use { rows ->
         buildList {
