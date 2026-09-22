@@ -103,7 +103,7 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   - `integration.yml` — PR: integrációs tesztek
   - `security.yml` — PR/push: biztonsági ellenőrzések
   - `instrumentation.yml` — kézi: emulátoros tesztek
-- **Fontos:** ebben a felhő környezetben nincs Android SDK, így a build/teszt csak a CI-ban fut.
+- Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
 
 ## Fontos szabályok, konvenciók
 
@@ -116,6 +116,24 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   (pl. „Keep more than one query open at a time”).
 - Kódkommentek angolul, a „miért”-et magyarázzák.
 
+## Látványterv a kódban
+
+- Terv: https://claude.ai/artifact/KrDZqBn9ggQpZBMYXu9eKH
+- Betűk: `res/font/` (Inter 400/500/600/700, JetBrains Mono 400/500/600, OFL licenc:
+  `assets/licenses/`), `ui/theme/Type.kt`.
+- Színek: `ui/theme/Theme.kt` — minden Material slot kitöltve (ne maradjon baseline lila);
+  `SemanticColors.cellNumber/cellDate/cellNull` világos témában sötétebb árnyalat.
+- Formák: mező/menü 12, chip teljes kör, kártya 16, dialógus/lap 24 (`SqlPulseShapes`, `Shapes.sheet`).
+- Fejléc: minden `TopAppBar` → `colors = sqlPulseTopBarColors()` (háttérszínű sáv).
+- Közös komponensek (`ui/components/Components.kt`): `StepIndicator` (összekötött, pipás lépések),
+  `ColorRail` (teljes magasság, `IntrinsicSize.Min` sor kell hozzá), `InfoBadge`, `SectionCaption`.
+- Új szövegek: `res/values*/strings_design.xml` (angol + magyar).
+- Ikon: `drawable/ic_launcher_{background,foreground,monochrome}.xml`, `ic_stat_pulse.xml`.
+- Helyi build: ebben a környezetben VAN Android SDK (`/opt/android-sdk`). A Maven Central 429-cel
+  válaszol a Gradle-nek, ezért a `~/.gradle/init.d/mirror.gradle.kts` (csak helyi, nincs a repóban)
+  a Google tükröt teszi előre. `./gradlew --no-configuration-cache compileDebugKotlin`.
+- A build által generált `app/schemas/` nincs verziókezelve — ne commitold.
+
 ## Haladás (napló)
 
 - 2026-09-22: Repó feltérképezése, ez a `CLAUDE.md` létrehozva. Kódváltozás nem történt.
@@ -123,6 +141,7 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   (Design vászon, 28 artboard, magyar szöveg). A §8 színeire és betűire épül, sötét alapértelmezéssel.
   Sorok: ikon + rendszer · belépés/kapcsolatok · lekérdezés/eredmény/írás · elemzés · séma ·
   szerver/pulzus/beállítások · világos téma + táblagép. Kódváltozás nem történt.
+- 2026-09-22: A látványterv beépítése a kódba (ld. „Látványterv a kódban” szakasz).
 
 ## Teendők / nyitott pontok
 
@@ -131,9 +150,10 @@ A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
 - [ ] **Séma-összehasonlítás** — két kapcsolat szerkezete egymás mellett (dev vs. éles eltérések).
 - [ ] **Éles próba minden képernyőn** — eddig csak a kapcsolat, a legacy driver ág és az SSH ág
       van valódi szerveren kipróbálva.
-- [ ] **Új ikon beépítése** — `res/drawable/ic_launcher.xml` cseréje a tervben szereplő
-      henger + pulzus ikonra (adaptív foreground/background + monochrome réteg Android 13+-hoz).
-- [ ] Látványterv eltérései a kódtól: a tervben lévő, de még nem létező UI elemek átnézése
-      (pl. környezetszűrő chipek a kapcsolatlistán, a Pulzus csempéin lévő sparkline).
+- [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.
+- [x] Látványterv beépítése (ld. lent).
+- [ ] Terv és kód maradék eltérései: a Szerver képernyő folyamatai rácsban maradtak (a tervben
+      kártyák); a táblagépes nézet a meglévő kéthasábos elrendezés.
+- [ ] Készüléken megnézni: betűk, ikon a különböző launcherekben, világos téma kontrasztja.
 - [ ] (Megfigyelés) `ui/query/QueryEditorScreen.kt` (~1500 sor) és `QueryEditorViewModel.kt`
       (~1200 sor) nagyok — esetleges szétbontás jelölt, ha hozzányúlunk.

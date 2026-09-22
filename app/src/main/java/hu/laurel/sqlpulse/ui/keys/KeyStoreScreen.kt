@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,12 +15,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,13 +48,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.InfoBadge
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -212,25 +220,50 @@ fun KeyStoreScreen(
 
 @Composable
 private fun KeyCard(key: SshKeyEntity, onCopyPublicKey: (SshKeyEntity) -> Unit, onDelete: () -> Unit) {
+    val semantic = LocalSemanticColors.current
+    val accent = MaterialTheme.colorScheme.primary
     HairlineCard {
         Row(
-            modifier = Modifier.padding(Spacing.l),
+            modifier = Modifier.padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.m),
         ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(accent.copy(alpha = 0.14f), Shapes.button),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Key, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+            }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(key.name, style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    Text(
+                        key.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    InfoBadge(
+                        "${key.algorithm} ${key.bits}",
+                        color = semantic.textSecondary,
+                        container = semantic.surfaceRaised,
+                    )
+                }
                 Text(
-                    "${key.algorithm} ${key.bits}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LocalSemanticColors.current.textSecondary,
+                    key.fingerprint,
+                    style = MonoStyles.fingerprint.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(key.fingerprint, style = MonoStyles.fingerprint)
             }
             IconButton(onClick = { onCopyPublicKey(key) }) {
-                Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.key_public_copy))
+                Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.key_public_copy), tint = semantic.textSecondary)
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.key_delete))
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.key_delete), tint = semantic.textSecondary)
             }
         }
     }

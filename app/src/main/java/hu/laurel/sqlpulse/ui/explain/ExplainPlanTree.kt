@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.ui.explain
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +40,7 @@ import hu.laurel.sqlpulse.data.sql.ExplainPlanFlag
 import hu.laurel.sqlpulse.data.sql.ExplainPlanNode
 import hu.laurel.sqlpulse.data.sql.ExplainPlanResult
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.ui.components.InfoBadge
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -192,12 +193,17 @@ private fun PlanNodeRows(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = (depth * 12).dp, top = Spacing.xs)
-            .clip(RoundedCornerShape(8.dp))
-            // Only the heaviest step is filled in: a whole branch in colour would say "look
-            // here" about five rows at once, which is the same as saying nothing.
-            .background(if (isHeaviest) semantic.warning.copy(alpha = 0.16f) else Color.Transparent)
+            .clip(RoundedCornerShape(12.dp))
+            // Every step is a card; only the heaviest is filled in: a whole branch in colour
+            // would say "look here" about five rows at once, which is the same as saying nothing.
+            .background(if (isHeaviest) semantic.danger.copy(alpha = 0.13f) else MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                if (isHeaviest) semantic.danger else semantic.hairline,
+                RoundedCornerShape(12.dp),
+            )
             .clickable(enabled = node.children.isNotEmpty()) { onToggle(node.id) }
-            .padding(Spacing.xs),
+            .padding(horizontal = Spacing.s, vertical = Spacing.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (node.children.isNotEmpty()) {
@@ -215,7 +221,11 @@ private fun PlanNodeRows(
             Text(
                 text = stringResource(node.kind.labelRes()),
                 style = MaterialTheme.typography.labelMedium,
-                color = if (onBranch) semantic.warning else semantic.textSecondary,
+                color = when {
+                    isHeaviest -> semantic.danger
+                    onBranch -> semantic.warning
+                    else -> semantic.textSecondary
+                },
             )
             Text(
                 text = " ${node.label}",
@@ -241,11 +251,10 @@ private fun PlanNodeRows(
         }
 
         if (isHeaviest) {
-            Text(
-                text = stringResource(R.string.plan_expensive),
-                style = MaterialTheme.typography.labelSmall,
-                color = semantic.warning,
-                modifier = Modifier.padding(start = 18.dp),
+            InfoBadge(
+                text = stringResource(R.string.plan_expensive_badge),
+                color = semantic.danger,
+                modifier = Modifier.padding(start = 18.dp, top = Spacing.xs),
             )
         }
 

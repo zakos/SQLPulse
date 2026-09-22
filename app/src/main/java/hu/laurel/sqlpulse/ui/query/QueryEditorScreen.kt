@@ -4,28 +4,33 @@ import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -43,6 +48,7 @@ import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,8 +56,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -72,6 +78,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -83,31 +92,33 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.chart.ChartSpec
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
-import hu.laurel.sqlpulse.data.sql.ParameterType
-import hu.laurel.sqlpulse.data.sql.ParameterValue
-import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
-import hu.laurel.sqlpulse.ui.components.EmptyState
-import hu.laurel.sqlpulse.ui.connections.shortLabel
-import hu.laurel.sqlpulse.ui.components.isWideWindow
-import hu.laurel.sqlpulse.ui.copyToClipboard
-import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
-import hu.laurel.sqlpulse.data.chart.ChartSpec
 import hu.laurel.sqlpulse.data.grid.ResultFilter
 import hu.laurel.sqlpulse.data.grid.ResultFilters
+import hu.laurel.sqlpulse.data.sql.ParameterType
+import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
+import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
+import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.components.isWideWindow
+import hu.laurel.sqlpulse.ui.connections.shortLabel
+import hu.laurel.sqlpulse.ui.copyToClipboard
+import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
 import hu.laurel.sqlpulse.ui.grid.CellSelection
-import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.CellSheet
+import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
 import hu.laurel.sqlpulse.ui.snapshot.SnapshotSheet
@@ -429,15 +440,29 @@ fun QueryEditorScreen(
 
                 // The key row: characters that are three taps deep on a phone keyboard.
                 if (!state.editorCollapsed) {
+                    // Flat keys on a strip of their own, so they read as an extension of the
+                    // keyboard below rather than as buttons belonging to the editor.
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                            .drawBehind { drawRect(semantic.hairline, size = size.copy(height = 1.dp.toPx())) },
+                        contentPadding = PaddingValues(horizontal = Spacing.m, vertical = Spacing.s),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         items(KEY_ROW_ITEMS) { item ->
-                            AssistChip(
-                                onClick = { viewModel.append(item) },
-                                label = { Text(item, style = MonoStyles.cell) },
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .widthIn(min = 44.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(semantic.surfaceRaised)
+                                    .clickable(role = Role.Button) { viewModel.append(item) }
+                                    .padding(horizontal = Spacing.m),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(item, style = MonoStyles.cell.copy(fontSize = 14.sp))
+                            }
                         }
                     }
                 }
@@ -449,7 +474,15 @@ fun QueryEditorScreen(
                         horizontalArrangement = Arrangement.spacedBy(Spacing.m),
                     ) {
                         if (state.running) {
-                            Button(onClick = viewModel::cancel, shape = Shapes.button) {
+                            Button(
+                                onClick = viewModel::cancel,
+                                shape = Shapes.button,
+                                modifier = Modifier.height(52.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = semantic.danger,
+                                    contentColor = MaterialTheme.colorScheme.onError,
+                                ),
+                            ) {
                                 Icon(Icons.Default.Stop, contentDescription = null)
                                 Text(
                                     stringResource(R.string.query_cancel),
@@ -461,6 +494,7 @@ fun QueryEditorScreen(
                                 onClick = { viewModel.run() },
                                 enabled = state.sql.isNotBlank() && state.connectionName != null,
                                 shape = Shapes.button,
+                                modifier = Modifier.height(52.dp),
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                                 Text(
@@ -805,6 +839,7 @@ private fun ResultPanel(
         result == null -> Placeholder(R.string.query_no_result_yet)
         result.columns.isEmpty() -> Placeholder(R.string.query_no_result_yet)
         else -> Column {
+            val semantic = LocalSemanticColors.current
             val visible = remember(result, state.resultFilter) {
                 ResultFilters.apply(result, state.resultFilter)
             }
@@ -814,23 +849,38 @@ private fun ResultPanel(
             // else falls back to the flat reading, which is what an older server gives.
             ExplainPlanSection(result)
 
-            // One line, not two: the note about the added LIMIT belongs with the row count, and
-            // the two ways of looking at the rows sit at the end of the same line.
+            // The count in the ordinary text colour, the added LIMIT quietly under it, and the
+            // ways of looking at the rows at the end of the same bar.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(start = Spacing.l),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        drawRect(
+                            semantic.hairline,
+                            topLeft = Offset(0f, size.height - 1.dp.toPx()),
+                            size = size.copy(height = 1.dp.toPx()),
+                        )
+                    }
+                    .padding(start = Spacing.l),
             ) {
-                Text(
-                    text = listOfNotNull(
-                        stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
-                        stringResource(R.string.grid_limit_added).takeIf { result.limitAdded },
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LocalSemanticColors.current.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.query_result_summary, result.rowCount, result.durationMs),
+                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (result.limitAdded) {
+                        Text(
+                            text = stringResource(R.string.grid_limit_added),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = semantic.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 IconButton(onClick = onToggleFilter) {
                     Icon(
                         imageVector = Icons.Default.FilterList,
@@ -1283,18 +1333,20 @@ private fun TransactionBar(onCommit: () -> Unit, onRollback: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(semantic.surfaceRaised)
-            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+            .background(semantic.warning.copy(alpha = 0.14f))
+            .drawBehind { drawRect(semantic.warning.copy(alpha = 0.4f), size = size.copy(height = 1.dp.toPx())) }
+            .padding(start = Spacing.l, end = Spacing.m, top = Spacing.s, bottom = Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s),
     ) {
+        Icon(Icons.Default.CallSplit, contentDescription = null, tint = semantic.warning, modifier = Modifier.size(18.dp))
         Text(
             text = stringResource(R.string.transaction_open),
             style = MaterialTheme.typography.bodySmall,
             color = semantic.warning,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onRollback) { Text(stringResource(R.string.transaction_rollback)) }
+        OutlinedButton(onClick = onRollback, shape = Shapes.button) { Text(stringResource(R.string.transaction_rollback)) }
         Button(onClick = onCommit, shape = Shapes.button) {
             Text(stringResource(R.string.transaction_commit))
         }

@@ -3,8 +3,11 @@ package hu.laurel.sqlpulse.ui.connections
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -41,7 +45,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -55,6 +63,7 @@ import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -651,7 +660,7 @@ private fun TlsSection(
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        SectionCaption(title, modifier = Modifier.padding(start = Spacing.xs, top = Spacing.s))
         HairlineCard {
             Column(
                 modifier = Modifier.padding(Spacing.l),
@@ -663,15 +672,29 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun ColorPicker(selected: ConnectionColor, onSelect: (ConnectionColor) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+    val ground = MaterialTheme.colorScheme.surface
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         ConnectionColor.entries.forEach { option ->
-            Surface(
+            val chosen = option == selected
+            // The swatch is 36dp, its touch target the full 44; the chosen one gets a ring set
+            // off from it by a gap of the card's own colour, so it reads without the fill changing.
+            Box(
                 modifier = Modifier
-                    .size(if (option == selected) 32.dp else 24.dp)
-                    .clickable { onSelect(option) },
-                shape = CircleShape,
-                color = option.value,
-            ) {}
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .selectable(selected = chosen, role = Role.RadioButton) { onSelect(option) }
+                    .semantics { contentDescription = option.name },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .then(if (chosen) Modifier.border(2.dp, option.value, CircleShape) else Modifier)
+                        .padding(if (chosen) 4.dp else 0.dp)
+                        .background(option.value, CircleShape)
+                        .then(if (chosen) Modifier.border(1.dp, ground, CircleShape) else Modifier),
+                )
+            }
         }
     }
 }

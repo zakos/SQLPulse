@@ -14,4 +14,5 @@
     <string name="snapshot_stat_added">új sor</string>
     <string name="snapshot_stat_changed">változott</string>
     <string name="snapshot_stat_removed">eltűnt</string>
+    <string name="plan_expensive_badge">Legdrágább</string>
 </resources>

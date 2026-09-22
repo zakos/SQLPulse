@@ -16,7 +16,6 @@
 
     <string name="snapshot_title">Időgép</string>
     <string name="snapshot_times">%1$s → %2$s</string>
-    <string name="snapshot_summary">%1$d új · %2$d eltűnt · %3$d változott</string>
     <string name="snapshot_unchanged">%1$d változatlan</string>
     <string name="snapshot_identical">A felvétel óta semmi nem változott.</string>
     <string name="snapshot_match_key">A sorok párosítása elsődleges kulcs szerint: %1$s</string>

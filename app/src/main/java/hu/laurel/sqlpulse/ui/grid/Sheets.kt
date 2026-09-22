@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.grid
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,11 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
-import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.JsonFormatter
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -72,8 +76,20 @@ fun CellSheet(
                 .padding(bottom = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.m),
         ) {
-            Text(column.label, style = MaterialTheme.typography.titleMedium)
-            Text(column.typeName, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+            // Column name and type on one line, in the grid's own monospace: the sheet is a closer
+            // look at a cell, and should read as the same thing.
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                Text(
+                    column.label,
+                    style = MonoStyles.cell.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+                )
+                Text(
+                    column.typeName,
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
 
             val raw = value.asText()
             // Only offered when the text really parses as JSON, so the toggle never promises a
@@ -97,12 +113,15 @@ fun CellSheet(
                     showFormatted && formatted != null -> formatted
                     else -> raw
                 },
-                style = MonoStyles.cell,
+                style = MonoStyles.cell.copy(lineHeight = 22.sp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background, Shapes.button)
+                    .border(1.dp, semantic.hairline, Shapes.button)
                     .heightIn(max = 240.dp)
                     .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = Spacing.m),
             )
 
             blobPreview?.takeIf { it.truncated }?.let {
