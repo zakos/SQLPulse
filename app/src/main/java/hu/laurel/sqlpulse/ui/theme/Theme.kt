@@ -131,6 +131,13 @@ data class SemanticColors(
     val textSecondary: Color,
     /** Raised surface: bottom sheets, and the grid header that stays put over the rows (§8). */
     val surfaceRaised: Color,
+    /**
+     * Cell type colours (§8). The spec's values are for the dark theme; on white they fall far
+     * short of legible, so the light theme takes deeper shades of the same hues.
+     */
+    val cellNumber: Color = SqlPulseColors.CellNumber,
+    val cellDate: Color = SqlPulseColors.CellDate,
+    val cellNull: Color = SqlPulseColors.CellNull,
 )
 
 val LocalSemanticColors = staticCompositionLocalOf {
@@ -188,6 +195,9 @@ fun SqlPulseTheme(
             hairline = SqlPulseColors.HairlineLight,
             textSecondary = SqlPulseColors.LightTextSecondary,
             surfaceRaised = SqlPulseColors.LightSurfaceRaised,
+            cellNumber = SqlPulseColors.LightCellNumber,
+            cellDate = SqlPulseColors.LightCellDate,
+            cellNull = SqlPulseColors.LightCellNull,
         )
     }
     CompositionLocalProvider(

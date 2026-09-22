@@ -1,9 +1,9 @@
 package hu.laurel.sqlpulse.ui.grid
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -56,10 +56,9 @@ import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
-import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.LocalGridFontScale
+import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
-import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
 
 /** What the grid hands back when the user picks a cell or a row. */
@@ -335,6 +334,7 @@ private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick:
 
 @Composable
 internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modifier) {
+    val semantic = LocalSemanticColors.current
     val text: String
     val color: Color
     var italic = false
@@ -342,23 +342,23 @@ internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Mod
     when (value) {
         is CellValue.Null -> {
             text = "NULL"
-            color = SqlPulseColors.CellNull
+            color = semantic.cellNull
             italic = true
         }
 
         is CellValue.Number -> {
             text = value.value
-            color = SqlPulseColors.CellNumber
+            color = semantic.cellNumber
         }
 
         is CellValue.Date -> {
             text = value.value
-            color = SqlPulseColors.CellDate
+            color = semantic.cellDate
         }
 
         is CellValue.Bool -> {
             text = if (value.value) "1" else "0"
-            color = SqlPulseColors.CellNumber
+            color = semantic.cellNumber
         }
 
         // §7.5, §11: a BLOB shows its size in the grid, never its contents.

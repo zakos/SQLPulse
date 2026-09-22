@@ -4,11 +4,22 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,8 +29,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,8 +45,10 @@ import hu.laurel.sqlpulse.security.ActivityHolder
 import hu.laurel.sqlpulse.security.BiometricUnlock
 import hu.laurel.sqlpulse.security.LockManager
 import hu.laurel.sqlpulse.ui.SqlPulseApp
-import hu.laurel.sqlpulse.ui.theme.SqlPulseTheme
+import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
+import hu.laurel.sqlpulse.ui.theme.SqlPulseTheme
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 
@@ -119,25 +137,79 @@ class MainActivity : FragmentActivity() {
 /** What the app shows after locking itself: no data, just the way back in (§6). */
 @Composable
 private fun LockScreen(onUnlock: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
     // Rendered instead of SqlPulseApp, so no screen state stays alive behind it.
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier.fillMaxSize().padding(Spacing.xl),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.spacedBy(Spacing.xl, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = stringResource(R.string.lock_title),
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = stringResource(R.string.lock_body),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(vertical = Spacing.m),
-            )
-            Button(onClick = onUnlock) { Text(stringResource(R.string.lock_unlock)) }
+            // The launcher icon's own layers: an adaptive icon cannot be drawn by a painter, and
+            // its ground stays dark in the light theme too, as it does on the home screen.
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(SqlPulseColors.DarkBackground)
+                    .border(1.dp, SqlPulseColors.HairlineDark, RoundedCornerShape(30.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(132.dp),
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.s),
+            ) {
+                Text(
+                    text = stringResource(R.string.lock_title),
+                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 24.sp),
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = stringResource(R.string.lock_body),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    color = LocalSemanticColors.current.textSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 300.dp),
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.m),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(108.dp)
+                        .background(accent.copy(alpha = 0.14f), CircleShape)
+                        .padding(10.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                        .clickable(
+                            onClickLabel = stringResource(R.string.lock_unlock),
+                            role = Role.Button,
+                            onClick = onUnlock,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Fingerprint,
+                        contentDescription = stringResource(R.string.lock_unlock),
+                        tint = accent,
+                        modifier = Modifier.size(44.dp),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.lock_unlock),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalSemanticColors.current.textSecondary,
+                )
+            }
         }
     }
 }

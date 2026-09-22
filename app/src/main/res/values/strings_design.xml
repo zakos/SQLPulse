@@ -5,4 +5,13 @@
     <string name="connections_filter_all">All · %1$d</string>
     <string name="pulse_health_busy">Watch</string>
     <string name="pulse_health_alarmed">Alert</string>
+    <string name="diag_excluded">Never included:</string>
+    <string name="diag_excluded_hosts">host names</string>
+    <string name="diag_excluded_users">user names</string>
+    <string name="diag_excluded_databases">database names</string>
+    <string name="diag_excluded_queries">queries</string>
+    <string name="diag_excluded_secrets">secrets</string>
+    <string name="snapshot_stat_added">new rows</string>
+    <string name="snapshot_stat_changed">changed</string>
+    <string name="snapshot_stat_removed">gone</string>
 </resources>

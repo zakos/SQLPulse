@@ -38,6 +38,11 @@ object SqlPulseColors {
     val CellNull = Color(0xFF858C98)
     val CellDate = Color(0xFFC4A7F0)
 
+    // The same three on the light theme's white, dark enough to reach 4.5:1.
+    val LightCellNumber = Color(0xFF0B7A96)
+    val LightCellNull = Color(0xFF6B717A)
+    val LightCellDate = Color(0xFF7A4FC2)
+
     /** Hairline border used instead of elevation shadows on dark surfaces. */
     val HairlineDark = Color(0x10FFFFFF)
     val HairlineLight = Color(0x14000000)

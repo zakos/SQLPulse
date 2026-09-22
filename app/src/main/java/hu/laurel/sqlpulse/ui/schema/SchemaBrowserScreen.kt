@@ -6,15 +6,16 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -23,12 +24,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -57,9 +61,10 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.R
@@ -577,42 +582,57 @@ private fun ObjectRow(name: String, detail: String?, trailing: String?, onClick:
 @Composable
 private fun TableRow(table: SchemaTable, onClick: () -> Unit) {
     val semantic = LocalSemanticColors.current
+    val view = table.kind == TableKind.VIEW
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.l, vertical = Spacing.m),
+            .padding(start = Spacing.l, end = Spacing.m, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(table.name, style = MonoStyles.cell)
-            table.comment?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+        Icon(
+            if (view) Icons.Default.Visibility else Icons.Default.TableChart,
+            contentDescription = null,
+            tint = semantic.textSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(table.name, style = MonoStyles.cell.copy(fontSize = 14.sp))
+            // Engine under the name, the way the design reads a table: what it is, then how big.
+            val detail = listOfNotNull(
+                table.engine?.takeIf { !view },
+                table.comment?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            if (detail.isNotBlank()) {
+                Text(detail, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = semantic.textSecondary)
             }
         }
-        Column(horizontalAlignment = Alignment.End) {
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = if (table.kind == TableKind.VIEW) {
+                text = if (view) {
                     stringResource(R.string.schema_view)
                 } else {
                     table.approximateRows?.let { stringResource(R.string.schema_rows_approx, it) }.orEmpty()
                 },
-                style = MaterialTheme.typography.bodySmall,
-                color = semantic.textSecondary,
+                style = MonoStyles.cellNumber.copy(fontSize = 12.sp),
+                color = if (view) semantic.textSecondary else semantic.cellNumber,
             )
-            // Engine and size only for real tables: a view has neither.
-            val storage = listOfNotNull(
-                table.engine?.takeIf { table.kind == TableKind.TABLE },
-                table.totalBytes?.takeIf { table.kind == TableKind.TABLE }?.let { formatByteSize(it) },
-            ).joinToString(" · ")
-            if (storage.isNotBlank()) {
+            // Size only for real tables: a view has none.
+            table.totalBytes?.takeIf { !view }?.let {
                 Text(
-                    storage,
-                    style = MaterialTheme.typography.bodySmall,
+                    formatByteSize(it),
+                    style = MonoStyles.cellNumber.copy(fontSize = 11.sp),
                     color = semantic.textSecondary,
                 )
             }
         }
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = semantic.textSecondary.copy(alpha = 0.6f),
+            modifier = Modifier.size(16.dp),
+        )
     }
 }
 

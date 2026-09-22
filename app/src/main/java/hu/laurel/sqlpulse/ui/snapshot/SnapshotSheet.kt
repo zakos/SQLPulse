@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.snapshot
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,9 +19,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.snapshot.ComparisonOutcome
 import hu.laurel.sqlpulse.data.snapshot.MatchStrategy
@@ -109,15 +115,17 @@ private fun DiffBody(diff: ResultDiff) {
         color = semantic.textSecondary,
     )
 
-    Text(
-        text = stringResource(
-            R.string.snapshot_summary,
-            diff.addedCount,
-            diff.removedCount,
-            diff.changedCount,
-        ),
-        style = MaterialTheme.typography.bodyMedium,
-    )
+    // Three counts side by side, each with its sign and its word as well as its colour.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        DiffStat("+${diff.addedCount}", stringResource(R.string.snapshot_stat_added), semantic.success, Modifier.weight(1f))
+        DiffStat("~${diff.changedCount}", stringResource(R.string.snapshot_stat_changed), semantic.warning, Modifier.weight(1f))
+        DiffStat("−${diff.removedCount}", stringResource(R.string.snapshot_stat_removed), semantic.danger, Modifier.weight(1f))
+    }
     Text(
         text = stringResource(R.string.snapshot_unchanged, diff.unchangedCount),
         style = MaterialTheme.typography.bodySmall,
@@ -180,6 +188,24 @@ private fun DiffBody(diff: ResultDiff) {
 }
 
 @Composable
+private fun DiffStat(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface, Shapes.button)
+            .border(1.dp, LocalSemanticColors.current.hairline, Shapes.button)
+            .padding(Spacing.m),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            value,
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+            color = color,
+        )
+        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = LocalSemanticColors.current.textSecondary)
+    }
+}
+
+@Composable
 private fun DiffRow(row: RowDiff, columns: List<String>) {
     val semantic = LocalSemanticColors.current
     val colour: Color = when (row.kind) {
@@ -193,7 +219,15 @@ private fun DiffRow(row: RowDiff, columns: List<String>) {
         RowChangeKind.CHANGED -> R.string.snapshot_row_changed
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            // A tinted row with a coloured edge, as in the time machine design: which way a row
+            // moved is visible before any of it is read.
+            .background(colour.copy(alpha = if (row.kind == RowChangeKind.CHANGED) 0.06f else 0.10f))
+            .drawBehind { drawRect(colour, size = size.copy(width = 3.dp.toPx())) }
+            .padding(start = Spacing.m, end = Spacing.s, top = Spacing.s, bottom = Spacing.s),
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
             Text(
                 text = stringResource(label),

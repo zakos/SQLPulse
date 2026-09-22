@@ -396,7 +396,15 @@ fun QueryEditorScreen(
                             viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
                         },
                         textStyle = MonoStyles.editor,
-                        visualTransformation = SqlVisualTransformation(plain = MaterialTheme.colorScheme.onSurface),
+                        visualTransformation = SqlVisualTransformation(
+                            plain = MaterialTheme.colorScheme.onSurface,
+                            keyword = MaterialTheme.colorScheme.primary,
+                            string = LocalSemanticColors.current.success,
+                            number = LocalSemanticColors.current.cellNumber,
+                            comment = LocalSemanticColors.current.cellNull,
+                            identifier = LocalSemanticColors.current.cellDate,
+                            parameter = LocalSemanticColors.current.warning,
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = if (wide) 320.dp else 160.dp)

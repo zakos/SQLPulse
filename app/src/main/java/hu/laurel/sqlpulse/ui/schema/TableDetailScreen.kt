@@ -69,6 +69,7 @@ import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnEditors
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
+import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
@@ -555,10 +556,9 @@ private fun FilterBar(
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(
+    SectionCaption(
         text = title,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(start = Spacing.l, top = Spacing.l, bottom = Spacing.s),
+        modifier = Modifier.padding(start = Spacing.l, top = Spacing.xl, bottom = Spacing.s),
     )
 }
 
