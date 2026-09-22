@@ -57,6 +57,7 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * Key store (§5, §7.7). Three ways in — file, paste, generate — all landing in the same import
@@ -101,6 +102,7 @@ fun KeyStoreScreen(
         snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.keys_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

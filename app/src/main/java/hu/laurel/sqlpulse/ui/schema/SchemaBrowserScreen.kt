@@ -79,6 +79,7 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import java.text.DateFormat
 import java.util.Date
 import javax.inject.Inject
@@ -124,6 +125,7 @@ fun SchemaBrowserScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = {
                     Column {
                         Text(stringResource(R.string.schema_title))

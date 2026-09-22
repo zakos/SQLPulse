@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,16 +31,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.schema.Health
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.Sparkline
+import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
-import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * The live server screen the app is named after.
@@ -66,6 +71,7 @@ fun PulseScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.pulse_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -135,17 +141,35 @@ private fun MetricTile(metric: Metric) {
 
     HairlineCard {
         Column(
-            modifier = Modifier.padding(Spacing.l),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            modifier = Modifier.padding(start = Spacing.m, end = Spacing.m, top = Spacing.m, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                stringResource(metric.id.labelRes()),
-                style = MaterialTheme.typography.labelMedium,
-                color = semantic.textSecondary,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(metric.id.labelRes()),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // The colour of a tile is never the only sign that it wants attention.
+                if (metric.health != Health.CALM) {
+                    StatusDot(
+                        color = colour,
+                        label = stringResource(
+                            if (metric.health == Health.ALARMED) R.string.pulse_health_alarmed else R.string.pulse_health_busy,
+                        ),
+                    )
+                }
+            }
             Text(
                 metric.display,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFeatureSettings = "tnum",
+                ),
                 // A calm number stays in the ordinary text colour; only what is worth noticing
                 // takes a colour, or every tile would be shouting.
                 color = if (metric.health == Health.CALM) {
@@ -154,15 +178,15 @@ private fun MetricTile(metric: Metric) {
                     colour
                 },
             )
-            Text(
-                stringResource(metric.id.unitRes()),
-                style = MonoStyles.cell,
-                color = semantic.textSecondary,
-            )
             Sparkline(
                 series = metric.series,
-                color = if (metric.health == Health.CALM) semantic.success else colour,
+                color = if (metric.health == Health.CALM) MaterialTheme.colorScheme.primary else colour,
                 modifier = Modifier.fillMaxWidth().height(SPARKLINE_HEIGHT),
+            )
+            Text(
+                stringResource(metric.id.unitRes()),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = semantic.textSecondary,
             )
         }
     }

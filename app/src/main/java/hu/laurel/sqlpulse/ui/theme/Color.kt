@@ -34,7 +34,8 @@ object SqlPulseColors {
 
     // Result-grid cell types (§8) — deliberately muted.
     val CellNumber = Color(0xFF7FD1E8)
-    val CellNull = Color(0xFF6B7280)
+    // A touch lighter than the §8 value (#6B7280), which falls short of 4.5:1 on the dark surface.
+    val CellNull = Color(0xFF858C98)
     val CellDate = Color(0xFFC4A7F0)
 
     /** Hairline border used instead of elevation shadows on dark surfaces. */

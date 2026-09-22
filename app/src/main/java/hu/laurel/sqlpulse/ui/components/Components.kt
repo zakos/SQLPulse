@@ -8,13 +8,22 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.ssh.ConnectStep
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -69,8 +79,9 @@ fun StatusDot(color: Color, label: String, pulsing: Boolean = false, modifier: M
 }
 
 /**
- * The four-dot stepped connection indicator (§8): key, SSH, MySQL, schema. The failing step turns
- * red and the concrete error is shown underneath.
+ * The stepped connection indicator (§8): key, SSH, MySQL, schema, joined by a line that fills as
+ * the steps complete. A finished step carries a tick and a failed one a cross, so the state is
+ * readable without telling green from red; the concrete error goes underneath, in the caller.
  */
 @Composable
 fun StepIndicator(
@@ -82,25 +93,71 @@ fun StepIndicator(
     modifier: Modifier = Modifier,
 ) {
     val semantic = LocalSemanticColors.current
+    val idle = semantic.textSecondary.copy(alpha = 0.45f)
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        steps.forEach { step ->
+        steps.forEachIndexed { index, step ->
             val color = when {
                 step == failed -> semantic.danger
                 step in completed -> semantic.success
                 step == current -> semantic.warning
-                else -> semantic.textSecondary.copy(alpha = 0.3f)
+                else -> idle
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(modifier = Modifier.size(8.dp), shape = CircleShape, color = color) {}
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .then(
+                            if (step == current) {
+                                Modifier.border(4.dp, color.copy(alpha = 0.2f), CircleShape)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .border(2.dp, color, CircleShape)
+                        .background(
+                            if (step in completed || step == failed) color else Color.Transparent,
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val mark = when {
+                        step == failed -> Icons.Default.Close
+                        step in completed -> Icons.Default.Check
+                        else -> null
+                    }
+                    if (mark != null) {
+                        Icon(
+                            mark,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.background,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
                 Text(
                     text = labels(step),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (step == failed) semantic.danger else semantic.textSecondary,
-                    modifier = Modifier.padding(start = Spacing.xs),
+                    color = when {
+                        step == failed -> semantic.danger
+                        step in completed || step == current -> MaterialTheme.colorScheme.onSurface
+                        else -> semantic.textSecondary
+                    },
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
+            if (index < steps.lastIndex) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(2.dp)
+                        .background(
+                            if (step in completed) semantic.success else semantic.hairline,
+                            RoundedCornerShape(1.dp),
+                        ),
                 )
             }
         }
@@ -148,13 +205,44 @@ fun EmptyState(
     }
 }
 
-/** Left-edge colour bar of a connection card; red for production, and it cannot be hidden (§8). */
+/**
+ * Left-edge colour bar of a connection card; red for production, and it cannot be hidden (§8).
+ * It runs the card's full height, so the row it sits in needs an intrinsic height.
+ */
 @Composable
 fun ColorRail(color: Color, modifier: Modifier = Modifier) {
-    Surface(
+    Box(
         modifier = modifier
-            .size(width = 3.dp, height = 56.dp)
+            .width(4.dp)
+            .fillMaxHeight()
             .background(color),
+    )
+}
+
+/**
+ * A small tag in capitals — ÉLES, TLS, CSAK OLVASÁS — on a tinted ground of its own colour.
+ * Short on purpose: it names a fact about the thing next to it, it does not explain it.
+ */
+@Composable
+fun InfoBadge(text: String, color: Color, modifier: Modifier = Modifier, container: Color = color.copy(alpha = 0.15f)) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
         color = color,
-    ) {}
+        maxLines = 1,
+        modifier = modifier
+            .background(container, RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    )
+}
+
+/** Section caption in small capitals, the way every grouped screen in §8 heads its parts. */
+@Composable
+fun SectionCaption(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+        color = LocalSemanticColors.current.textSecondary,
+        modifier = modifier,
+    )
 }

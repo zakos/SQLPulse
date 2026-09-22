@@ -85,6 +85,7 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,6 +132,7 @@ fun TableDetailScreen(
         snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = {
                     Column {
                         Text(state.table, style = MaterialTheme.typography.titleMedium)

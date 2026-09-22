@@ -52,6 +52,7 @@ import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * Server screen: what is running right now, and a short overview (§3, DBA role).
@@ -75,6 +76,7 @@ fun ServerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.server_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

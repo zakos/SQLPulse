@@ -33,6 +33,7 @@ import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * The diagnostics report: what to paste into a bug report, and nothing else.
@@ -94,6 +95,7 @@ fun DiagnosticsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.diag_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

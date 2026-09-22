@@ -65,6 +65,7 @@ import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import kotlin.math.max
 import kotlin.math.min
 
@@ -94,6 +95,7 @@ fun SchemaMapScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = {
                     Column {
                         Text(stringResource(R.string.map_title))

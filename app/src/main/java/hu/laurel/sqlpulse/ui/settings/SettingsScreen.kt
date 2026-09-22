@@ -35,6 +35,7 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.ThemePreference
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /** Settings (§7.7): key store, default row limit, auto-lock, theme and grid font size. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +56,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

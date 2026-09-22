@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_badge_tls">TLS</string>
+    <string name="connection_badge_read_only">Csak olvasás</string>
+    <string name="connections_filter_all">Mind · %1$d</string>
+    <string name="pulse_health_busy">Figyelj</string>
+    <string name="pulse_health_alarmed">Riasztás</string>
+</resources>
