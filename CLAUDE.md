@@ -119,6 +119,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
 ## Haladás (napló)
 
 - 2026-09-22: Repó feltérképezése, ez a `CLAUDE.md` létrehozva. Kódváltozás nem történt.
+- 2026-09-22: Teljes látványterv és új ikon: https://claude.ai/artifact/KrDZqBn9ggQpZBMYXu9eKH
+  (Design vászon, 28 artboard, magyar szöveg). A §8 színeire és betűire épül, sötét alapértelmezéssel.
+  Sorok: ikon + rendszer · belépés/kapcsolatok · lekérdezés/eredmény/írás · elemzés · séma ·
+  szerver/pulzus/beállítások · világos téma + táblagép. Kódváltozás nem történt.
 
 ## Teendők / nyitott pontok
 
@@ -127,5 +131,9 @@ A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
 - [ ] **Séma-összehasonlítás** — két kapcsolat szerkezete egymás mellett (dev vs. éles eltérések).
 - [ ] **Éles próba minden képernyőn** — eddig csak a kapcsolat, a legacy driver ág és az SSH ág
       van valódi szerveren kipróbálva.
+- [ ] **Új ikon beépítése** — `res/drawable/ic_launcher.xml` cseréje a tervben szereplő
+      henger + pulzus ikonra (adaptív foreground/background + monochrome réteg Android 13+-hoz).
+- [ ] Látványterv eltérései a kódtól: a tervben lévő, de még nem létező UI elemek átnézése
+      (pl. környezetszűrő chipek a kapcsolatlistán, a Pulzus csempéin lévő sparkline).
 - [ ] (Megfigyelés) `ui/query/QueryEditorScreen.kt` (~1500 sor) és `QueryEditorViewModel.kt`
       (~1200 sor) nagyok — esetleges szétbontás jelölt, ha hozzányúlunk.
