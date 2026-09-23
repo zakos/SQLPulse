@@ -133,6 +133,11 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   válaszol a Gradle-nek, ezért a `~/.gradle/init.d/mirror.gradle.kts` (csak helyi, nincs a repóban)
   a Google tükröt teszi előre. `./gradlew --no-configuration-cache compileDebugKotlin`.
 - A build által generált `app/schemas/` nincs verziókezelve — ne commitold.
+- **Képernyőképek a terv mellé (Paparazzi)**: `./gradlew --no-configuration-cache recordPaparazziDebug`
+  → `app/src/test/snapshots/images/` (verziókezelve). Tesztek: `app/src/test/.../ui/screenshots/`,
+  eszköz: 390×844 dp @2× (`DesignPhone`), magyar locale. Minden képernyőnek van `…Content(…, viewModel: XController)`
+  változata; a ViewModel implementálja az interfészt, a teszt hamis controllerrel rajzol.
+  A lint a tesztforrásokat kihagyja (`ignoreTestSources`), mert a Paparazzi layoutlibje mellett összeomlik rajtuk.
 - **APK helyben** (a debug APK ~94 MB, a fájlküldés korlátja 30 MB): `assembleRelease` (R8, aláíratlan)
   → `zip -d … 'lib/x86/*' 'lib/x86_64/*'` → `zipalign -p 4` → `apksigner sign` egy scratchpadban
   generált próbakulccsal → ~20 MB. A próbakulcs nem a CI kulcsa, ezért ez az APK nem frissít
@@ -147,6 +152,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   szerver/pulzus/beállítások · világos téma + táblagép. Kódváltozás nem történt.
 - 2026-09-22: A látványterv beépítése a kódba (ld. „Látványterv a kódban” szakasz).
 - 2026-09-23: Helyben fordított APK (0.1.1, R8, arm64 + armv7) átadva próbára.
+- 2026-09-23: A felhasználó szerint az első APK-ban a tervből alig látszott valami (jogos: csak
+  átszínezés volt). Paparazzi képernyőképekkel képernyőnként összevetve a tervvel és átépítve:
+  kapcsolatlista, SQL szerkesztő, eredményrács, séma, tábla, térkép (+ nagyítási hiba javítva),
+  pulzus, szerver, beállítások, kulcstár, szerkesztő, mentés, diagnosztika, zárolás. Új APK átadva.
 
 ## Teendők / nyitott pontok
 
@@ -157,8 +166,9 @@ A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
       van valódi szerveren kipróbálva.
 - [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.
 - [x] Látványterv beépítése (ld. lent).
-- [ ] Terv és kód maradék eltérései: a Szerver képernyő folyamatai rácsban maradtak (a tervben
-      kártyák); a táblagépes nézet a meglévő kéthasábos elrendezés.
+- [ ] Terv és kód maradék eltérései: a kiegészítés chip-sor (a tervben felugró lista), a CSV import,
+      az export lap, az írás-megerősítő dialógusok és az EXPLAIN/diagram/időgép nézetek nincsenek
+      képernyőképpel összevetve; a táblagépes nézet a meglévő kéthasábos elrendezés.
 - [ ] Készüléken megnézni: betűk, ikon a különböző launcherekben, világos téma kontrasztja.
 - [ ] (Megfigyelés) `ui/query/QueryEditorScreen.kt` (~1500 sor) és `QueryEditorViewModel.kt`
       (~1200 sor) nagyok — esetleges szétbontás jelölt, ha hozzányúlunk.
