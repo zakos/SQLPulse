@@ -48,10 +48,10 @@ class DiagnosticsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessions: SqlSessionManager,
     private val server: ServerRepository,
-) : ViewModel() {
+) : ViewModel(), DiagnosticsController {
 
     private val _uiState = MutableStateFlow(DiagnosticsUiState())
-    val uiState: StateFlow<DiagnosticsUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<DiagnosticsUiState> = _uiState.asStateFlow()
 
     init {
         refresh()
@@ -90,7 +90,7 @@ class DiagnosticsViewModel @Inject constructor(
         }
     }
 
-    fun markCopied() {
+    override fun markCopied() {
         _uiState.value = _uiState.value.copy(copied = true)
     }
 

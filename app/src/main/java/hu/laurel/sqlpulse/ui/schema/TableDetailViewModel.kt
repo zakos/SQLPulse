@@ -133,13 +133,13 @@ class TableDetailViewModel @Inject constructor(
     private val importer: CsvImporter,
     private val exports: ExportManager,
     private val sessions: SqlSessionManager,
-) : ViewModel() {
+) : ViewModel(), TableDetailController {
 
     private val database: String = Uri.decode(savedStateHandle["database"] ?: "")
     private val table: String = Uri.decode(savedStateHandle["table"] ?: "")
 
     private val _uiState = MutableStateFlow(TableDetailUiState(database = database, table = table))
-    val uiState: StateFlow<TableDetailUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<TableDetailUiState> = _uiState.asStateFlow()
 
     private var undoJob: Job? = null
 
@@ -153,7 +153,7 @@ class TableDetailViewModel @Inject constructor(
         viewModelScope.launch { loadStructure() }
     }
 
-    fun select(tab: TableTab) {
+    override fun select(tab: TableTab) {
         _uiState.value = _uiState.value.copy(tab = tab)
         val state = _uiState.value
         val loaded = when (tab) {
@@ -170,7 +170,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Cycles the column through ascending, descending and the table's own order. */
-    fun sortBy(column: String) {
+    override fun sortBy(column: String) {
         _uiState.value = _uiState.value.copy(
             sort = TableQuery.nextSort(_uiState.value.sort, column),
             rows = null,
@@ -179,14 +179,14 @@ class TableDetailViewModel @Inject constructor(
         load(TableTab.DATA)
     }
 
-    fun setFilter(column: String?, contains: String) {
+    override fun setFilter(column: String?, contains: String) {
         val filter = column?.takeIf { contains.isNotBlank() }?.let { ColumnFilter(it, contains) }
         _uiState.value = _uiState.value.copy(filter = filter, rows = null, totalRows = null)
         load(TableTab.DATA)
     }
 
     /** Called by the grid as it nears the end of what is loaded (§7.5). */
-    fun loadMore() {
+    override fun loadMore() {
         val state = _uiState.value
         val current = state.rows ?: return
         if (state.loadingMore) return
@@ -217,7 +217,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Builds the UPDATE and holds it for confirmation; nothing runs until the user says so. */
-    fun prepareCellEdit(rowIndex: Int, columnLabel: String, newValue: String?) {
+    override fun prepareCellEdit(rowIndex: Int, columnLabel: String, newValue: String?) {
         val state = _uiState.value
         val rows = state.rows ?: return
         val structure = state.structure ?: return
@@ -239,7 +239,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun prepareRowDelete(rowIndex: Int) {
+    override fun prepareRowDelete(rowIndex: Int) {
         val state = _uiState.value
         val rows = state.rows ?: return
         val structure = state.structure ?: return
@@ -256,7 +256,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun confirmEdit() {
+    override fun confirmEdit() {
         val edit = _uiState.value.pendingEdit ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(pendingEdit = null, loading = true)
@@ -279,7 +279,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Writes the value anyway, now that the user has seen what they are overwriting. */
-    fun overwriteConflict() {
+    override fun overwriteConflict() {
         val conflict = _uiState.value.conflict ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(conflict = null, loading = true)
@@ -323,7 +323,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Reads the chosen file and works out what importing it would do. Nothing is written yet. */
-    fun prepareImport(uri: Uri) {
+    override fun prepareImport(uri: Uri) {
         val structure = _uiState.value.structure ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importing = true, error = null)
@@ -338,7 +338,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    override fun confirmImport() {
         val plan = _uiState.value.importPlan ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importPlan = null, importing = true)
@@ -352,7 +352,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun dismissImport() {
+    override fun dismissImport() {
         _uiState.value = _uiState.value.copy(importPlan = null)
     }
 
@@ -360,16 +360,16 @@ class TableDetailViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(blobPreview = null)
     }
 
-    fun dismissConflict() {
+    override fun dismissConflict() {
         _uiState.value = _uiState.value.copy(conflict = null)
     }
 
-    fun dismissEdit() {
+    override fun dismissEdit() {
         _uiState.value = _uiState.value.copy(pendingEdit = null)
     }
 
     /** §7.6: the inverse statement, run without a second confirmation. */
-    fun undo() {
+    override fun undo() {
         val undo = _uiState.value.undoable?.undo ?: return
         undoJob?.cancel()
         viewModelScope.launch {
@@ -389,24 +389,24 @@ class TableDetailViewModel @Inject constructor(
      * Null for a column that references nothing, and null for a NULL value: a NULL foreign key
      * points at nothing at all, and offering to open it would promise a row that cannot exist.
      */
-    fun parentLinkFor(rowIndex: Int, columnLabel: String): RowLink? =
+    override fun parentLinkFor(rowIndex: Int, columnLabel: String): RowLink? =
         linkFor(_uiState.value.parentLinks, _uiState.value.rows, rowIndex, columnLabel)
 
     /** The same question about a row of the walk, which is a different table's row. */
-    fun walkParentLinkFor(rowIndex: Int, columnLabel: String): RowLink? {
+    override fun walkParentLinkFor(rowIndex: Int, columnLabel: String): RowLink? {
         val walk = _uiState.value.walk ?: return null
         return linkFor(walk.links, walk.rows, rowIndex, columnLabel)
     }
 
     /** Opens the row a cell of the table points at. */
-    fun openParent(rowIndex: Int, columnLabel: String) {
+    override fun openParent(rowIndex: Int, columnLabel: String) {
         val rows = _uiState.value.rows ?: return
         val link = parentLinkFor(rowIndex, columnLabel) ?: return
         walkToParent(baseTrail(), rows, rowIndex, link)
     }
 
     /** The same, from a row already reached by walking. */
-    fun openParentFromWalk(rowIndex: Int, columnLabel: String) {
+    override fun openParentFromWalk(rowIndex: Int, columnLabel: String) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val link = walkParentLinkFor(rowIndex, columnLabel) ?: return
@@ -414,7 +414,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Opens the walk on a row of the table and counts what points at it. */
-    fun showChildrenOf(rowIndex: Int) {
+    override fun showChildrenOf(rowIndex: Int) {
         val rows = _uiState.value.rows ?: return
         val state = _uiState.value
         val trail = baseTrail()
@@ -431,7 +431,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** The same for a row of the walk: what points at the row now on screen. */
-    fun selectWalkRow(rowIndex: Int) {
+    override fun selectWalkRow(rowIndex: Int) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val step = walk.step ?: return
@@ -442,7 +442,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Shows the rows of one child table that point at the selected row. */
-    fun openChildren(link: RowLink) {
+    override fun openChildren(link: RowLink) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val rowIndex = walk.selectedRow ?: return
@@ -462,7 +462,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** One step back along the trail; stepping off the first linked step closes the walk. */
-    fun walkBack() {
+    override fun walkBack() {
         val walk = _uiState.value.walk ?: return
         val back = walk.trail.pop()
         val step = back.current
@@ -473,7 +473,7 @@ class TableDetailViewModel @Inject constructor(
         loadStep(back, step, RowLinks.CHILD_LIMIT, expectOne = false)
     }
 
-    fun closeWalk() {
+    override fun closeWalk() {
         _uiState.value = _uiState.value.copy(walk = null)
     }
 
@@ -569,7 +569,7 @@ class TableDetailViewModel @Inject constructor(
         }.toMap()
     }
 
-    fun export(format: ExportFormat) {
+    override fun export(format: ExportFormat) {
         val rows = _uiState.value.rows ?: return
         viewModelScope.launch {
             try {
@@ -582,11 +582,11 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun shareIntentHandled() {
+    override fun shareIntentHandled() {
         _uiState.value = _uiState.value.copy(shareIntent = null)
     }
 
-    fun dismissError() {
+    override fun dismissError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
 

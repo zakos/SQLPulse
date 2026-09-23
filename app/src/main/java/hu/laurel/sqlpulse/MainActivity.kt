@@ -136,7 +136,7 @@ class MainActivity : FragmentActivity() {
 
 /** What the app shows after locking itself: no data, just the way back in (§6). */
 @Composable
-private fun LockScreen(onUnlock: () -> Unit) {
+internal fun LockScreen(onUnlock: () -> Unit) {
     val accent = MaterialTheme.colorScheme.primary
     // Rendered instead of SqlPulseApp, so no screen state stays alive behind it.
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {

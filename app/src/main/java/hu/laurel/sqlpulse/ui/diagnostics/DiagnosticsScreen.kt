@@ -93,11 +93,20 @@ fun DiagnosticsDialog(
 }
 
 /** The same report with a top bar, for wherever a full destination suits better than a dialog. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsScreen(
     onBack: () -> Unit,
     viewModel: DiagnosticsViewModel = hiltViewModel(),
+) {
+    DiagnosticsScreenContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [DiagnosticsController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DiagnosticsScreenContent(
+    onBack: () -> Unit,
+    viewModel: DiagnosticsController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current

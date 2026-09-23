@@ -9,8 +9,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.CertificateStore
-import hu.laurel.sqlpulse.data.sql.SslMode
-import hu.laurel.sqlpulse.data.sql.SslProperties
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
@@ -22,7 +20,10 @@ import hu.laurel.sqlpulse.data.connection.SaveRefusal
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
+import hu.laurel.sqlpulse.data.sql.SslMode
+import hu.laurel.sqlpulse.data.sql.SslProperties
 import hu.laurel.sqlpulse.security.UnlockCancelledException
+import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import hu.laurel.sqlpulse.ssh.TunnelState
@@ -147,22 +148,22 @@ class ConnectionEditorViewModel @Inject constructor(
     private val connections: ConnectionRepository,
     private val keyRepository: SshKeyRepository,
     private val tunnelManager: TunnelManager,
-) : ViewModel() {
+) : ViewModel(), ConnectionEditorController {
 
     private val connectionId: Long = savedStateHandle.get<Long>("connectionId") ?: 0L
 
     private val _form = MutableStateFlow(ConnectionForm())
-    val form: StateFlow<ConnectionForm> = _form.asStateFlow()
+    override val form: StateFlow<ConnectionForm> = _form.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    override val error: StateFlow<String?> = _error.asStateFlow()
 
-    val keys: StateFlow<List<SshKeyEntity>> = keyRepository.observeKeys()
+    override val keys: StateFlow<List<SshKeyEntity>> = keyRepository.observeKeys()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val tunnel: StateFlow<TunnelState> = tunnelManager.state
+    override val tunnel: StateFlow<TunnelState> = tunnelManager.state
 
-    val serverVersion: StateFlow<String?> = tunnelManager.serverVersion
+    override val serverVersion: StateFlow<String?> = tunnelManager.serverVersion
 
     init {
         if (connectionId != 0L) {
@@ -178,7 +179,7 @@ class ConnectionEditorViewModel @Inject constructor(
         }
     }
 
-    fun update(transform: (ConnectionForm) -> ConnectionForm) {
+    override fun update(transform: (ConnectionForm) -> ConnectionForm) {
         _form.value = transform(_form.value)
     }
 
@@ -189,9 +190,9 @@ class ConnectionEditorViewModel @Inject constructor(
      * back is how a feature gets a reputation for fighting the user.
      */
     private val _readOnlyOffer = MutableStateFlow(false)
-    val readOnlyOffer: StateFlow<Boolean> = _readOnlyOffer.asStateFlow()
+    override val readOnlyOffer: StateFlow<Boolean> = _readOnlyOffer.asStateFlow()
 
-    fun setEnvironment(environment: ConnectionEnvironment) {
+    override fun setEnvironment(environment: ConnectionEnvironment) {
         val current = _form.value
         _form.value = current.copy(environment = environment)
         // Only worth asking where it would change something: a connection that is already
@@ -204,12 +205,12 @@ class ConnectionEditorViewModel @Inject constructor(
         }
     }
 
-    fun acceptReadOnlyOffer() {
+    override fun acceptReadOnlyOffer() {
         _form.value = _form.value.copy(readOnly = true)
         _readOnlyOffer.value = false
     }
 
-    fun dismissReadOnlyOffer() {
+    override fun dismissReadOnlyOffer() {
         _readOnlyOffer.value = false
     }
 
@@ -217,7 +218,7 @@ class ConnectionEditorViewModel @Inject constructor(
      * Switching the tunnel also moves the sensible TLS default: inside a tunnel the tunnel is the
      * encryption, while a direct connection should verify the server it is talking to.
      */
-    fun setUseSsh(useSsh: Boolean) {
+    override fun setUseSsh(useSsh: Boolean) {
         val current = _form.value
         val untouchedDefault = current.sslMode == SslMode.defaultFor(current.useSsh)
         _form.value = current.copy(
@@ -227,7 +228,7 @@ class ConnectionEditorViewModel @Inject constructor(
     }
 
     /** Copies a CA certificate chosen in the file picker into the app's storage. */
-    fun importCertificate(uri: Uri, name: String) {
+    override fun importCertificate(uri: Uri, name: String) {
         viewModelScope.launch {
             try {
                 val stored = certificateStore.import(uri, name)
@@ -238,14 +239,14 @@ class ConnectionEditorViewModel @Inject constructor(
         }
     }
 
-    fun clearCertificate() {
+    override fun clearCertificate() {
         _form.value = _form.value.copy(caCertificate = null)
     }
 
     /** CA files already imported, so a second connection can reuse one. */
     val availableCertificates: List<String> get() = certificateStore.list()
 
-    fun save(onSaved: (Long) -> Unit) {
+    override fun save(onSaved: (Long) -> Unit) {
         val form = _form.value
         if (!form.canSave) return
         // The policy refuses before anything is written, and says which rule was broken: "cannot
@@ -277,17 +278,21 @@ class ConnectionEditorViewModel @Inject constructor(
     }
 
     /** §7.2: save, build the tunnel, report step by step, then tear it down. */
-    fun test() {
+    override fun test() {
         save { id -> tunnelManager.connect(id) }
     }
 
-    fun stopTest() = tunnelManager.disconnect()
+    override fun stopTest() = tunnelManager.disconnect()
 
-    fun acceptHostKey() = tunnelManager.acceptHostKey()
+    override fun acceptHostKey() {
+        tunnelManager.acceptHostKey()
+    }
 
-    fun rejectHostKey() = tunnelManager.rejectHostKey()
+    override fun rejectHostKey() {
+        tunnelManager.rejectHostKey()
+    }
 
-    val hostKeyPrompt = tunnelManager.hostKeyPrompt
+    override val hostKeyPrompt: StateFlow<HostKeyPrompt?> = tunnelManager.hostKeyPrompt
 
     /** Explicit unblock after a host key change (§5). */
     fun forgetHostKey() {

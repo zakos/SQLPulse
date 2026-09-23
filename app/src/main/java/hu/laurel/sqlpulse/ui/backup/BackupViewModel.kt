@@ -70,27 +70,27 @@ data class BackupUiState(
 @HiltViewModel
 class BackupViewModel @Inject constructor(
     private val repository: BackupRepository,
-) : ViewModel() {
+) : ViewModel(), BackupController {
 
     private val _state = MutableStateFlow(BackupUiState())
-    val state: StateFlow<BackupUiState> = _state.asStateFlow()
+    override val state: StateFlow<BackupUiState> = _state.asStateFlow()
 
     /** The bytes of the chosen file, held only until the import finishes or is abandoned. */
     private var chosenFile: ByteArray? = null
     private var unlocked: BackupPayload? = null
 
-    fun setIncludeSecrets(include: Boolean) =
+    override fun setIncludeSecrets(include: Boolean) =
         _state.update { it.copy(includeSecrets = include, exported = false) }
 
-    fun setExportPassphrase(value: String) =
+    override fun setExportPassphrase(value: String) =
         _state.update { it.copy(exportPassphrase = value, exportProblem = null, exported = false) }
 
-    fun setExportConfirmation(value: String) =
+    override fun setExportConfirmation(value: String) =
         _state.update { it.copy(exportConfirmation = value, exportProblem = null, exported = false) }
 
-    fun suggestedFileName(): String = BackupFile.suggestedFileName(System.currentTimeMillis())
+    override fun suggestedFileName(): String = BackupFile.suggestedFileName(System.currentTimeMillis())
 
-    fun export(uri: Uri) {
+    override fun export(uri: Uri) {
         val current = _state.value
         val problem = PassphrasePolicy.check(current.exportPassphrase, current.exportConfirmation)
         if (problem != null) {
@@ -112,7 +112,7 @@ class BackupViewModel @Inject constructor(
     }
 
     /** Reads the file and shows its cleartext header. Still nothing decrypted, nothing written. */
-    fun chooseFile(uri: Uri) = launchGuarded {
+    override fun chooseFile(uri: Uri) = launchGuarded {
         val bytes = repository.readFile(uri)
         val metadata = BackupFile.peek(bytes)
         chosenFile = bytes
@@ -128,11 +128,11 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun setImportPassphrase(value: String) =
+    override fun setImportPassphrase(value: String) =
         _state.update { it.copy(importPassphrase = value, problem = null) }
 
     /** Decrypts and verifies. A wrong passphrase stops here, with everything still untouched. */
-    fun unlock() {
+    override fun unlock() {
         val bytes = chosenFile ?: return
         val passphrase = _state.value.importPassphrase.toCharArray()
         launchGuarded(onComplete = { passphrase.wipe() }) {
@@ -149,7 +149,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun setDefaultResolution(resolution: MergeResolution) {
+    override fun setDefaultResolution(resolution: MergeResolution) {
         val payload = unlocked ?: return
         launchGuarded {
             val existing = repository.connectionNames()
@@ -162,7 +162,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun setResolution(sourceName: String, resolution: MergeResolution) {
+    override fun setResolution(sourceName: String, resolution: MergeResolution) {
         val payload = unlocked ?: return
         launchGuarded {
             val existing = repository.connectionNames()
@@ -184,7 +184,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun import() {
+    override fun import() {
         val payload = unlocked ?: return
         launchGuarded {
             val outcome = repository.apply(payload, _state.value.decisions)
@@ -194,7 +194,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun startOver() {
+    override fun startOver() {
         chosenFile = null
         unlocked = null
         _state.update {
@@ -202,7 +202,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun dismissProblem() = _state.update { it.copy(problem = null) }
+    override fun dismissProblem() = _state.update { it.copy(problem = null) }
 
     override fun onCleared() {
         chosenFile = null

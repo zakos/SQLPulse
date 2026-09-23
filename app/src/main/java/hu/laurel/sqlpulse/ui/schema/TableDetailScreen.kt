@@ -11,14 +11,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
@@ -52,6 +56,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
@@ -89,12 +97,22 @@ import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TableDetailScreen(
     onBack: () -> Unit,
     onOpenTable: (database: String, table: String) -> Unit,
     viewModel: TableDetailViewModel = hiltViewModel(),
+) {
+    TableDetailScreenContent(onBack = onBack, onOpenTable = onOpenTable, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [TableDetailController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TableDetailScreenContent(
+    onBack: () -> Unit,
+    onOpenTable: (database: String, table: String) -> Unit,
+    viewModel: TableDetailController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -190,7 +208,12 @@ fun TableDetailScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = state.tab.ordinal) {
+            TabRow(
+                selectedTabIndex = state.tab.ordinal,
+                // On the screen's own ground, like the top bar above it; the indicator carries the choice.
+                containerColor = MaterialTheme.colorScheme.background,
+                divider = { HorizontalDivider(color = semantic.hairline) },
+            ) {
                 TableTab.entries.forEach { tab ->
                     Tab(
                         selected = tab == state.tab,
@@ -256,7 +279,11 @@ fun TableDetailScreen(
                             item { TableCollationRow(collation) }
                         }
                         items(structure.columns, key = { "column:" + it.name }) { column ->
-                            ColumnRow(column, structure.collation)
+                            ColumnRow(
+                                column,
+                                structure.collation,
+                                structure.foreignKeys.firstOrNull { it.column == column.name },
+                            )
                             HorizontalDivider(color = semantic.hairline)
                         }
                         if (structure.indexes.isNotEmpty()) {
@@ -570,52 +597,73 @@ private fun SectionHeader(title: String) {
  * all. Its expression follows on a line of its own, shortened — the whole of it is in the DDL tab.
  */
 @Composable
-private fun ColumnRow(column: SchemaColumn, tableCollation: String?) {
+private fun ColumnRow(column: SchemaColumn, tableCollation: String?, foreignKey: ForeignKey?) {
     val semantic = LocalSemanticColors.current
     val generated = column.generatedKind
     val collation = SchemaExtras.columnCollation(tableCollation, column.collation)
+    // As in the design: a mark for what the column is to the table — key, link, computed — then
+    // its name with its type beside it, and the rules under it.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.l, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(column.name, style = MonoStyles.cell)
-                if (column.isPrimaryKey) {
-                    Text(
-                        stringResource(R.string.structure_primary_key),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.success,
-                    )
-                }
-                if (generated != null) {
-                    Text(
-                        text = stringResource(
-                            when (generated) {
-                                GeneratedKind.VIRTUAL -> R.string.structure_generated_virtual
-                                GeneratedKind.STORED -> R.string.structure_generated_stored
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.textSecondary,
-                    )
-                }
+        val mark = when {
+            column.isPrimaryKey -> Triple(Icons.Default.Key, semantic.warning, R.string.structure_primary_key)
+            foreignKey != null -> Triple(Icons.Default.Link, MaterialTheme.colorScheme.primary, R.string.structure_foreign_key)
+            generated != null -> Triple(Icons.Default.Bolt, semantic.cellDate, R.string.structure_generated)
+            else -> null
+        }
+        Box(modifier = Modifier.padding(top = 2.dp).size(16.dp)) {
+            mark?.let { (icon, tint, label) ->
+                Icon(icon, contentDescription = stringResource(label), tint = tint, modifier = Modifier.size(16.dp))
+            }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.Bottom) {
+                Text(column.name, style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium))
+                Text(
+                    column.typeName,
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = semantic.cellDate,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Text(
-                text = buildString {
-                    append(column.typeName)
-                    if (!column.nullable) append(" · NOT NULL")
-                    column.defaultValue?.let { append(" · DEFAULT $it") }
-                    column.extra?.let { append(" · $it") }
-                },
-                style = MaterialTheme.typography.bodySmall,
+                text = buildList {
+                    add(if (column.nullable) "NULL" else "NOT NULL")
+                    column.defaultValue?.let { add(stringResource(R.string.structure_default, it)) }
+                }.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                 color = semantic.textSecondary,
             )
-            column.generationExpression?.let { expression ->
+            // AUTO_INCREMENT and the like, but not a generated column's marker: that has its own line.
+            column.extra?.takeIf { it.isNotBlank() && generated == null }?.let {
+                Text(it.uppercase(), style = MonoStyles.cell.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.primary)
+            }
+            foreignKey?.let { fk ->
                 Text(
-                    text = "= ${SchemaExtras.shorten(expression)}",
-                    style = MonoStyles.cell,
-                    color = semantic.textSecondary,
+                    text = buildString {
+                        append("→ ${fk.referencedTable}.${fk.referencedColumn}")
+                        fk.onDelete?.let { append(" · ON DELETE $it") }
+                    },
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (generated != null) {
+                Text(
+                    text = buildString {
+                        append("GENERATED")
+                        column.generationExpression?.let { append(": ${SchemaExtras.shorten(it)}") }
+                        append(" · ")
+                        append(if (generated == GeneratedKind.STORED) "STORED" else "VIRTUAL")
+                    },
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
             // Only where it differs from the table's: a column collating differently is what

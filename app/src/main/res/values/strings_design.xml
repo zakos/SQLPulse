@@ -26,4 +26,11 @@
     <string name="pulse_footer">Measured only while this screen is in front. Rates come from two readings, so a restarted server does not show a false spike.</string>
     <string name="server_seconds">%1$d s</string>
     <string name="key_actions">Key actions</string>
+    <string name="tls_disabled_short">Off</string>
+    <string name="tls_required_short">Required</string>
+    <string name="tls_verify_ca_short">CA</string>
+    <string name="tls_verify_identity_short">Full</string>
+    <string name="structure_foreign_key">Foreign key</string>
+    <string name="structure_generated">Generated column</string>
+    <string name="structure_default">default %1$s</string>
 </resources>
