@@ -126,6 +126,7 @@ import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
 import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
+import hu.laurel.sqlpulse.ui.components.ConnectionTitle
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.connections.shortLabel
@@ -175,16 +176,10 @@ fun QueryEditorContent(
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
     var snapshotMenuOpen by remember { mutableStateOf(false) }
-    var databaseMenuOpen by remember { mutableStateOf(false) }
     val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
-    val environmentColor = (sessionState as? SqlSessionState.Ready)?.connection?.let { connection ->
-        when (ConnectionEnvironment.fromName(connection.environment)) {
-            ConnectionEnvironment.DEVELOPMENT -> MaterialTheme.colorScheme.primary
-            ConnectionEnvironment.TEST -> semantic.warning
-            ConnectionEnvironment.PRODUCTION -> semantic.production
-            ConnectionEnvironment.UNSET -> null
-        }
-    }
+    val environment = ConnectionEnvironment.fromName(
+        (sessionState as? SqlSessionState.Ready)?.connection?.environment,
+    )
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
     LaunchedEffect(state.shareIntent) {
@@ -253,62 +248,14 @@ fun QueryEditorContent(
                 // The connection, marked with its environment's colour, and under it the database
                 // the statements run against — a tap away from being another one (§7.3).
                 title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                            environmentColor?.let { Box(Modifier.size(8.dp).background(it, CircleShape)) }
-                            Text(
-                                state.connectionName ?: stringResource(R.string.query_title),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Box {
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable(enabled = state.databases.isNotEmpty(), role = Role.DropdownList) {
-                                        databaseMenuOpen = true
-                                    },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    state.database ?: stringResource(R.string.query_no_database),
-                                    style = MonoStyles.cell.copy(fontSize = 12.sp),
-                                    color = semantic.textSecondary,
-                                )
-                                if (state.databases.isNotEmpty()) {
-                                    Icon(
-                                        Icons.Default.ExpandMore,
-                                        contentDescription = null,
-                                        tint = semantic.textSecondary,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
-                            DropdownMenu(expanded = databaseMenuOpen, onDismissRequest = { databaseMenuOpen = false }) {
-                                state.databases.forEach { database ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                database,
-                                                style = MonoStyles.cell,
-                                                color = if (database == state.database) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurface
-                                                },
-                                            )
-                                        },
-                                        onClick = {
-                                            databaseMenuOpen = false
-                                            viewModel.selectDatabase(database)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    ConnectionTitle(
+                        name = state.connectionName ?: stringResource(R.string.query_title),
+                        environment = environment,
+                        database = state.database,
+                        databases = state.databases,
+                        onSelectDatabase = viewModel::selectDatabase,
+                        placeholder = stringResource(R.string.query_no_database),
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

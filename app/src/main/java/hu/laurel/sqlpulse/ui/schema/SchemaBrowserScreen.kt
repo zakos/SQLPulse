@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import android.icu.text.CompactDecimalFormat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,16 +26,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -68,14 +73,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.schema.CacheAgeUnit
 import hu.laurel.sqlpulse.data.schema.ObjectKind
 import hu.laurel.sqlpulse.data.schema.SchemaCache
 import hu.laurel.sqlpulse.data.schema.SchemaCacheRepository
+import hu.laurel.sqlpulse.data.schema.SchemaRoutine
 import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.schema.formatByteSize
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.ui.components.ConnectionTitle
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.copyToClipboard
@@ -86,7 +94,9 @@ import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import java.text.DateFormat
+import java.text.NumberFormat
 import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,55 +137,111 @@ fun SchemaBrowserScreen(
         cacheViewModel.watch(connectionId, state.selectedDatabase)
     }
 
+    SchemaBrowserContent(
+        state = state,
+        capturedAt = capturedAt,
+        actions = SchemaBrowserActions(
+            onBack = onBack,
+            onOpenTable = onOpenTable,
+            onOpenQuery = onOpenQuery,
+            onOpenServer = onOpenServer,
+            onOpenPulse = onOpenPulse,
+            onOpenMap = onOpenMap,
+            onRefresh = viewModel::refresh,
+            onSelectDatabase = viewModel::selectDatabase,
+            onSelectObjectKind = viewModel::selectObjectKind,
+            onFilter = viewModel::setFilter,
+            onShowRoutine = viewModel::showRoutine,
+            onDismissRoutine = viewModel::dismissRoutine,
+        ),
+    )
+}
+
+/** Everything the schema browser can ask for, so it can be drawn without its ViewModels. */
+data class SchemaBrowserActions(
+    val onBack: () -> Unit = {},
+    val onOpenTable: (database: String, table: String) -> Unit = { _, _ -> },
+    val onOpenQuery: () -> Unit = {},
+    val onOpenServer: () -> Unit = {},
+    val onOpenPulse: () -> Unit = {},
+    val onOpenMap: () -> Unit = {},
+    val onRefresh: () -> Unit = {},
+    val onSelectDatabase: (String) -> Unit = {},
+    val onSelectObjectKind: (ObjectKind) -> Unit = {},
+    val onFilter: (String) -> Unit = {},
+    val onShowRoutine: (SchemaRoutine) -> Unit = {},
+    val onDismissRoutine: () -> Unit = {},
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SchemaBrowserContent(
+    state: SchemaBrowserUiState,
+    capturedAt: Long?,
+    actions: SchemaBrowserActions,
+) {
+    val semantic = LocalSemanticColors.current
     Scaffold(
         topBar = {
             TopAppBar(
                 colors = sqlPulseTopBarColors(),
                 title = {
-                    Column {
-                        Text(stringResource(R.string.schema_title))
-                        (state.session as? SqlSessionState.Ready)?.let { ready ->
-                            Text(
-                                text = ready.connection.name +
-                                    (ready.serverVersion?.let { " · MySQL $it" } ?: ""),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = semantic.textSecondary,
-                            )
-                        }
+                    val connection = when (val session = state.session) {
+                        is SqlSessionState.Ready -> session.connection
+                        is SqlSessionState.Lost -> session.connection
+                        else -> null
                     }
+                    ConnectionTitle(
+                        name = connection?.name ?: stringResource(R.string.schema_title),
+                        environment = ConnectionEnvironment.fromName(connection?.environment),
+                        database = state.selectedDatabase,
+                        databases = state.databases,
+                        onSelectDatabase = actions.onSelectDatabase,
+                        placeholder = stringResource(R.string.query_no_database),
+                    )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = actions.onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cancel))
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenMap) {
+                    IconButton(onClick = actions.onOpenMap) {
                         Icon(
                             Icons.Default.AccountTree,
                             contentDescription = stringResource(R.string.map_title),
                         )
                     }
-                    IconButton(onClick = onOpenPulse) {
+                    IconButton(onClick = actions.onOpenPulse) {
                         Icon(
                             Icons.Default.MonitorHeart,
                             contentDescription = stringResource(R.string.pulse_title),
                         )
                     }
-                    IconButton(onClick = onOpenServer) {
+                    IconButton(onClick = actions.onOpenServer) {
                         Icon(
                             Icons.Default.Dns,
                             contentDescription = stringResource(R.string.server_title),
                         )
                     }
-                    IconButton(onClick = onOpenQuery) {
-                        Icon(Icons.Default.Code, contentDescription = stringResource(R.string.query_title))
-                    }
-                    IconButton(onClick = viewModel::refresh) {
+                    IconButton(onClick = actions.onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
                 },
             )
+        },
+        // Writing a query is what one comes to a schema for, so it is the one big button.
+        floatingActionButton = {
+            if (state.session is SqlSessionState.Ready) {
+                ExtendedFloatingActionButton(
+                    onClick = actions.onOpenQuery,
+                    icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
+                    text = { Text(stringResource(R.string.query_title)) },
+                    shape = Shapes.card,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -184,7 +250,7 @@ fun SchemaBrowserScreen(
             SchemaCacheMarker(
                 live = state.session is SqlSessionState.Ready,
                 capturedAt = capturedAt,
-                onRefresh = viewModel::refresh,
+                onRefresh = actions.onRefresh,
             )
 
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -193,36 +259,47 @@ fun SchemaBrowserScreen(
                     // has something, in which case the tables are browsable and the marker above
                     // is what says they are not live.
                     state.session !is SqlSessionState.Ready && state.databases.isEmpty() ->
-                        SessionPlaceholder(state.session, onBack)
+                        SessionPlaceholder(state.session, actions.onBack)
 
                     else -> SchemaBody(
                         wide = isWideWindow(),
                         databases = state.databases,
                         selectedDatabase = state.selectedDatabase,
-                        onSelectDatabase = viewModel::selectDatabase,
+                        onSelectDatabase = actions.onSelectDatabase,
                     ) {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = Spacing.l),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                        ) {
-                            items(ObjectKind.entries) { kind ->
-                                FilterChip(
-                                    selected = kind == state.objectKind,
-                                    onClick = { viewModel.selectObjectKind(kind) },
-                                    label = { Text(stringResource(kind.labelRes())) },
-                                )
-                            }
-                        }
-
                         OutlinedTextField(
                             value = state.filter,
-                            onValueChange = viewModel::setFilter,
-                            label = { Text(stringResource(R.string.schema_search)) },
+                            onValueChange = actions.onFilter,
+                            placeholder = { Text(stringResource(R.string.schema_search)) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = if (state.filter.isNotEmpty()) {
+                                {
+                                    IconButton(onClick = { actions.onFilter("") }) {
+                                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.schema_clear_filter))
+                                    }
+                                }
+                            } else {
+                                null
+                            },
                             singleLine = true,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = Spacing.l),
                         )
+
+                        LazyRow(
+                            contentPadding = PaddingValues(start = Spacing.l, end = Spacing.l, top = Spacing.m, bottom = Spacing.m),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                        ) {
+                            items(ObjectKind.entries) { kind ->
+                                FilterChip(
+                                    selected = kind == state.objectKind,
+                                    onClick = { actions.onSelectObjectKind(kind) },
+                                    label = { Text(stringResource(kind.labelRes())) },
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = semantic.hairline)
 
                         state.error?.takeIf { it.isNotBlank() }?.let {
                             Text(
@@ -242,7 +319,7 @@ fun SchemaBrowserScreen(
                                 title = stringResource(state.objectKind.emptyTitleRes()),
                                 body = stringResource(R.string.schema_no_tables_body),
                                 actionLabel = stringResource(R.string.schema_clear_filter),
-                                onAction = { viewModel.setFilter("") },
+                                onAction = { actions.onFilter("") },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         } else {
@@ -250,7 +327,7 @@ fun SchemaBrowserScreen(
                                 when (state.objectKind) {
                                     ObjectKind.TABLES, ObjectKind.VIEWS ->
                                         items(state.visibleTables, key = { "${it.database}.${it.name}" }) { table ->
-                                            TableRow(table) { onOpenTable(table.database, table.name) }
+                                            TableRow(table) { actions.onOpenTable(table.database, table.name) }
                                             HorizontalDivider(color = semantic.hairline)
                                         }
 
@@ -262,7 +339,7 @@ fun SchemaBrowserScreen(
                                                 trailing = routine.returns
                                                     ?.let { stringResource(R.string.schema_returns, it) }
                                                     ?: stringResource(R.string.schema_procedure),
-                                                onClick = { viewModel.showRoutine(routine) },
+                                                onClick = { actions.onShowRoutine(routine) },
                                             )
                                             HorizontalDivider(color = semantic.hairline)
                                         }
@@ -273,7 +350,7 @@ fun SchemaBrowserScreen(
                                                 name = trigger.name,
                                                 detail = "${trigger.timing} ${trigger.event}",
                                                 trailing = trigger.table,
-                                                onClick = { onOpenTable(state.selectedDatabase.orEmpty(), trigger.table) },
+                                                onClick = { actions.onOpenTable(state.selectedDatabase.orEmpty(), trigger.table) },
                                             )
                                             HorizontalDivider(color = semantic.hairline)
                                         }
@@ -299,7 +376,7 @@ fun SchemaBrowserScreen(
                     RoutineSheet(
                         definition = definition,
                         onCopy = context::copyToClipboard,
-                        onDismiss = viewModel::dismissRoutine,
+                        onDismiss = actions.onDismissRoutine,
                     )
                 }
             }
@@ -457,19 +534,8 @@ private fun SchemaBody(
             Column(modifier = Modifier.weight(1f).fillMaxHeight(), content = content)
         }
     } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-            ) {
-                items(databases) { database ->
-                    FilterChip(
-                        selected = database == selectedDatabase,
-                        onClick = { onSelectDatabase(database) },
-                        label = { Text(database) },
-                    )
-                }
-            }
+        // On a phone the database is picked in the title, so the list starts right away.
+        Column(modifier = Modifier.fillMaxSize().padding(top = Spacing.xs)) {
             content()
         }
     }
@@ -613,7 +679,7 @@ private fun TableRow(table: SchemaTable, onClick: () -> Unit) {
                 text = if (view) {
                     stringResource(R.string.schema_view)
                 } else {
-                    table.approximateRows?.let { stringResource(R.string.schema_rows_approx, it) }.orEmpty()
+                    table.approximateRows?.let { "~" + compactCount(it) }.orEmpty()
                 },
                 style = MonoStyles.cellNumber.copy(fontSize = 12.sp),
                 color = if (view) semantic.textSecondary else semantic.cellNumber,
@@ -663,3 +729,14 @@ private fun SessionPlaceholder(session: SqlSessionState, onBack: () -> Unit) {
 
 /** Wide enough for a database name, narrow enough to leave the tables the room. */
 private val DATABASE_COLUMN_WIDTH = 200.dp
+
+/**
+ * A row count as the list shows it: exact with grouping below a hundred thousand, then shortened
+ * the way the locale shortens ("1,2 M"). The tilde in front says it is InnoDB's estimate.
+ */
+private fun compactCount(count: Long): String =
+    if (count < 100_000) {
+        NumberFormat.getIntegerInstance().format(count)
+    } else {
+        CompactDecimalFormat.getInstance(Locale.getDefault(), CompactDecimalFormat.CompactStyle.SHORT).format(count)
+    }
