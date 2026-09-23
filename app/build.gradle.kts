@@ -168,6 +168,13 @@ android {
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
+
+    lint {
+        // Lint reads the app's own sources in full. The test sources are left out: with
+        // Paparazzi's layoutlib on the test classpath, lint's Kotlin analysis crashes on them,
+        // and nothing under src/test or src/androidTest ships in the APK.
+        ignoreTestSources = true
+    }
 }
 
 dependencies {
