@@ -3,10 +3,12 @@ package hu.laurel.sqlpulse.ui.query
 import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,13 +20,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -39,6 +46,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -81,6 +89,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -93,8 +103,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,6 +115,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.chart.ChartSpec
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
@@ -109,6 +123,7 @@ import hu.laurel.sqlpulse.data.grid.ResultFilter
 import hu.laurel.sqlpulse.data.grid.ResultFilters
 import hu.laurel.sqlpulse.data.sql.ParameterType
 import hu.laurel.sqlpulse.data.sql.ParameterValue
+import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
 import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
 import hu.laurel.sqlpulse.ui.components.EmptyState
@@ -134,11 +149,20 @@ import java.util.Date
  * Query editor (§7.4): monospace field with highlighting, the key row the phone keyboard lacks,
  * and the result, history and favourites underneath.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QueryEditorScreen(
     onBack: () -> Unit,
     viewModel: QueryEditorViewModel = hiltViewModel(),
+) {
+    QueryEditorContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [QueryEditorController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QueryEditorContent(
+    onBack: () -> Unit,
+    viewModel: QueryEditorController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
@@ -151,6 +175,16 @@ fun QueryEditorScreen(
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
     var snapshotMenuOpen by remember { mutableStateOf(false) }
+    var databaseMenuOpen by remember { mutableStateOf(false) }
+    val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
+    val environmentColor = (sessionState as? SqlSessionState.Ready)?.connection?.let { connection ->
+        when (ConnectionEnvironment.fromName(connection.environment)) {
+            ConnectionEnvironment.DEVELOPMENT -> MaterialTheme.colorScheme.primary
+            ConnectionEnvironment.TEST -> semantic.warning
+            ConnectionEnvironment.PRODUCTION -> semantic.production
+            ConnectionEnvironment.UNSET -> null
+        }
+    }
 
     // §7.7: the export leaves through the system share sheet; the app keeps no file.
     LaunchedEffect(state.shareIntent) {
@@ -216,14 +250,64 @@ fun QueryEditorScreen(
         topBar = {
             TopAppBar(
                 colors = sqlPulseTopBarColors(),
+                // The connection, marked with its environment's colour, and under it the database
+                // the statements run against — a tap away from being another one (§7.3).
                 title = {
                     Column {
-                        Text(stringResource(R.string.query_title))
-                        Text(
-                            text = listOfNotNull(state.connectionName, state.database).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = semantic.textSecondary,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                            environmentColor?.let { Box(Modifier.size(8.dp).background(it, CircleShape)) }
+                            Text(
+                                state.connectionName ?: stringResource(R.string.query_title),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable(enabled = state.databases.isNotEmpty(), role = Role.DropdownList) {
+                                        databaseMenuOpen = true
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    state.database ?: stringResource(R.string.query_no_database),
+                                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                                    color = semantic.textSecondary,
+                                )
+                                if (state.databases.isNotEmpty()) {
+                                    Icon(
+                                        Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = semantic.textSecondary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                            DropdownMenu(expanded = databaseMenuOpen, onDismissRequest = { databaseMenuOpen = false }) {
+                                state.databases.forEach { database ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                database,
+                                                style = MonoStyles.cell,
+                                                color = if (database == state.database) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
+                                            )
+                                        },
+                                        onClick = {
+                                            databaseMenuOpen = false
+                                            viewModel.selectDatabase(database)
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
                 navigationIcon = {
@@ -253,89 +337,11 @@ fun QueryEditorScreen(
                     ) {
                         Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
                     }
-                    // The time machine (roadmap): freeze this result, and later hold the same
-                    // query's answer up against it. A menu rather than a button because taking a
-                    // snapshot and comparing with one are two different moments, and the second
-                    // one only exists once the first has happened.
-                    if (state.result != null || state.snapshot != null) {
-                        Box {
-                            IconButton(onClick = { snapshotMenuOpen = true }) {
-                                Icon(
-                                    Icons.Default.History,
-                                    contentDescription = stringResource(R.string.snapshot_menu),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = snapshotMenuOpen,
-                                onDismissRequest = { snapshotMenuOpen = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                if (state.snapshot == null) {
-                                                    R.string.snapshot_take
-                                                } else {
-                                                    R.string.snapshot_retake
-                                                },
-                                            ),
-                                        )
-                                    },
-                                    enabled = state.result != null,
-                                    onClick = {
-                                        snapshotMenuOpen = false
-                                        viewModel.takeSnapshot()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.snapshot_compare)) },
-                                    enabled = state.snapshot != null,
-                                    onClick = {
-                                        snapshotMenuOpen = false
-                                        viewModel.compareWithSnapshot()
-                                    },
-                                )
-                                if (state.snapshot != null) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.snapshot_discard)) },
-                                        onClick = {
-                                            snapshotMenuOpen = false
-                                            viewModel.discardSnapshot()
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (state.result != null) {
-                        Box {
-                            IconButton(onClick = { exportMenuOpen = true }) {
-                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
-                            }
-                            DropdownMenu(
-                                expanded = exportMenuOpen,
-                                onDismissRequest = { exportMenuOpen = false },
-                            ) {
-                                // One entry per format, in the order they are reached for:
-                                // a spreadsheet, a shell, a program, another database.
-                                ExportFormat.entries.forEach { format ->
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(format.labelRes())) },
-                                        onClick = {
-                                            exportMenuOpen = false
-                                            viewModel.export(format)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
                 },
             )
         },
     ) { padding ->
         val wide = isWideWindow()
-        val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
 
         // Two columns where there is room for two: on a tablet the result no longer has to share
         // the height with the editor, and neither has to be scrolled to reach the other.
@@ -343,30 +349,12 @@ fun QueryEditorScreen(
                 QueryTabBar(
                     tabs = state.tabs,
                     activeId = state.activeTabId,
-                    wide = wide,
                     onSelect = viewModel::selectTab,
                     onNew = viewModel::newTab,
                     onRename = { renameDialogOpen = true },
                     onDuplicate = { viewModel.duplicateTab(it) },
                     onClose = viewModel::requestCloseTab,
                 )
-
-                // §7.3 lets you browse any database, so the editor has to be able to follow it. The
-                // chips belong to writing a query, so they fold away with the editor.
-                if (state.databases.isNotEmpty() && !state.editorCollapsed) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = Spacing.l, vertical = Spacing.s),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                    ) {
-                        items(state.databases) { database ->
-                            FilterChip(
-                                selected = database == state.database,
-                                onClick = { viewModel.selectDatabase(database) },
-                                label = { Text(database, style = MonoStyles.cell) },
-                            )
-                        }
-                    }
-                }
 
                 if (findOpen) {
                     FindReplaceBar(
@@ -400,26 +388,15 @@ fun QueryEditorScreen(
                         onExpand = viewModel::toggleEditor,
                     )
                 } else {
-                    OutlinedTextField(
+                    SqlEditorField(
                         value = field,
                         onValueChange = { value ->
                             field = value
                             viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
                         },
-                        textStyle = MonoStyles.editor,
-                        visualTransformation = SqlVisualTransformation(
-                            plain = MaterialTheme.colorScheme.onSurface,
-                            keyword = MaterialTheme.colorScheme.primary,
-                            string = LocalSemanticColors.current.success,
-                            number = LocalSemanticColors.current.cellNumber,
-                            comment = LocalSemanticColors.current.cellNull,
-                            identifier = LocalSemanticColors.current.cellDate,
-                            parameter = LocalSemanticColors.current.warning,
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = if (wide) 320.dp else 160.dp)
-                            .padding(horizontal = Spacing.l, vertical = Spacing.s),
+                            .heightIn(min = 160.dp, max = if (wide) 420.dp else 300.dp),
                     )
                 }
 
@@ -468,11 +445,29 @@ fun QueryEditorScreen(
                 }
 
                 if (!state.editorCollapsed) {
+                    // As in the design: what will happen on the left, in small type; the one
+                    // thing to press on the right, big enough for a thumb. The rarer actions
+                    // share a menu instead of a row of buttons that would not fit a phone.
+                    var runMenuOpen by remember { mutableStateOf(false) }
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.m),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.query_row_limit, state.rowLimit),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                color = semantic.textSecondary,
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (state.readOnly) R.string.db_read_only else R.string.query_run_hint,
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                color = semantic.textSecondary,
+                            )
+                        }
                         if (state.running) {
                             Button(
                                 onClick = viewModel::cancel,
@@ -490,11 +485,53 @@ fun QueryEditorScreen(
                                 )
                             }
                         } else {
+                            Box {
+                                IconButton(onClick = { runMenuOpen = true }) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.query_more_actions),
+                                        tint = semantic.textSecondary,
+                                    )
+                                }
+                                DropdownMenu(expanded = runMenuOpen, onDismissRequest = { runMenuOpen = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.query_explain)) },
+                                        enabled = state.sql.isNotBlank() && state.connectionName != null,
+                                        onClick = {
+                                            runMenuOpen = false
+                                            viewModel.explain()
+                                        },
+                                    )
+                                    if (state.isScript && !state.hasSelection) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.query_run_current)) },
+                                            enabled = state.connectionName != null,
+                                            onClick = {
+                                                runMenuOpen = false
+                                                viewModel.runCurrent()
+                                            },
+                                        )
+                                    }
+                                    // Only where writes are possible at all; on a read-only connection
+                                    // there is nothing a transaction could hold back.
+                                    if (!state.readOnly && !state.inTransaction) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.transaction_begin)) },
+                                            enabled = state.connectionName != null,
+                                            onClick = {
+                                                runMenuOpen = false
+                                                viewModel.setTransaction(true)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                             Button(
                                 onClick = { viewModel.run() },
                                 enabled = state.sql.isNotBlank() && state.connectionName != null,
-                                shape = Shapes.button,
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.height(52.dp),
+                                contentPadding = PaddingValues(start = 18.dp, end = 22.dp),
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                                 Text(
@@ -506,44 +543,12 @@ fun QueryEditorScreen(
                                             else -> R.string.query_run
                                         },
                                     ),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
                                     modifier = Modifier.padding(start = Spacing.s),
                                 )
                             }
-                            if (state.isScript && !state.hasSelection) {
-                                OutlinedButton(
-                                    onClick = { viewModel.runCurrent() },
-                                    enabled = state.connectionName != null,
-                                    shape = Shapes.button,
-                                ) { Text(stringResource(R.string.query_run_current)) }
-                            }
-                            OutlinedButton(
-                                onClick = viewModel::explain,
-                                enabled = state.sql.isNotBlank() && state.connectionName != null,
-                                shape = Shapes.button,
-                            ) { Text(stringResource(R.string.query_explain)) }
-                            // Only where writes are possible at all; on a read-only connection there
-                            // is nothing a transaction could hold back.
-                            if (!state.readOnly && !state.inTransaction) {
-                                OutlinedButton(
-                                    onClick = { viewModel.setTransaction(true) },
-                                    enabled = state.connectionName != null,
-                                    shape = Shapes.button,
-                                ) { Text(stringResource(R.string.transaction_begin)) }
-                            }
                         }
-                        Text(
-                            text = stringResource(R.string.query_row_limit, state.rowLimit),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = semantic.textSecondary,
-                        )
-                        if (state.readOnly) {
-                            Text(
-                                text = stringResource(R.string.db_read_only),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = semantic.textSecondary,
-                            )
                     }
-                }
                 }
 
                 if (state.inTransaction) {
@@ -630,6 +635,87 @@ fun QueryEditorScreen(
                             onChartSpec = viewModel::setChartSpec,
                             onToggleFilter = viewModel::toggleFilterBar,
                             onToggleChart = viewModel::toggleChart,
+                            // The time machine and the export act on the rows, so they sit with the
+                            // rows' own tools rather than in the screen's top bar.
+                            extraActions = {
+                            // The time machine (roadmap): freeze this result, and later hold the same
+                            // query's answer up against it. A menu rather than a button because taking a
+                            // snapshot and comparing with one are two different moments, and the second
+                            // one only exists once the first has happened.
+                            if (state.result != null || state.snapshot != null) {
+                                Box {
+                                    IconButton(onClick = { snapshotMenuOpen = true }) {
+                                        Icon(
+                                            Icons.Default.PhotoCamera,
+                                            contentDescription = stringResource(R.string.snapshot_menu),
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = snapshotMenuOpen,
+                                        onDismissRequest = { snapshotMenuOpen = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    stringResource(
+                                                        if (state.snapshot == null) {
+                                                            R.string.snapshot_take
+                                                        } else {
+                                                            R.string.snapshot_retake
+                                                        },
+                                                    ),
+                                                )
+                                            },
+                                            enabled = state.result != null,
+                                            onClick = {
+                                                snapshotMenuOpen = false
+                                                viewModel.takeSnapshot()
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.snapshot_compare)) },
+                                            enabled = state.snapshot != null,
+                                            onClick = {
+                                                snapshotMenuOpen = false
+                                                viewModel.compareWithSnapshot()
+                                            },
+                                        )
+                                        if (state.snapshot != null) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.snapshot_discard)) },
+                                                onClick = {
+                                                    snapshotMenuOpen = false
+                                                    viewModel.discardSnapshot()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            if (state.result != null) {
+                                Box {
+                                    IconButton(onClick = { exportMenuOpen = true }) {
+                                        Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                                    }
+                                    DropdownMenu(
+                                        expanded = exportMenuOpen,
+                                        onDismissRequest = { exportMenuOpen = false },
+                                    ) {
+                                        // One entry per format, in the order they are reached for:
+                                        // a spreadsheet, a shell, a program, another database.
+                                        ExportFormat.entries.forEach { format ->
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(format.labelRes())) },
+                                                onClick = {
+                                                    exportMenuOpen = false
+                                                    viewModel.export(format)
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            },
                         )
                     }
                 }
@@ -832,6 +918,7 @@ private fun ResultPanel(
     onChartSpec: (ChartSpec) -> Unit,
     onToggleFilter: () -> Unit,
     onToggleChart: () -> Unit,
+    extraActions: @Composable () -> Unit = {},
 ) {
     val result = state.result
     when {
@@ -904,6 +991,7 @@ private fun ResultPanel(
                         ),
                     )
                 }
+                extraActions()
             }
 
             // A snapshot leaves no mark on the result it was taken from, and an unmarked
@@ -1388,7 +1476,6 @@ private const val EDITOR_PANE_WEIGHT = 0.42f
 private fun QueryTabBar(
     tabs: List<QueryTab>,
     activeId: Long,
-    wide: Boolean,
     onSelect: (Long) -> Unit,
     onNew: () -> Unit,
     onRename: (Long) -> Unit,
@@ -1396,133 +1483,73 @@ private fun QueryTabBar(
     onClose: (Long) -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
-    var listOpen by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    val activeIndex = tabs.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
 
+    // One strip of tabs on every width, as in the design: each open query is visible and one tap
+    // away, the way tabs are in any editor. The active one is lifted onto a surface of its own.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = Spacing.l, end = Spacing.s),
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                drawRect(
+                    semantic.hairline,
+                    topLeft = Offset(0f, size.height - 1.dp.toPx()),
+                    size = size.copy(height = 1.dp.toPx()),
+                )
+            }
+            .padding(start = Spacing.m, end = Spacing.xs, bottom = Spacing.s),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        if (wide) {
-            LazyRow(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
-                    FilterChip(
-                        selected = tab.id == activeId,
-                        onClick = { onSelect(tab.id) },
-                        label = {
-                            Text(
-                                text = tabLabel(tab, index),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        // The dot is the whole mark: a tab whose text is not a favourite yet.
-                        leadingIcon = if (tab.unsaved) {
-                            {
-                                Text(
-                                    text = stringResource(R.string.query_tab_unsaved_mark),
-                                    color = semantic.warning,
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                        trailingIcon = if (tabs.size > 1) {
-                            {
-                                IconButton(onClick = { onClose(tab.id) }) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = stringResource(R.string.query_tab_close),
-                                    )
-                                }
-                            }
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-        } else {
-            Box(modifier = Modifier.weight(1f)) {
-                TextButton(onClick = { listOpen = true }) {
-                    if (tabs[activeIndex].unsaved) {
-                        Text(
-                            text = stringResource(R.string.query_tab_unsaved_mark),
-                            color = semantic.warning,
-                            modifier = Modifier.padding(end = Spacing.xs),
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
+                val active = tab.id == activeId
+                Row(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (active) MaterialTheme.colorScheme.surface else Color.Transparent)
+                        .border(
+                            1.dp,
+                            if (active) MaterialTheme.colorScheme.outline else Color.Transparent,
+                            RoundedCornerShape(10.dp),
                         )
+                        .selectable(selected = active, role = Role.Tab) { onSelect(tab.id) }
+                        .padding(start = Spacing.m, end = if (tabs.size > 1) Spacing.xs else Spacing.m),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // The dot is the whole mark: a tab whose text is not a favourite yet.
+                    if (tab.unsaved) {
+                        Box(Modifier.size(6.dp).background(semantic.warning, CircleShape))
                     }
                     Text(
-                        text = tabLabel(tabs[activeIndex], activeIndex),
+                        text = tabLabel(tab, index),
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = if (active) MaterialTheme.colorScheme.onSurface else semantic.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier.widthIn(max = 160.dp),
                     )
-                    Text(
-                        text = stringResource(
-                            R.string.query_tab_position,
-                            activeIndex + 1,
-                            tabs.size,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.textSecondary,
-                        modifier = Modifier.padding(start = Spacing.xs),
-                    )
-                    Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.query_tab_switch))
-                }
-                DropdownMenu(expanded = listOpen, onDismissRequest = { listOpen = false }) {
-                    tabs.forEachIndexed { index, tab ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = tabLabel(tab, index),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = if (tab.id == activeId) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                )
-                            },
-                            leadingIcon = if (tab.unsaved) {
-                                {
-                                    Text(
-                                        text = stringResource(R.string.query_tab_unsaved_mark),
-                                        color = semantic.warning,
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                            trailingIcon = if (tabs.size > 1) {
-                                {
-                                    IconButton(
-                                        onClick = {
-                                            listOpen = false
-                                            onClose(tab.id)
-                                        },
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = stringResource(R.string.query_tab_close),
-                                        )
-                                    }
-                                }
-                            } else {
-                                null
-                            },
-                            onClick = {
-                                listOpen = false
-                                onSelect(tab.id)
-                            },
-                        )
+                    if (tabs.size > 1) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable(role = Role.Button) { onClose(tab.id) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.query_tab_close),
+                                tint = semantic.textSecondary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1589,4 +1616,67 @@ private fun TabNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/**
+ * The SQL editor as the design draws it: no box around it, a gutter of line numbers, and lines
+ * that run on to the right instead of wrapping, so a line number always means one line of SQL.
+ * Gutter and text share one vertical scroll and one line height, which keeps them aligned.
+ */
+@Composable
+private fun SqlEditorField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val semantic = LocalSemanticColors.current
+    val textStyle = MonoStyles.editor.copy(
+        fontSize = 14.sp,
+        lineHeight = 23.sp,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    val lines = value.text.count { it == '\n' } + 1
+    BoxWithConstraints(modifier = modifier) {
+        val width = maxWidth
+        Row(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            Column(
+                modifier = Modifier
+                    .width(40.dp)
+                    .padding(top = Spacing.m, bottom = Spacing.m, end = Spacing.m)
+                    .clearAndSetSemantics { },
+                horizontalAlignment = Alignment.End,
+            ) {
+                // One text of numbers, one per line, laid out by the same rules as the field:
+                // separate texts would each round their height and drift out of step.
+                BasicText(
+                    (1..lines).joinToString("\n"),
+                    style = textStyle.copy(
+                        color = semantic.textSecondary.copy(alpha = 0.7f),
+                        textAlign = TextAlign.End,
+                    ),
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                textStyle = textStyle,
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                visualTransformation = SqlVisualTransformation(
+                    plain = MaterialTheme.colorScheme.onSurface,
+                    keyword = MaterialTheme.colorScheme.primary,
+                    string = semantic.success,
+                    number = semantic.cellNumber,
+                    comment = semantic.cellNull,
+                    identifier = semantic.cellDate,
+                    parameter = semantic.warning,
+                ),
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    // At least as wide as the room left of the gutter, so a tap anywhere on an
+                    // empty line still lands in the field.
+                    .widthIn(min = width - 40.dp)
+                    .padding(top = Spacing.m, bottom = Spacing.m, end = Spacing.m),
+            )
+        }
+    }
 }

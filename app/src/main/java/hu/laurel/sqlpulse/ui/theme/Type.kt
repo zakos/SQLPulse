@@ -45,10 +45,15 @@ val SqlPulseTypography = Typography(
     labelSmall = TextStyle(fontFamily = Sans, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
 )
 
-/** Monospace styles: every data and code surface uses them (§8). */
+/**
+ * Monospace styles: every data and code surface uses them (§8). Ligatures are off: JetBrains Mono
+ * would draw `>=` as `≥` and `!=` as `≠`, and in SQL the characters typed are the ones to read.
+ */
+private const val NO_LIGATURES = "liga 0, calt 0"
+
 object MonoStyles {
-    val cell = TextStyle(fontFamily = Mono, fontSize = 13.sp)
-    val cellNumber = TextStyle(fontFamily = Mono, fontSize = 13.sp, textAlign = TextAlign.End)
-    val editor = TextStyle(fontFamily = Mono, fontSize = 15.sp)
-    val fingerprint = TextStyle(fontFamily = Mono, fontSize = 13.sp)
+    val cell = TextStyle(fontFamily = Mono, fontSize = 13.sp, fontFeatureSettings = NO_LIGATURES)
+    val cellNumber = TextStyle(fontFamily = Mono, fontSize = 13.sp, textAlign = TextAlign.End, fontFeatureSettings = NO_LIGATURES)
+    val editor = TextStyle(fontFamily = Mono, fontSize = 15.sp, fontFeatureSettings = NO_LIGATURES)
+    val fingerprint = TextStyle(fontFamily = Mono, fontSize = 13.sp, fontFeatureSettings = NO_LIGATURES)
 }

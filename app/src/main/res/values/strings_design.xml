@@ -15,4 +15,7 @@
     <string name="snapshot_stat_changed">changed</string>
     <string name="snapshot_stat_removed">gone</string>
     <string name="plan_expensive_badge">Heaviest</string>
+    <string name="query_no_database">no database</string>
+    <string name="query_run_hint">Ctrl+Enter runs</string>
+    <string name="query_more_actions">More actions</string>
 </resources>

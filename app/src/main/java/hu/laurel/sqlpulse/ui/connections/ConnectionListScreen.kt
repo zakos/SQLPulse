@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -69,7 +70,6 @@ import hu.laurel.sqlpulse.ui.components.ColorRail
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
-import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.components.StepIndicator
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -78,15 +78,32 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
-import java.text.DateFormat
-import java.util.Date
 import kotlinx.coroutines.delay
+
+/** Everything the connection list can ask for, so the list itself can be drawn without a ViewModel. */
+data class ConnectionListActions(
+    val onCreate: () -> Unit = {},
+    val onEdit: (Long) -> Unit = {},
+    val onOpenKeyStore: () -> Unit = {},
+    val onOpenSchema: () -> Unit = {},
+    val onOpenQuery: () -> Unit = {},
+    val onOpenSettings: () -> Unit = {},
+    val onConnect: (ConnectionEntity) -> Unit = {},
+    val onConfirmConnect: () -> Unit = {},
+    val onCancelConnect: () -> Unit = {},
+    val onAcceptHostKey: () -> Unit = {},
+    val onRejectHostKey: () -> Unit = {},
+    val onUnlockWrites: (ConnectionEntity) -> Unit = {},
+    val onLockWrites: (ConnectionEntity) -> Unit = {},
+    val onDisconnect: () -> Unit = {},
+    val onDuplicate: (ConnectionEntity) -> Unit = {},
+    val onDelete: (ConnectionEntity) -> Unit = {},
+)
 
 /**
  * The launcher screen (§7.1). A card per connection; one tap starts the unlock and the tunnel, and
  * the card shows which of the four steps is running, because four different things can break.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionListScreen(
     onCreate: () -> Unit,
@@ -99,7 +116,6 @@ fun ConnectionListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val confirming by viewModel.confirming.collectAsStateWithLifecycle()
-    var environmentFilter by rememberSaveable { mutableStateOf<String?>(null) }
 
     // A write window is the one thing on this screen that changes without anybody touching it, so
     // the clock only ticks while one is open — and stops again the moment the last one closes.
@@ -111,6 +127,41 @@ fun ConnectionListScreen(
         }
     }
 
+    ConnectionListContent(
+        state = state,
+        confirming = confirming,
+        now = now,
+        actions = ConnectionListActions(
+            onCreate = onCreate,
+            onEdit = onEdit,
+            onOpenKeyStore = onOpenKeyStore,
+            onOpenSchema = onOpenSchema,
+            onOpenQuery = onOpenQuery,
+            onOpenSettings = onOpenSettings,
+            onConnect = viewModel::connect,
+            onConfirmConnect = viewModel::confirmConnect,
+            onCancelConnect = viewModel::cancelConnect,
+            onAcceptHostKey = viewModel::acceptHostKey,
+            onRejectHostKey = viewModel::rejectHostKey,
+            onUnlockWrites = viewModel::unlockWrites,
+            onLockWrites = viewModel::lockWrites,
+            onDisconnect = viewModel::disconnect,
+            onDuplicate = viewModel::duplicate,
+            onDelete = viewModel::delete,
+        ),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectionListContent(
+    state: ConnectionListUiState,
+    confirming: ConnectionEntity?,
+    now: Long,
+    actions: ConnectionListActions,
+) {
+    var environmentFilter by rememberSaveable { mutableStateOf<String?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -118,14 +169,14 @@ fun ConnectionListScreen(
                 title = { Text(stringResource(R.string.connections_title)) },
                 actions = {
                     if (state.tunnel is TunnelState.Active) {
-                        IconButton(onClick = onOpenQuery) {
+                        IconButton(onClick = actions.onOpenQuery) {
                             Icon(Icons.Default.Code, contentDescription = stringResource(R.string.query_title))
                         }
                     }
-                    IconButton(onClick = onOpenKeyStore) {
+                    IconButton(onClick = actions.onOpenKeyStore) {
                         Icon(Icons.Default.Key, contentDescription = stringResource(R.string.keys_title))
                     }
-                    IconButton(onClick = onOpenSettings) {
+                    IconButton(onClick = actions.onOpenSettings) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = stringResource(R.string.settings_title),
@@ -137,7 +188,7 @@ fun ConnectionListScreen(
         floatingActionButton = {
             if (state.connections.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = onCreate,
+                    onClick = actions.onCreate,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text(stringResource(R.string.connection_new)) },
                     shape = Shapes.card,
@@ -153,7 +204,7 @@ fun ConnectionListScreen(
                     title = stringResource(R.string.connections_empty_title),
                     body = stringResource(R.string.connections_empty_body),
                     actionLabel = stringResource(R.string.connections_empty_action),
-                    onAction = onCreate,
+                    onAction = actions.onCreate,
                     modifier = Modifier.align(Alignment.Center),
                 )
             } else {
@@ -184,38 +235,33 @@ fun ConnectionListScreen(
                         }
                     }
                     shown.forEach { (environment, connections) ->
-                        if (state.showsGroupHeadings && environmentFilter == null) {
-                            item(key = "group-${environment.name}") {
-                                SectionCaption(
-                                    stringResource(environment.label()),
-                                    modifier = Modifier.padding(top = Spacing.s),
-                                )
-                            }
-                        }
+                        // No headings: the chips above and the badge on every card already say which
+                        // environment a card belongs to; the order still groups them.
                         items(connections, key = { it.id }) { connection ->
                             ConnectionCard(
                                 connection = connection,
                                 tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
                                 writeAccess = state.writeAccess(connection, now),
-                                onUnlockWrites = { viewModel.unlockWrites(connection) },
-                                onLockWrites = { viewModel.lockWrites(connection) },
+                                now = now,
+                                onUnlockWrites = { actions.onUnlockWrites(connection) },
+                                onLockWrites = { actions.onLockWrites(connection) },
                                 onClick = {
                                     // An already open connection goes straight to the schema;
                                     // disconnecting lives in the long-press menu and the notification.
                                     if (state.tunnel.connectionId == connection.id &&
                                         state.tunnel is TunnelState.Active
                                     ) {
-                                        onOpenSchema()
+                                        actions.onOpenSchema()
                                     } else {
-                                        viewModel.connect(connection)
+                                        actions.onConnect(connection)
                                     }
                                 },
                                 connected = state.tunnel.connectionId == connection.id &&
                                     state.tunnel is TunnelState.Active,
-                                onDisconnect = viewModel::disconnect,
-                                onEdit = { onEdit(connection.id) },
-                                onDuplicate = { viewModel.duplicate(connection) },
-                                onDelete = { viewModel.delete(connection) },
+                                onDisconnect = actions.onDisconnect,
+                                onEdit = { actions.onEdit(connection.id) },
+                                onDuplicate = { actions.onDuplicate(connection) },
+                                onDelete = { actions.onDelete(connection) },
                             )
                         }
                     }
@@ -226,16 +272,16 @@ fun ConnectionListScreen(
         confirming?.let { connection ->
             ProductionConfirmDialog(
                 connection = connection,
-                onConfirm = viewModel::confirmConnect,
-                onCancel = viewModel::cancelConnect,
+                onConfirm = actions.onConfirmConnect,
+                onCancel = actions.onCancelConnect,
             )
         }
 
         state.hostKeyPrompt?.let { prompt ->
             HostKeyDialog(
                 prompt = prompt,
-                onAccept = viewModel::acceptHostKey,
-                onReject = viewModel::rejectHostKey,
+                onAccept = actions.onAcceptHostKey,
+                onReject = actions.onRejectHostKey,
             )
         }
     }
@@ -247,6 +293,7 @@ private fun ConnectionCard(
     connection: ConnectionEntity,
     tunnel: TunnelState?,
     writeAccess: WriteAccess,
+    now: Long,
     onUnlockWrites: () -> Unit,
     onLockWrites: () -> Unit,
     onClick: () -> Unit,
@@ -296,16 +343,16 @@ private fun ConnectionCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    if (environment != ConnectionEnvironment.UNSET) {
-                        if (environment.isProduction) {
-                            InfoBadge(stringResource(environment.shortLabel()), semantic.production)
-                        } else {
-                            InfoBadge(
-                                stringResource(environment.shortLabel()),
-                                color = semantic.textSecondary,
-                                container = semantic.surfaceRaised,
-                            )
-                        }
+                    // Each environment keeps one colour everywhere it is named: development the
+                    // accent, test amber, production red.
+                    val environmentColor = when (environment) {
+                        ConnectionEnvironment.DEVELOPMENT -> MaterialTheme.colorScheme.primary
+                        ConnectionEnvironment.TEST -> semantic.warning
+                        ConnectionEnvironment.PRODUCTION -> semantic.production
+                        ConnectionEnvironment.UNSET -> null
+                    }
+                    if (environmentColor != null) {
+                        InfoBadge(stringResource(environment.label()), environmentColor)
                     }
                 }
                 Row(
@@ -380,8 +427,9 @@ private fun ConnectionCard(
                         modifier = Modifier.weight(1f),
                     )
                     Text(
+                        // Relative, as a glance wants it: "3 days ago" rather than a timestamp.
                         text = connection.lastUsedAt?.let {
-                            stringResource(R.string.last_used, DateFormat.getDateTimeInstance().format(Date(it)))
+                            DateUtils.getRelativeTimeSpanString(it, now, DateUtils.MINUTE_IN_MILLIS).toString()
                         } ?: stringResource(R.string.never_used),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = semantic.textSecondary,

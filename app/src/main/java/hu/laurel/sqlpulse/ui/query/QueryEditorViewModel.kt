@@ -214,10 +214,10 @@ class QueryEditorViewModel @Inject constructor(
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
     private val settings: SettingsRepository,
-) : ViewModel() {
+) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
-    val uiState: StateFlow<QueryEditorUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<QueryEditorUiState> = _uiState.asStateFlow()
 
     private val connectionId = MutableStateFlow(0L)
     private var runJob: Job? = null
@@ -243,11 +243,11 @@ class QueryEditorViewModel @Inject constructor(
     private var lastWritten: DraftBook? = null
     private var draftsRestored = false
 
-    val history: StateFlow<List<QueryHistoryEntity>> = connectionId
+    override val history: StateFlow<List<QueryHistoryEntity>> = connectionId
         .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else queries.observeHistory(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val favourites: StateFlow<List<SavedQueryEntity>> = connectionId
+    override val favourites: StateFlow<List<SavedQueryEntity>> = connectionId
         .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else queries.observeFavourites(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -302,14 +302,14 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** The session itself, for the bar that appears when the network moves under it. */
-    val sessionState: StateFlow<SqlSessionState> = sessions.state
+    override val sessionState: StateFlow<SqlSessionState> = sessions.state
 
     /** Asked for by the bar's button; the automatic path is the session manager's own. */
-    fun reconnect() = sessions.reconnect()
+    override fun reconnect() = sessions.reconnect()
 
     // --- Tabs -------------------------------------------------------------------------------
 
-    fun newTab() {
+    override fun newTab() {
         val state = _uiState.value
         val id = nextTabId
         val opened = QueryTabs.open(state.tabs, id, database = state.database)
@@ -322,7 +322,7 @@ class QueryEditorViewModel @Inject constructor(
         noteDraftChange()
     }
 
-    fun duplicateTab(id: Long) {
+    override fun duplicateTab(id: Long) {
         val state = _uiState.value
         val newId = nextTabId
         val tabs = QueryTabs.duplicate(state.tabs, id, newId)
@@ -335,7 +335,7 @@ class QueryEditorViewModel @Inject constructor(
         noteDraftChange()
     }
 
-    fun renameTab(id: Long, title: String) {
+    override fun renameTab(id: Long, title: String) {
         _uiState.value = _uiState.value.copy(tabs = QueryTabs.rename(_uiState.value.tabs, id, title))
         noteDraftChange()
     }
@@ -346,7 +346,7 @@ class QueryEditorViewModel @Inject constructor(
      * A tab is closed with a small control next to a label, which is exactly the kind of target a
      * thumb hits by accident; the query in it may be twenty minutes of work.
      */
-    fun requestCloseTab(id: Long) {
+    override fun requestCloseTab(id: Long) {
         val tab = _uiState.value.tabs.firstOrNull { it.id == id } ?: return
         if (tab.unsaved) {
             _uiState.value = _uiState.value.copy(closingTab = id)
@@ -355,7 +355,7 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun closeTab(id: Long) {
+    override fun closeTab(id: Long) {
         val state = _uiState.value
         val active = QueryTabs.activeAfterClose(state.tabs, id, state.activeTabId)
         _uiState.value = state.copy(
@@ -370,11 +370,11 @@ class QueryEditorViewModel @Inject constructor(
         noteDraftChange()
     }
 
-    fun dismissCloseTab() {
+    override fun dismissCloseTab() {
         _uiState.value = _uiState.value.copy(closingTab = null)
     }
 
-    fun dismissTabLimit() {
+    override fun dismissTabLimit() {
         _uiState.value = _uiState.value.copy(tabLimitReached = false)
     }
 
@@ -384,7 +384,7 @@ class QueryEditorViewModel @Inject constructor(
      * The connection has one current database, so a tab's database is a wish that is granted when
      * the tab is looked at. Without this, switching tabs would run the next query somewhere else.
      */
-    fun selectTab(id: Long) {
+    override fun selectTab(id: Long) {
         val state = _uiState.value
         if (state.tabs.none { it.id == id }) return
         _uiState.value = state.copy(activeTabId = id, tabLimitReached = false)
@@ -396,7 +396,7 @@ class QueryEditorViewModel @Inject constructor(
 
     // --- Editing ----------------------------------------------------------------------------
 
-    fun selectDatabase(database: String) {
+    override fun selectDatabase(database: String) {
         updateActive { it.copy(database = database) }
         sessions.selectDatabase(database)
         noteDraftChange()
@@ -406,7 +406,7 @@ class QueryEditorViewModel @Inject constructor(
         updateActive { it.copy(selectionStart = start, selectionEnd = end) }
     }
 
-    fun selectStatement(index: Int) {
+    override fun selectStatement(index: Int) {
         val run = _uiState.value.active.statements.getOrNull(index) ?: return
         updateActive {
             it.copy(
@@ -421,7 +421,7 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Runs only the statement the cursor is in, leaving the rest of the script alone. */
-    fun runCurrent(parameters: Map<String, ParameterValue> = emptyMap()) {
+    override fun runCurrent(parameters: Map<String, ParameterValue>) {
         val tab = _uiState.value.active
         val statement = SqlScript.statementAt(tab.sql, tab.selectionStart) ?: return
         execute(listOf(statement.sql), parameters)
@@ -434,7 +434,7 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** One call for what a keystroke changes: the text, where the cursor landed, and the hints. */
-    fun onEditorChanged(sql: String, selectionStart: Int, selectionEnd: Int) {
+    override fun onEditorChanged(sql: String, selectionStart: Int, selectionEnd: Int) {
         updateActive {
             it.copy(
                 sql = sql,
@@ -453,7 +453,7 @@ class QueryEditorViewModel @Inject constructor(
      * Turning it off commits: switching away from "I will decide when this is written" means the
      * work was meant to happen. Discarding is the explicit [rollback].
      */
-    fun setTransaction(open: Boolean) {
+    override fun setTransaction(open: Boolean) {
         viewModelScope.launch {
             try {
                 if (open) sessions.beginTransaction() else sessions.commit()
@@ -463,7 +463,7 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun rollback() {
+    override fun rollback() {
         viewModelScope.launch {
             try {
                 sessions.rollback()
@@ -473,12 +473,12 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun toggleEditor() {
+    override fun toggleEditor() {
         updateActive { it.copy(editorCollapsed = !it.editorCollapsed) }
     }
 
     /** Inserts text at the cursor, which is where the user is looking. */
-    fun append(text: String) {
+    override fun append(text: String) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val before = tab.sql.take(at)
@@ -493,7 +493,7 @@ class QueryEditorViewModel @Inject constructor(
      * give `FROM HIVASOK`, never `FROM hiv HIVASOK`. Where the word starts is the completion's own
      * answer, so a qualified `a.col` replaces only the part after the dot.
      */
-    fun complete(suggestion: String) {
+    override fun complete(suggestion: String) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val start = SqlCompletion.contextAt(tab.sql, at).prefixStart.coerceIn(0, at)
@@ -521,7 +521,7 @@ class QueryEditorViewModel @Inject constructor(
      * The selection is formatted alone when there is one, so one statement of a long script can be
      * tidied without disturbing the rest.
      */
-    fun format() {
+    override fun format() {
         val tab = _uiState.value.active
         if (tab.sql.isBlank()) return
         if (tab.hasSelection) {
@@ -535,12 +535,12 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Replaces every occurrence of [find] in the editor. Case-insensitive, like SQL itself. */
-    fun replaceAll(find: String, replacement: String) {
+    override fun replaceAll(find: String, replacement: String) {
         if (find.isEmpty()) return
         setSql(_uiState.value.active.sql.replace(find, replacement, ignoreCase = true))
     }
 
-    fun selectPanel(panel: QueryPanel) {
+    override fun selectPanel(panel: QueryPanel) {
         updateActive { it.copy(panel = panel) }
     }
 
@@ -624,7 +624,7 @@ class QueryEditorViewModel @Inject constructor(
      * A query with `:parameters` asks for their values first, rather than sending an empty string
      * to the server.
      */
-    fun run(parameters: Map<String, ParameterValue> = emptyMap()) {
+    override fun run(parameters: Map<String, ParameterValue>) {
         val tab = _uiState.value.active
         // A selection means "run this much of it", which is how a long script is worked through.
         val selected = tab.sql.substring(
@@ -820,14 +820,14 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Runs what the dialog was asking about. */
-    fun confirmWrite() {
+    override fun confirmWrite() {
         val pending = pendingRun ?: return
         pendingRun = null
         _uiState.value = _uiState.value.copy(writeConfirmation = null)
         execute(pending.statements, pending.parameters, confirmed = true)
     }
 
-    fun dismissWriteConfirmation() {
+    override fun dismissWriteConfirmation() {
         pendingRun = null
         _uiState.value = _uiState.value.copy(writeConfirmation = null)
     }
@@ -843,7 +843,7 @@ class QueryEditorViewModel @Inject constructor(
      * A query result is not a table page, so there is nothing to re-query: what is sorted is the
      * rows already in memory, and the label says as much when only part of the result is loaded.
      */
-    fun sortResult(column: String) {
+    override fun sortResult(column: String) {
         val tab = _uiState.value.active
         val result = tab.result ?: return
         val sort = TableQuery.nextSort(tab.resultSort, column)
@@ -857,21 +857,21 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Narrows the rows on screen. Nothing is re-queried; what is not loaded stays unseen. */
-    fun setResultFilter(filter: ResultFilter) {
+    override fun setResultFilter(filter: ResultFilter) {
         updateActive { it.copy(resultFilter = filter) }
     }
 
     /** Folds the filter bar away, keeping whatever it is filtering by. */
-    fun toggleFilterBar() {
+    override fun toggleFilterBar() {
         updateActive { it.copy(filterOpen = !it.filterOpen) }
     }
 
     /** Switches between the rows and the picture of them. */
-    fun toggleChart() {
+    override fun toggleChart() {
         updateActive { it.copy(showChart = !it.showChart) }
     }
 
-    fun setChartSpec(spec: ChartSpec) {
+    override fun setChartSpec(spec: ChartSpec) {
         updateActive { it.copy(chartSpec = spec) }
     }
 
@@ -883,7 +883,7 @@ class QueryEditorViewModel @Inject constructor(
      * syntax error on the first attempt is what an old server calls "I have never heard of this
      * word", so exactly that failure — and no other — runs the plain `EXPLAIN` instead.
      */
-    fun explain() {
+    override fun explain() {
         val sql = _uiState.value.active.sql.trim()
         if (sql.isBlank()) return
         if (SqlGuards.classify(sql) != StatementKind.READ) {
@@ -903,7 +903,7 @@ class QueryEditorViewModel @Inject constructor(
         )
     }
 
-    fun cancel() {
+    override fun cancel() {
         viewModelScope.launch {
             executor.cancel()
             runJob?.cancel()
@@ -912,7 +912,7 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** §7.7: CSV or JSON of what is loaded, straight into the share sheet. */
-    fun export(format: ExportFormat) {
+    override fun export(format: ExportFormat) {
         // What is exported is what is on screen. Exporting rows a filter is hiding would be a
         // file that does not match the thing the user was looking at when they asked for it.
         val result = _uiState.value.visibleResult ?: return
@@ -927,15 +927,15 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun shareIntentHandled() {
+    override fun shareIntentHandled() {
         _uiState.value = _uiState.value.copy(shareIntent = null)
     }
 
-    fun dismissParameters() {
+    override fun dismissParameters() {
         updateActive { it.copy(pendingParameters = emptyList()) }
     }
 
-    fun saveFavourite(name: String) {
+    override fun saveFavourite(name: String) {
         val id = connectionId.value
         if (id == 0L) return
         val sql = _uiState.value.active.sql
@@ -945,7 +945,7 @@ class QueryEditorViewModel @Inject constructor(
         viewModelScope.launch { queries.saveFavourite(id, name, sql) }
     }
 
-    fun deleteFavourite(favourite: SavedQueryEntity) {
+    override fun deleteFavourite(favourite: SavedQueryEntity) {
         viewModelScope.launch { queries.deleteFavourite(favourite.id) }
     }
 
@@ -955,7 +955,7 @@ class QueryEditorViewModel @Inject constructor(
      * [saved] says whether it came from the favourites, which is what decides whether the tab is
      * then marked as holding unsaved text.
      */
-    fun load(sql: String, saved: Boolean = false) {
+    override fun load(sql: String, saved: Boolean) {
         // A query taken from the history or the favourites is meant to be read and edited, so the
         // editor unfolds even if a result was filling the screen.
         updateActive {
@@ -983,7 +983,7 @@ class QueryEditorViewModel @Inject constructor(
      * means without a key — is [ResultSnapshots]' answer, so it can be stated as an equality in a
      * test rather than demonstrated on a phone.
      */
-    fun takeSnapshot() {
+    override fun takeSnapshot() {
         val state = _uiState.value
         val tabId = state.activeTabId
         val tab = state.active
@@ -1028,7 +1028,7 @@ class QueryEditorViewModel @Inject constructor(
      * deliberately — a comparison that silently went to the server would be a write-shaped action
      * hiding behind a read-shaped one.
      */
-    fun compareWithSnapshot() {
+    override fun compareWithSnapshot() {
         val state = _uiState.value
         val snapshot = state.snapshots[state.activeTabId] ?: return
         // Both sides are what the screen shows, for the same reason taking one is.
@@ -1041,16 +1041,16 @@ class QueryEditorViewModel @Inject constructor(
         _uiState.value = state.copy(comparison = outcome)
     }
 
-    fun dismissComparison() {
+    override fun dismissComparison() {
         _uiState.value = _uiState.value.copy(comparison = null)
     }
 
-    fun dismissSnapshotNotice() {
+    override fun dismissSnapshotNotice() {
         _uiState.value = _uiState.value.copy(snapshotNotice = null)
     }
 
     /** Throws the snapshot away, for when the next one should be taken from a different run. */
-    fun discardSnapshot() {
+    override fun discardSnapshot() {
         val state = _uiState.value
         _uiState.value = state.copy(
             snapshots = state.snapshots - state.activeTabId,
