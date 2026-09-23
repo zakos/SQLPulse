@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
@@ -20,9 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -40,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.schema.Health
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.SegmentedChoice
 import hu.laurel.sqlpulse.ui.components.Sparkline
 import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
@@ -52,11 +51,20 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
  * A tile per metric: the number now, the colour saying whether that is ordinary, and the last
  * minute behind it. Everything here reads; the screen cannot change anything on the server.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PulseScreen(
     onBack: () -> Unit,
     viewModel: PulseViewModel = hiltViewModel(),
+) {
+    PulseScreenContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [PulseController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PulseScreenContent(
+    onBack: () -> Unit,
+    viewModel: PulseController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
@@ -85,18 +93,21 @@ fun PulseScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.l, vertical = Spacing.s),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
             ) {
-                PulseInterval.entries.forEachIndexed { index, candidate ->
-                    SegmentedButton(
-                        selected = state.interval == candidate,
-                        onClick = { viewModel.setInterval(candidate) },
-                        shape = SegmentedButtonDefaults.itemShape(index, PulseInterval.entries.size),
-                        label = { Text(stringResource(candidate.labelRes())) },
-                    )
+                SegmentedChoice(
+                    options = PulseInterval.entries,
+                    selected = state.interval,
+                    label = { stringResource(it.labelRes()) },
+                    onSelect = viewModel::setInterval,
+                    modifier = Modifier.weight(1f),
+                )
+                // Says the numbers are moving, in words as well as with the pulsing dot.
+                if (state.live) {
+                    StatusDot(color = semantic.success, label = stringResource(R.string.pulse_live), pulsing = true)
                 }
             }
 
@@ -123,6 +134,14 @@ fun PulseScreen(
                 ) {
                     items(state.metrics, key = { it.id.name }) { metric ->
                         MetricTile(metric)
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            stringResource(R.string.pulse_footer),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = semantic.textSecondary,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
                     }
                 }
             }

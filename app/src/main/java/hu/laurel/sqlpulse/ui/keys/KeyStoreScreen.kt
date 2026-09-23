@@ -23,8 +23,11 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.db.SshKeyAlgorithm
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
@@ -71,11 +75,20 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
  * Key store (§5, §7.7). Three ways in — file, paste, generate — all landing in the same import
  * form. Private keys can be deleted but never viewed or exported (§6).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyStoreScreen(
     onBack: () -> Unit,
     viewModel: KeyStoreViewModel = hiltViewModel(),
+) {
+    KeyStoreScreenContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [KeyStoreController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun KeyStoreScreenContent(
+    onBack: () -> Unit,
+    viewModel: KeyStoreController,
 ) {
     val keys by viewModel.keys.collectAsStateWithLifecycle()
     val importState by viewModel.importState.collectAsStateWithLifecycle()
@@ -246,7 +259,7 @@ private fun KeyCard(key: SshKeyEntity, onCopyPublicKey: (SshKeyEntity) -> Unit, 
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     InfoBadge(
-                        "${key.algorithm} ${key.bits}",
+                        if (key.algorithm == SshKeyAlgorithm.ED25519) "ED25519" else "${key.algorithm} ${key.bits}",
                         color = semantic.textSecondary,
                         container = semantic.surfaceRaised,
                     )
@@ -259,11 +272,31 @@ private fun KeyCard(key: SshKeyEntity, onCopyPublicKey: (SshKeyEntity) -> Unit, 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = { onCopyPublicKey(key) }) {
-                Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.key_public_copy), tint = semantic.textSecondary)
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.key_delete), tint = semantic.textSecondary)
+            // One menu instead of two icons: the name and fingerprint are what the card is for,
+            // and they need the width.
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.key_actions), tint = semantic.textSecondary)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.key_public_copy)) },
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onCopyPublicKey(key)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.key_delete), color = semantic.danger) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = semantic.danger) },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        },
+                    )
+                }
             }
         }
     }

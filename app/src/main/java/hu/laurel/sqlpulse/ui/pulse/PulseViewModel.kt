@@ -76,10 +76,10 @@ data class PulseUiState(
 class PulseViewModel @Inject constructor(
     private val server: ServerRepository,
     sessions: SqlSessionManager,
-) : ViewModel() {
+) : ViewModel(), PulseController {
 
     private val _uiState = MutableStateFlow(PulseUiState())
-    val uiState: StateFlow<PulseUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<PulseUiState> = _uiState.asStateFlow()
 
     private var job: Job? = null
     private var previous: ServerSample? = null
@@ -98,12 +98,12 @@ class PulseViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    fun setInterval(interval: PulseInterval) {
+    override fun setInterval(interval: PulseInterval) {
         _uiState.value = _uiState.value.copy(interval = interval)
     }
 
     /** Starts sampling. Calling it twice does not start a second loop. */
-    fun start() {
+    override fun start() {
         if (job?.isActive == true) return
         job = viewModelScope.launch {
             while (isActive) {
@@ -113,7 +113,7 @@ class PulseViewModel @Inject constructor(
         }
     }
 
-    fun stop() {
+    override fun stop() {
         job?.cancel()
         job = null
     }

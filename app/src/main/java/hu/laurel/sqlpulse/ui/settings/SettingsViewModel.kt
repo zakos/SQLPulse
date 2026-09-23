@@ -15,25 +15,25 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
-) : ViewModel() {
+) : ViewModel(), SettingsController {
 
-    val settings: StateFlow<Settings> = repository.settings
+    override val settings: StateFlow<Settings> = repository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Settings())
 
-    fun setRowLimit(limit: Int) = launch { repository.setDefaultRowLimit(limit) }
+    override fun setRowLimit(limit: Int) = launch { repository.setDefaultRowLimit(limit) }
 
-    fun setAutoLock(minutes: Int) = launch { repository.setAutoLockMinutes(minutes) }
+    override fun setAutoLock(minutes: Int) = launch { repository.setAutoLockMinutes(minutes) }
 
-    fun setGridFontScale(scale: Int) = launch { repository.setGridFontScale(scale) }
+    override fun setGridFontScale(scale: Int) = launch { repository.setGridFontScale(scale) }
 
-    fun setTheme(theme: ThemePreference) = launch { repository.setTheme(theme) }
+    override fun setTheme(theme: ThemePreference) = launch { repository.setTheme(theme) }
 
-    fun setBlockWritesWithoutWhere(block: Boolean) =
+    override fun setBlockWritesWithoutWhere(block: Boolean) =
         launch { repository.setBlockWritesWithoutWhere(block) }
 
-    fun setMaxAffectedRows(rows: Int) = launch { repository.setMaxAffectedRows(rows) }
+    override fun setMaxAffectedRows(rows: Int) = launch { repository.setMaxAffectedRows(rows) }
 
-    fun setBlockScreenshots(block: Boolean) = launch { repository.setBlockScreenshots(block) }
+    override fun setBlockScreenshots(block: Boolean) = launch { repository.setBlockScreenshots(block) }
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

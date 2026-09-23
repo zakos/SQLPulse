@@ -76,12 +76,22 @@ import kotlin.math.min
  * drawn from `information_schema` alone — it reads nothing from the tables themselves, so it costs
  * the same on an empty database and on a large one.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SchemaMapScreen(
     onBack: () -> Unit,
     onOpenTable: (database: String, table: String) -> Unit,
     viewModel: SchemaMapViewModel = hiltViewModel(),
+) {
+    SchemaMapScreenContent(onBack = onBack, onOpenTable = onOpenTable, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [SchemaMapController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SchemaMapScreenContent(
+    onBack: () -> Unit,
+    onOpenTable: (database: String, table: String) -> Unit,
+    viewModel: SchemaMapController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current

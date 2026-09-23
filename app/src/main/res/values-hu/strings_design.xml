@@ -18,4 +18,12 @@
     <string name="query_no_database">nincs adatbázis</string>
     <string name="query_run_hint">Ctrl+Enter futtat</string>
     <string name="query_more_actions">További műveletek</string>
+    <string name="settings_default_limit_note">LIMIT nélküli olvasáshoz hozzáadva</string>
+    <string name="settings_appearance">Megjelenés</string>
+    <string name="settings_security">Biztonság</string>
+    <string name="settings_grid_font_sample">20418  Kovács Anna  184500</string>
+    <string name="pulse_live">élő</string>
+    <string name="pulse_footer">Csak akkor mér, amíg ez a képernyő elöl van. A rátát két mintából számoljuk, így egy újraindult kiszolgáló nem ad hamis tüskét.</string>
+    <string name="server_seconds">%1$d s</string>
+    <string name="key_actions">Kulcs műveletei</string>
 </resources>

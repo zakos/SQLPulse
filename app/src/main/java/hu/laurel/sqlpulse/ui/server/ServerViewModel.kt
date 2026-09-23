@@ -57,10 +57,10 @@ class ServerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val server: ServerRepository,
     sessions: SqlSessionManager,
-) : ViewModel() {
+) : ViewModel(), ServerController {
 
     private val _uiState = MutableStateFlow(ServerUiState())
-    val uiState: StateFlow<ServerUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<ServerUiState> = _uiState.asStateFlow()
 
     init {
         sessions.state
@@ -82,7 +82,7 @@ class ServerViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    fun selectPanel(panel: ServerPanel) {
+    override fun selectPanel(panel: ServerPanel) {
         _uiState.value = _uiState.value.copy(panel = panel)
         if (_uiState.value.table == null) refresh()
     }
@@ -94,7 +94,7 @@ class ServerViewModel @Inject constructor(
      * asked for, is not a refresh anyone wants over a tunnel. The overview is fetched alongside,
      * because it is a single cheap statement and it is always visible.
      */
-    fun refresh() {
+    override fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
             try {
@@ -120,7 +120,7 @@ class ServerViewModel @Inject constructor(
     }
 
     /** Asks the server what one account may do. Read-only, like everything on this screen. */
-    fun showGrants(account: String) {
+    override fun showGrants(account: String) {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
@@ -132,11 +132,11 @@ class ServerViewModel @Inject constructor(
         }
     }
 
-    fun dismissGrants() {
+    override fun dismissGrants() {
         _uiState.value = _uiState.value.copy(grants = null)
     }
 
-    fun kill(processId: Long) {
+    override fun kill(processId: Long) {
         viewModelScope.launch {
             try {
                 server.killQuery(processId)

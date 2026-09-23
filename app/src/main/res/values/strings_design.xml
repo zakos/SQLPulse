@@ -18,4 +18,12 @@
     <string name="query_no_database">no database</string>
     <string name="query_run_hint">Ctrl+Enter runs</string>
     <string name="query_more_actions">More actions</string>
+    <string name="settings_default_limit_note">Added to reads without a LIMIT</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_grid_font_sample">20418  Kovács Anna  184500</string>
+    <string name="pulse_live">live</string>
+    <string name="pulse_footer">Measured only while this screen is in front. Rates come from two readings, so a restarted server does not show a false spike.</string>
+    <string name="server_seconds">%1$d s</string>
+    <string name="key_actions">Key actions</string>
 </resources>
