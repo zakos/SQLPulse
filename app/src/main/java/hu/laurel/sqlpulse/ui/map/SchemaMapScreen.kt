@@ -29,9 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,9 +50,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +63,7 @@ import hu.laurel.sqlpulse.data.schema.GraphNode
 import hu.laurel.sqlpulse.data.schema.SchemaGraph
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
+import hu.laurel.sqlpulse.ui.theme.Mono
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
@@ -97,7 +98,9 @@ fun SchemaMapScreenContent(
     val semantic = LocalSemanticColors.current
     val measurer = rememberTextMeasurer()
 
-    var scale by remember { mutableFloatStateOf(1f) }
+    // One graph unit per dp until the first fit has run, so the opening frame is not half size.
+    val unitsPerDp = LocalDensity.current.density
+    var scale by remember { mutableFloatStateOf(unitsPerDp) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     // Bumped to frame the map again: once when a schema arrives, and whenever "fit" is tapped.
     var fitRequest by remember { mutableIntStateOf(0) }
@@ -167,7 +170,9 @@ fun SchemaMapScreenContent(
                             scale = min(
                                 widthPx / (bounds.width + NODE_WIDTH),
                                 heightPx / (bounds.height + NODE_HEIGHT),
-                            ).coerceIn(MIN_SCALE, 1f)
+                            // The graph is laid out in dp-sized units, so at most one unit per dp:
+                            // capped at 1 px the boxes came out half size on a dense screen.
+                            ).coerceIn(MIN_SCALE, density.density)
                             offset = Offset(
                                 (widthPx - bounds.width * scale) / 2f - bounds.left * scale,
                                 with(density) { Spacing.l.toPx() },
@@ -203,7 +208,9 @@ fun SchemaMapScreenContent(
                                 },
                         ) {
                             translate(left = offset.x, top = offset.y) {
-                                scale(scale) {
+                                // Scaled about the corner the offset is measured from. The default pivot is
+                                // the canvas centre, which pushed the map off screen at any zoom but 1.
+                                scale(scale, pivot = Offset.Zero) {
                                     drawGraph(
                                         graph = state.graph,
                                         selected = state.selected,
@@ -402,7 +409,8 @@ private fun DrawScope.drawGraph(
         // width runs over its neighbours, which is what turns a dense schema into a smear.
         val label = measurer.measure(
             text = node.table,
-            style = TextStyle(fontSize = 12.sp, color = textColour),
+            // In graph units rather than sp: the canvas is scaled already, and sp would scale twice.
+            style = TextStyle(fontFamily = Mono, fontSize = (11f / density).sp, color = textColour),
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,
@@ -411,7 +419,7 @@ private fun DrawScope.drawGraph(
         drawText(
             textLayoutResult = label,
             topLeft = Offset(
-                rect.left + max(LABEL_PADDING, (NODE_WIDTH - label.size.width) / 2f),
+                rect.left + LABEL_PADDING,
                 rect.top + (NODE_HEIGHT - label.size.height) / 2f,
             ),
         )
@@ -489,12 +497,12 @@ private fun SchemaGraph.bounds(): Rect {
     )
 }
 
-private const val NODE_WIDTH = 190f
-private const val NODE_HEIGHT = 44f
-private const val GAP_X = 24f
-private const val GAP_Y = 90f
+private const val NODE_WIDTH = 112f
+private const val NODE_HEIGHT = 36f
+private const val GAP_X = 12f
+private const val GAP_Y = 72f
 private const val CORNER = 10f
 private const val ARROW = 6f
-private const val LABEL_PADDING = 8f
+private const val LABEL_PADDING = 10f
 private const val MIN_SCALE = 0.2f
 private const val MAX_SCALE = 4f
