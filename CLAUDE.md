@@ -133,6 +133,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   válaszol a Gradle-nek, ezért a `~/.gradle/init.d/mirror.gradle.kts` (csak helyi, nincs a repóban)
   a Google tükröt teszi előre. `./gradlew --no-configuration-cache compileDebugKotlin`.
 - A build által generált `app/schemas/` nincs verziókezelve — ne commitold.
+- **APK helyben** (a debug APK ~94 MB, a fájlküldés korlátja 30 MB): `assembleRelease` (R8, aláíratlan)
+  → `zip -d … 'lib/x86/*' 'lib/x86_64/*'` → `zipalign -p 4` → `apksigner sign` egy scratchpadban
+  generált próbakulccsal → ~20 MB. A próbakulcs nem a CI kulcsa, ezért ez az APK nem frissít
+  CI-ből telepített appot (és fordítva): előtte az appot el kell távolítani.
 
 ## Haladás (napló)
 
@@ -142,6 +146,7 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   Sorok: ikon + rendszer · belépés/kapcsolatok · lekérdezés/eredmény/írás · elemzés · séma ·
   szerver/pulzus/beállítások · világos téma + táblagép. Kódváltozás nem történt.
 - 2026-09-22: A látványterv beépítése a kódba (ld. „Látványterv a kódban” szakasz).
+- 2026-09-23: Helyben fordított APK (0.1.1, R8, arm64 + armv7) átadva próbára.
 
 ## Teendők / nyitott pontok
 
