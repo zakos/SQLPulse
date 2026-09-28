@@ -60,7 +60,7 @@ class QueryEditorShots {
         )
     }
 
-    private companion object {
+    companion object {
         const val SQL = "-- napi bevétel fizetési mód szerint\nSELECT DATE(i.issued_at) AS nap,\n       i.payment_method,\n       COUNT(*) AS db,\n       SUM(i.total) AS osszeg\nFROM invoices i\nWHERE i.issued_at >= :tol\n  AND i.status = 'paid'\n  AND i.cu"
 
         val RESULT = ResultTable(

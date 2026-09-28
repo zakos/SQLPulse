@@ -5,10 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ExplainAdvice
@@ -176,6 +181,7 @@ fun ExplainPlanTree(
 }
 
 /** One node and, when it is open, everything under it. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlanNodeRows(
     node: ExplainPlanNode,
@@ -218,27 +224,64 @@ private fun PlanNodeRows(
             } else {
                 Spacer(modifier = Modifier.size(18.dp))
             }
-            Text(
-                text = stringResource(node.kind.labelRes()),
-                style = MaterialTheme.typography.labelMedium,
-                color = when {
-                    isHeaviest -> semantic.danger
-                    onBranch -> semantic.warning
-                    else -> semantic.textSecondary
-                },
-            )
-            Text(
-                text = " ${node.label}",
-                style = MonoStyles.cell,
-                fontWeight = if (isHeaviest) FontWeight.Bold else FontWeight.Normal,
-            )
+            Column(modifier = Modifier.weight(1f).padding(start = Spacing.xs)) {
+                Text(
+                    text = stringResource(node.kind.labelRes()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = when {
+                        isHeaviest -> semantic.danger
+                        onBranch -> semantic.warning
+                        else -> semantic.textSecondary
+                    },
+                )
+                Text(
+                    text = node.label,
+                    style = MonoStyles.cell,
+                    fontWeight = if (isHeaviest) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+            if (isHeaviest) {
+                InfoBadge(text = stringResource(R.string.plan_expensive_badge), color = semantic.danger)
+            }
+            // This step's share of the whole plan's cost, where the server said what it is.
+            val share = node.cost?.let { own -> plan.totalCost?.takeIf { it > 0 }?.let { total -> (own / total).coerceIn(0.0, 1.0) } }
+            share?.let {
+                Text(
+                    text = "%.0f%%".format(it * 100),
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = if (isHeaviest) semantic.danger else semantic.textSecondary,
+                    modifier = Modifier.padding(start = Spacing.s),
+                )
+            }
+        }
+        node.cost?.let { own ->
+            plan.totalCost?.takeIf { it > 0 }?.let { total ->
+                val share = (own / total).coerceIn(0.0, 1.0).toFloat()
+                Box(
+                    modifier = Modifier
+                        .padding(start = 18.dp, top = Spacing.xs)
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .background(semantic.surfaceRaised, RoundedCornerShape(3.dp)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(share.coerceAtLeast(0.02f))
+                            .height(6.dp)
+                            .background(if (isHeaviest) semantic.danger else MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
+                    )
+                }
+            }
         }
 
         val facts = node.facts()
         if (facts.isNotEmpty()) {
-            Row(
-                modifier = Modifier.padding(start = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            // Wraps over lines: six short facts side by side each got a sliver of the width, and
+            // broke into a column of one word per line.
+            FlowRow(
+                modifier = Modifier.padding(start = 18.dp, top = Spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 facts.forEach { (labelRes, value) ->
                     Text(
@@ -248,14 +291,6 @@ private fun PlanNodeRows(
                     )
                 }
             }
-        }
-
-        if (isHeaviest) {
-            InfoBadge(
-                text = stringResource(R.string.plan_expensive_badge),
-                color = semantic.danger,
-                modifier = Modifier.padding(start = 18.dp, top = Spacing.xs),
-            )
         }
 
         node.flags.mapNotNull { it.textRes() }.forEach { textRes ->

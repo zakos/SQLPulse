@@ -33,4 +33,21 @@
     <string name="structure_foreign_key">Foreign key</string>
     <string name="structure_generated">Generated column</string>
     <string name="structure_default">default %1$s</string>
+    <string name="confirm_transaction_note">It runs in one transaction. If anything other than exactly 1 row changes, it is rolled back.</string>
+    <string name="confirm_optimistic_note">The old value is part of the condition: if somebody changed it meanwhile, it is not overwritten.</string>
+    <string name="confirm_name_mismatch">Does not match yet.</string>
+    <string name="export_hint_csv">spreadsheet</string>
+    <string name="export_hint_tsv">tabs</string>
+    <string name="export_hint_json">array</string>
+    <string name="export_hint_sql">INSERT</string>
+    <string name="export_rows_on_screen">%1$d rows, as they are on screen</string>
+    <string name="export_temp_note">The file exists only until the share sheet has taken it: it is deleted on the next start and on every lock.</string>
+    <string name="export_share">Share…</string>
+    <string name="import_file_summary">file · %1$d columns</string>
+    <string name="import_stat_rows">rows</string>
+    <string name="import_stat_columns">columns matched</string>
+    <string name="import_left_out">— left out</string>
+    <string name="import_transaction_note">It runs in one transaction: if a single row is bad, nothing goes in.</string>
+    <string name="import_run_rows">Insert %1$s rows</string>
+    <string name="chart_headline_hint">last value (%1$s) · peak %2$s</string>
 </resources>

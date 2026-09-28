@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,7 @@ import hu.laurel.sqlpulse.data.chart.ChartRefusal
 import hu.laurel.sqlpulse.data.chart.ChartSpec
 import hu.laurel.sqlpulse.data.chart.ResultCharts
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -78,13 +80,17 @@ fun ResultChartPanel(
 
             is ChartOutcome.Drawable -> {
                 chosen?.let { ChartControls(table, it, onSpecChange) }
-                ChartCanvas(
-                    data = outcome.data,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(CHART_HEIGHT.dp)
-                        .padding(horizontal = Spacing.l, vertical = Spacing.s),
-                )
+                // The chart on a card of its own with what it says in words above it: the value
+                // it ends on and the highest one, which is what a glance at the bars is after.
+                HairlineCard(modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.m)) {
+                    Column(modifier = Modifier.padding(Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                        ChartHeadline(outcome.data)
+                        ChartCanvas(
+                            data = outcome.data,
+                            modifier = Modifier.fillMaxWidth().height(CHART_HEIGHT.dp),
+                        )
+                    }
+                }
                 Legend(outcome.data)
                 outcome.data.truncatedTo?.let { kept ->
                     Text(
@@ -96,6 +102,27 @@ fun ResultChartPanel(
                 }
             }
         }
+    }
+}
+
+/** The series' name, the value it ends on in large type, and the highest value it reached. */
+@Composable
+private fun ChartHeadline(data: ChartData) {
+    val semantic = LocalSemanticColors.current
+    val series = data.series.firstOrNull() ?: return
+    val last = series.points.lastOrNull() ?: return
+    Text(series.label, style = MaterialTheme.typography.titleSmall)
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        Text(
+            text = format(last.value),
+            style = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+        )
+        Text(
+            text = stringResource(R.string.chart_headline_hint, last.label, format(data.maximum)),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            color = semantic.textSecondary,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
     }
 }
 
@@ -226,6 +253,15 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
         // The zero line, where zero is inside the range. Without it a chart of negative numbers
         // reads as if everything were positive and merely small.
         val zero = y(0.0)
+        // A gridline at the top, the middle and the baseline: enough to read a bar against.
+        listOf(0f, plot.height / 2f).forEach { line ->
+            drawLine(
+                color = axis,
+                start = Offset(gutter, line),
+                end = Offset(size.width, line),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
         drawLine(
             color = axis,
             start = Offset(gutter, zero),
@@ -250,12 +286,18 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
                     series.points.forEachIndexed { index, point ->
                         val left = gutter + index * slot + seriesIndex * (slot / data.series.size)
                         val valueY = y(point.value)
-                        drawRect(
-                            color = palette[seriesIndex % palette.size],
+                        // One series: the earlier bars step back and the last one, the value the
+                        // headline quotes, is drawn in full.
+                        val last = index == series.points.lastIndex
+                        drawRoundRect(
+                            color = palette[seriesIndex % palette.size].copy(
+                                alpha = if (data.series.size == 1 && !last) 0.72f else 1f,
+                            ),
                             topLeft = Offset(left, minOf(valueY, zero)),
                             // Never zero height: a value that rounds to the baseline still
                             // happened, and an invisible bar reads as a missing row.
                             size = Size(barWidth, maxOf(1.dp.toPx(), kotlin.math.abs(zero - valueY))),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx()),
                         )
                     }
                 }

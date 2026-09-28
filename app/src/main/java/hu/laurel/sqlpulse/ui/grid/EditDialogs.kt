@@ -5,15 +5,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -29,8 +37,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellEditor
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
+import hu.laurel.sqlpulse.ui.components.DialogNote
+import hu.laurel.sqlpulse.ui.components.LabeledField
+import hu.laurel.sqlpulse.ui.components.SqlBlock
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -201,6 +217,7 @@ private fun ChoicesRow(
  *
  * On a production connection a delete also requires the table name to be typed.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmStatementDialog(
     title: String,
@@ -209,70 +226,88 @@ fun ConfirmStatementDialog(
     requireTableName: String?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** Where this applies, in capitals under the title: the environment, when it is production. */
+    subtitle: String? = null,
 ) {
     var armed by remember { mutableStateOf(false) }
     var typedName by remember { mutableStateOf("") }
-    val semantic = LocalSemanticColors.current
 
     LaunchedEffect(statement) {
         delay(ARM_DELAY_MS)
         armed = true
     }
 
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ConfirmStatementCard(
+            title = title,
+            subtitle = subtitle,
+            statement = statement,
+            destructive = destructive,
+            requireTableName = requireTableName,
+            armed = armed,
+            typedName = typedName,
+            onTypedName = { typedName = it },
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The dialog's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun ConfirmStatementCard(
+    title: String,
+    subtitle: String?,
+    statement: String,
+    destructive: Boolean,
+    requireTableName: String?,
+    armed: Boolean,
+    typedName: String,
+    onTypedName: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
     val nameMatches = requireTableName == null || typedName.trim() == requireTableName
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, color = if (destructive) semantic.danger else MaterialTheme.colorScheme.onSurface) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, Shapes.button)
-                        .padding(Spacing.m),
-                ) {
-                    val whereIndex = statement.indexOf(" WHERE ")
-                    if (whereIndex >= 0) {
-                        Text(statement.substring(0, whereIndex), style = MonoStyles.cell)
-                        Text(
-                            text = statement.substring(whereIndex + 1),
-                            style = MonoStyles.cell,
-                            color = semantic.warning,
-                            textDecoration = TextDecoration.Underline,
-                        )
-                    } else {
-                        Text(statement, style = MonoStyles.cell)
-                    }
-                }
-
-                requireTableName?.let { table ->
-                    Text(
-                        text = stringResource(R.string.confirm_type_table_name, table),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.danger,
-                    )
-                    OutlinedTextField(
-                        value = typedName,
-                        onValueChange = { typedName = it },
-                        singleLine = true,
-                        textStyle = MonoStyles.cell,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+    DialogCard(danger = destructive && requireTableName != null) {
+        DialogHeading(title = title, subtitle = subtitle, danger = destructive)
+        if (!destructive) {
+            Text(
+                stringResource(R.string.confirm_transaction_note),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = semantic.textSecondary,
+            )
+        }
+        SqlBlock(statement)
+        if (!destructive) {
+            DialogNote(stringResource(R.string.confirm_optimistic_note), Icons.Default.Shield, semantic.success)
+        }
+        requireTableName?.let { table ->
+            LabeledField(
+                value = typedName,
+                onValueChange = onTypedName,
+                label = { Text(stringResource(R.string.confirm_type_table_name, table)) },
+                mono = true,
+            )
+            if (typedName.isNotEmpty() && !nameMatches) {
+                Text(
+                    stringResource(R.string.confirm_name_mismatch),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                )
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = armed && nameMatches,
-                shape = Shapes.button,
-            ) {
-                Text(stringResource(if (destructive) R.string.row_delete else R.string.confirm_run))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(if (destructive) R.string.row_delete else R.string.confirm_run),
+            onAction = onConfirm,
+            enabled = armed && nameMatches,
+            danger = destructive,
+            actionIcon = if (destructive) Icons.Default.Delete else null,
+        )
+    }
 }
 
 /** §7.6: the first second after the dialog appears, the confirm button does nothing. */

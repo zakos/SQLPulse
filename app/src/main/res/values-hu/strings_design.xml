@@ -33,4 +33,21 @@
     <string name="structure_foreign_key">Idegen kulcs</string>
     <string name="structure_generated">Generált oszlop</string>
     <string name="structure_default">alap: %1$s</string>
+    <string name="confirm_transaction_note">Egy tranzakcióban fut. Ha nem pontosan 1 sor változik, visszagörgetjük.</string>
+    <string name="confirm_optimistic_note">Az eredeti érték is a feltételben: ha közben más átírta, nem írjuk felül.</string>
+    <string name="confirm_name_mismatch">Még nem egyezik.</string>
+    <string name="export_hint_csv">Excel</string>
+    <string name="export_hint_tsv">tabos</string>
+    <string name="export_hint_json">tömb</string>
+    <string name="export_hint_sql">INSERT</string>
+    <string name="export_rows_on_screen">%1$d sor, úgy, ahogy a képernyőn látszik</string>
+    <string name="export_temp_note">A fájl csak a megosztás idejéig létezik: a következő indításkor és zároláskor törlődik.</string>
+    <string name="export_share">Megosztás…</string>
+    <string name="import_file_summary">fájl · %1$d oszlop</string>
+    <string name="import_stat_rows">sor</string>
+    <string name="import_stat_columns">oszlop párosítva</string>
+    <string name="import_left_out">— kimarad</string>
+    <string name="import_transaction_note">Egy tranzakcióban fut: ha egyetlen sor is hibás, semmi sem kerül be.</string>
+    <string name="import_run_rows">%1$s sor beszúrása</string>
+    <string name="chart_headline_hint">utolsó érték (%1$s) · csúcs %2$s</string>
 </resources>

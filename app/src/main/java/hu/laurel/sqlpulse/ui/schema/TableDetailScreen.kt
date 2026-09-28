@@ -2,6 +2,8 @@ package hu.laurel.sqlpulse.ui.schema
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,13 +22,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -77,12 +85,17 @@ import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnEditors
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
+import hu.laurel.sqlpulse.ui.components.DialogNote
 import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
+import hu.laurel.sqlpulse.ui.grid.ExportSheet
 import hu.laurel.sqlpulse.ui.grid.LinkChildEntry
 import hu.laurel.sqlpulse.ui.grid.LinkOffer
 import hu.laurel.sqlpulse.ui.grid.LinkWalkSheet
@@ -95,6 +108,7 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
+import java.text.NumberFormat
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
 @Composable
@@ -181,26 +195,15 @@ fun TableDetailScreenContent(
                         }
                     }
                     if (state.tab == TableTab.DATA && state.rows != null) {
-                        Box {
-                            IconButton(onClick = { exportMenuOpen = true }) {
-                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
-                            }
-                            DropdownMenu(
-                                expanded = exportMenuOpen,
-                                onDismissRequest = { exportMenuOpen = false },
-                            ) {
-                                // One entry per format, in the order they are reached for:
-                                // a spreadsheet, a shell, a program, another database.
-                                ExportFormat.entries.forEach { format ->
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(format.labelRes())) },
-                                        onClick = {
-                                            exportMenuOpen = false
-                                            viewModel.export(format)
-                                        },
-                                    )
-                                }
-                            }
+                        IconButton(onClick = { exportMenuOpen = true }) {
+                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                        }
+                        if (exportMenuOpen) {
+                            ExportSheet(
+                                rowCount = state.rows?.rowCount ?: 0,
+                                onExport = viewModel::export,
+                                onDismiss = { exportMenuOpen = false },
+                            )
                         }
                     }
                 },
@@ -475,6 +478,7 @@ fun TableDetailScreenContent(
             requireTableName = state.table.takeIf { destructive && state.isProduction },
             onConfirm = viewModel::confirmEdit,
             onDismiss = viewModel::dismissEdit,
+            subtitle = stringResource(R.string.environment_production_short).uppercase().takeIf { state.isProduction },
         )
     }
 
@@ -813,6 +817,7 @@ private fun ForeignKeyRow(foreignKey: ForeignKey, onClick: () -> Unit) {
  * how many rows, which columns are filled, which of the file's columns are ignored, and which
  * lines did not parse. An import that cannot work says why instead of offering a button.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ImportDialog(
     plan: ImportPlan,
@@ -820,61 +825,123 @@ private fun ImportDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ImportPlanCard(plan = plan, table = table, onConfirm = onConfirm, onDismiss = onDismiss)
+    }
+}
+
+/**
+ * What a CSV import is about to do, before it does it: how many rows, and which column of the file
+ * lands in which column of the table. Nothing is matched by position, so a column that has no
+ * partner is shown as left out rather than quietly shifting its neighbours.
+ */
+@Composable
+fun ImportPlanCard(
+    plan: ImportPlan,
+    table: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val semantic = LocalSemanticColors.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.import_title, table)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(stringResource(R.string.import_rows, plan.rowCount))
-                Text(
-                    text = stringResource(
-                        R.string.import_columns,
-                        plan.match.matched.values.joinToString(", "),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
-                if (plan.match.unmatched.isNotEmpty()) {
-                    Text(
-                        text = stringResource(
-                            R.string.import_ignored,
-                            plan.match.unmatched.joinToString(", "),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.warning,
-                    )
-                }
-                if (plan.table.malformedRows > 0) {
-                    Text(
-                        text = stringResource(R.string.import_malformed, plan.table.malformedRows),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.warning,
-                    )
-                }
-                if (!plan.match.canImport) {
-                    Text(
-                        text = if (plan.match.blocking.isEmpty()) {
-                            stringResource(R.string.import_no_columns)
-                        } else {
-                            stringResource(
-                                R.string.import_blocking,
-                                plan.match.blocking.joinToString(", "),
-                            )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
+    val fileColumns = plan.match.matched.size + plan.match.unmatched.size
+    DialogCard {
+        DialogHeading(
+            title = stringResource(R.string.import_title, table),
+            subtitle = stringResource(R.string.import_file_summary, fileColumns).uppercase(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            ImportStat(NumberFormat.getIntegerInstance().format(plan.rowCount), stringResource(R.string.import_stat_rows), Modifier.weight(1f))
+            ImportStat("${plan.match.matched.size} / $fileColumns", stringResource(R.string.import_stat_columns), Modifier.weight(1f))
+        }
+        Column(
+            modifier = Modifier
+                .heightIn(max = 260.dp)
+                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background, Shapes.button)
+                .border(1.dp, semantic.hairline, Shapes.button),
+        ) {
+            plan.match.matched.forEach { (fromFile, toTable) ->
+                ImportMappingRow(fromFile, toTable, ok = true)
             }
-        },
-        confirmButton = {
-            if (plan.match.canImport && plan.rowCount > 0) {
-                Button(onClick = onConfirm) { Text(stringResource(R.string.import_run)) }
+            plan.match.unmatched.forEach { fromFile ->
+                ImportMappingRow(fromFile, stringResource(R.string.import_left_out), ok = false)
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+        }
+        if (plan.table.malformedRows > 0) {
+            DialogNote(stringResource(R.string.import_malformed, plan.table.malformedRows), Icons.Default.Warning, semantic.warning)
+        }
+        if (!plan.match.canImport) {
+            Text(
+                text = if (plan.match.blocking.isEmpty()) {
+                    stringResource(R.string.import_no_columns)
+                } else {
+                    stringResource(R.string.import_blocking, plan.match.blocking.joinToString(", "))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            DialogNote(stringResource(R.string.import_transaction_note), Icons.Default.Shield, semantic.textSecondary)
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.import_run_rows, NumberFormat.getIntegerInstance().format(plan.rowCount)),
+            onAction = onConfirm,
+            enabled = plan.match.canImport && plan.rowCount > 0,
+            actionIcon = Icons.Default.Upload,
+        )
+    }
+}
+
+@Composable
+private fun ImportStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface, Shapes.button)
+            .border(1.dp, LocalSemanticColors.current.hairline, Shapes.button)
+            .padding(Spacing.m),
+    ) {
+        Text(
+            value,
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = LocalSemanticColors.current.textSecondary)
+    }
+}
+
+@Composable
+private fun ImportMappingRow(fromFile: String, toTable: String, ok: Boolean) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        Text(
+            fromFile,
+            style = MonoStyles.cell,
+            color = if (ok) MaterialTheme.colorScheme.onSurface else semantic.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = semantic.textSecondary.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+        Text(
+            toTable,
+            style = MonoStyles.cell,
+            color = if (ok) MaterialTheme.colorScheme.onSurface else semantic.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            if (ok) Icons.Default.Check else Icons.Default.Close,
+            contentDescription = null,
+            tint = if (ok) semantic.success else semantic.textSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
 }

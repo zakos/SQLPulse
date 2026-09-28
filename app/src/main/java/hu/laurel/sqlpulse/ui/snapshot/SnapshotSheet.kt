@@ -2,28 +2,39 @@ package hu.laurel.sqlpulse.ui.snapshot
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
@@ -32,6 +43,7 @@ import hu.laurel.sqlpulse.data.snapshot.MatchStrategy
 import hu.laurel.sqlpulse.data.snapshot.ResultDiff
 import hu.laurel.sqlpulse.data.snapshot.RowChangeKind
 import hu.laurel.sqlpulse.data.snapshot.RowDiff
+import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -101,7 +113,7 @@ fun SnapshotSheet(
 }
 
 @Composable
-private fun DiffBody(diff: ResultDiff) {
+internal fun DiffBody(diff: ResultDiff) {
     val semantic = LocalSemanticColors.current
     val times = DateFormat.getTimeInstance(DateFormat.MEDIUM)
 
@@ -172,20 +184,133 @@ private fun DiffBody(diff: ResultDiff) {
         return
     }
 
-    HorizontalDivider(color = semantic.hairline)
+    DiffTable(diff)
+}
 
-    // Bounded by the diff itself, but still a list: a thousand changed rows is possible and the
-    // sheet must not try to lay all of them out at once.
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-    ) {
-        items(diff.rows) { row ->
-            DiffRow(row = row, columns = diff.columns)
-            HorizontalDivider(color = semantic.hairline)
+/**
+ * The rows that moved, as a table: the result's own columns, each row tinted by what happened to
+ * it, with the old value of a changed cell struck through above the new one. Read across, a row is
+ * the row as it looks now (or looked, for one that is gone); read down, a column shows what
+ * changed in it. A thousand changed rows is possible, so the rows are a lazy list.
+ */
+@Composable
+private fun DiffTable(diff: ResultDiff) {
+    val semantic = LocalSemanticColors.current
+    val widths = remember(diff) {
+        diff.columns.indices.map { index ->
+            val longest = diff.rows.maxOfOrNull { row ->
+                val shown = (row.after ?: row.before)?.getOrNull(index)?.asText()?.length ?: 0
+                val old = row.cells.firstOrNull { it.columnIndex == index }?.before?.asText()?.length ?: 0
+                maxOf(shown, old)
+            } ?: 0
+            (maxOf(longest, diff.columns[index].length) * 8 + 24).coerceIn(64, 220).dp
+        }
+    }
+    Box(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Column(modifier = Modifier.width(DIFF_MARK_WIDTH + widths.fold(0.dp) { total, width -> total + width })) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(34.dp).background(semantic.surfaceRaised),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(Modifier.width(DIFF_MARK_WIDTH))
+                diff.columns.forEachIndexed { index, name ->
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                        color = semantic.textSecondary,
+                        maxLines = 1,
+                        modifier = Modifier.width(widths[index]).padding(horizontal = 8.dp),
+                    )
+                }
+            }
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                items(diff.rows) { row -> DiffTableRow(row, widths) }
+            }
         }
     }
 }
+
+@Composable
+private fun DiffTableRow(row: RowDiff, widths: List<Dp>) {
+    val semantic = LocalSemanticColors.current
+    val colour: Color = when (row.kind) {
+        RowChangeKind.ADDED -> semantic.success
+        RowChangeKind.REMOVED -> semantic.danger
+        RowChangeKind.CHANGED -> semantic.warning
+    }
+    val mark = when (row.kind) {
+        RowChangeKind.ADDED -> "+"
+        RowChangeKind.REMOVED -> "−"
+        RowChangeKind.CHANGED -> "~"
+    }
+    val cells = (row.after ?: row.before).orEmpty()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            // Tinted, with a coloured edge and a mark in words' place: which way a row moved is
+            // visible before any of it is read, and the mark says it without the colour.
+            .background(if (row.kind == RowChangeKind.CHANGED) Color.Transparent else colour.copy(alpha = 0.10f))
+            .drawBehind {
+                drawRect(colour, size = size.copy(width = 3.dp.toPx()))
+                drawRect(
+                    semantic.hairline,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - 1.dp.toPx()),
+                    size = size.copy(height = 1.dp.toPx()),
+                )
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            mark,
+            style = MonoStyles.cell.copy(fontWeight = FontWeight.Bold),
+            color = colour,
+            modifier = Modifier.width(DIFF_MARK_WIDTH),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        widths.forEachIndexed { index, width ->
+            val change = row.cells.firstOrNull { it.columnIndex == index }
+            val value = cells.getOrNull(index)
+            Column(
+                modifier = Modifier
+                    .width(width)
+                    .fillMaxHeight()
+                    .then(if (change != null) Modifier.background(semantic.warning.copy(alpha = 0.14f)) else Modifier)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (change != null) {
+                    DiffCellText(change.before, struck = true, muted = true)
+                    DiffCellText(change.after, struck = false, muted = false)
+                } else {
+                    DiffCellText(value, struck = row.kind == RowChangeKind.REMOVED, muted = row.kind == RowChangeKind.REMOVED)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiffCellText(value: CellValue?, struck: Boolean, muted: Boolean) {
+    val semantic = LocalSemanticColors.current
+    val colour = when {
+        muted -> semantic.textSecondary.copy(alpha = 0.8f)
+        value is CellValue.Number -> semantic.cellNumber
+        value is CellValue.Date -> semantic.cellDate
+        value is CellValue.Null -> semantic.cellNull
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Text(
+        text = value?.asText().orEmpty(),
+        style = MonoStyles.cell.copy(fontSize = 12.sp),
+        color = colour,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textDecoration = if (struck) TextDecoration.LineThrough else null,
+    )
+}
+
+private val DIFF_MARK_WIDTH = 28.dp
 
 @Composable
 private fun DiffStat(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
@@ -202,77 +327,5 @@ private fun DiffStat(value: String, label: String, color: Color, modifier: Modif
             color = color,
         )
         Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = LocalSemanticColors.current.textSecondary)
-    }
-}
-
-@Composable
-private fun DiffRow(row: RowDiff, columns: List<String>) {
-    val semantic = LocalSemanticColors.current
-    val colour: Color = when (row.kind) {
-        RowChangeKind.ADDED -> semantic.success
-        RowChangeKind.REMOVED -> semantic.danger
-        RowChangeKind.CHANGED -> semantic.warning
-    }
-    val label = when (row.kind) {
-        RowChangeKind.ADDED -> R.string.snapshot_row_added
-        RowChangeKind.REMOVED -> R.string.snapshot_row_removed
-        RowChangeKind.CHANGED -> R.string.snapshot_row_changed
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            // A tinted row with a coloured edge, as in the time machine design: which way a row
-            // moved is visible before any of it is read.
-            .background(colour.copy(alpha = if (row.kind == RowChangeKind.CHANGED) 0.06f else 0.10f))
-            .drawBehind { drawRect(colour, size = size.copy(width = 3.dp.toPx())) }
-            .padding(start = Spacing.m, end = Spacing.s, top = Spacing.s, bottom = Spacing.s),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            Text(
-                text = stringResource(label),
-                style = MaterialTheme.typography.labelMedium,
-                color = colour,
-            )
-            // The key where there is one; without a key the row is its own identity, so the row
-            // itself is the heading.
-            val heading = row.key
-                ?.joinToString(", ") { it.asText() }
-                ?.let { stringResource(R.string.snapshot_row_key, it) }
-                ?: (row.after ?: row.before).orEmpty().joinToString(" · ") { it.asText() }
-            Text(heading, style = MonoStyles.cell)
-        }
-
-        when (row.kind) {
-            // A changed row is the whole point of the key: column by column, what it said and
-            // what it says now.
-            RowChangeKind.CHANGED -> row.cells.forEach { change ->
-                Text(
-                    text = stringResource(
-                        R.string.snapshot_cell_change,
-                        change.column,
-                        change.before.asText(),
-                        change.after.asText(),
-                    ),
-                    style = MonoStyles.cell,
-                    color = semantic.textSecondary,
-                )
-            }
-
-            // For a row that came or went there is no "before and after" — only the row, which
-            // is worth showing in full so it can be recognised.
-            else -> {
-                val cells = (row.after ?: row.before).orEmpty()
-                if (row.key != null) {
-                    Text(
-                        text = columns.indices.joinToString(" · ") { index ->
-                            "${columns[index]}=${cells.getOrNull(index)?.asText().orEmpty()}"
-                        },
-                        style = MonoStyles.cell,
-                        color = semantic.textSecondary,
-                    )
-                }
-            }
-        }
     }
 }

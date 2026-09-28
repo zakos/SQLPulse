@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TableRows
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -127,13 +128,19 @@ import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.chart.ResultChartPanel
 import hu.laurel.sqlpulse.ui.components.ConnectionLostBanner
 import hu.laurel.sqlpulse.ui.components.ConnectionTitle
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.components.LabeledField
+import hu.laurel.sqlpulse.ui.components.SqlBlock
 import hu.laurel.sqlpulse.ui.components.isWideWindow
 import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
+import hu.laurel.sqlpulse.ui.grid.ExportSheet
 import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
@@ -640,26 +647,15 @@ fun QueryEditorContent(
                                 }
                             }
                             if (state.result != null) {
-                                Box {
-                                    IconButton(onClick = { exportMenuOpen = true }) {
-                                        Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
-                                    }
-                                    DropdownMenu(
-                                        expanded = exportMenuOpen,
-                                        onDismissRequest = { exportMenuOpen = false },
-                                    ) {
-                                        // One entry per format, in the order they are reached for:
-                                        // a spreadsheet, a shell, a program, another database.
-                                        ExportFormat.entries.forEach { format ->
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(format.labelRes())) },
-                                                onClick = {
-                                                    exportMenuOpen = false
-                                                    viewModel.export(format)
-                                                },
-                                            )
-                                        }
-                                    }
+                                IconButton(onClick = { exportMenuOpen = true }) {
+                                    Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                                }
+                                if (exportMenuOpen) {
+                                    ExportSheet(
+                                        rowCount = state.visibleResult?.rowCount ?: 0,
+                                        onExport = viewModel::export,
+                                        onDismiss = { exportMenuOpen = false },
+                                    )
                                 }
                             }
                             },
@@ -1131,84 +1127,79 @@ private fun ParameterType.labelRes(): Int = when (this) {
  * other and nothing on screen otherwise repeats them. A production connection asks for the
  * database name to be typed: it is the one gesture a thumb cannot make by accident.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WriteConfirmDialog(
     confirmation: WriteConfirmation,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val semantic = LocalSemanticColors.current
     var typed by remember(confirmation) { mutableStateOf("") }
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        WriteConfirmCard(
+            confirmation = confirmation,
+            typed = typed,
+            onTyped = { typed = it },
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The dialog's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun WriteConfirmCard(
+    confirmation: WriteConfirmation,
+    typed: String,
+    onTyped: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
     val blocked = confirmation.exceedsLimit
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.write_confirm_title)) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s),
-            ) {
-                Text(confirmation.sql, style = MonoStyles.cell)
-
-                Text(
-                    text = confirmation.estimatedRows
-                        ?.let { stringResource(R.string.write_confirm_rows, it) }
-                        ?: stringResource(R.string.write_confirm_rows_unknown),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (blocked) MaterialTheme.colorScheme.error else semantic.textSecondary,
-                )
-
-                Text(
-                    text = listOfNotNull(
-                        confirmation.connectionName,
-                        stringResource(confirmation.environment.shortLabel()),
-                        confirmation.database,
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (confirmation.environment.isProduction) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        semantic.textSecondary
-                    },
-                )
-
-                if (blocked) {
-                    Text(
-                        text = stringResource(
-                            R.string.write_confirm_over_limit,
-                            confirmation.maxAffectedRows,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                } else if (confirmation.requiresTypedDatabase) {
-                    OutlinedTextField(
-                        value = typed,
-                        onValueChange = { typed = it },
-                        label = {
-                            Text(
-                                stringResource(
-                                    R.string.write_confirm_type_database,
-                                    confirmation.database.orEmpty(),
-                                ),
-                            )
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = !blocked && confirmation.confirms(typed),
-            ) {
-                Text(stringResource(R.string.write_confirm_run))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+    val production = confirmation.environment.isProduction
+    DialogCard(danger = production) {
+        DialogHeading(
+            title = stringResource(R.string.write_confirm_title),
+            // Where it runs: the connection, its environment and the database, because on a phone
+            // the three of them are a tab away and nothing else on screen repeats them.
+            subtitle = listOfNotNull(
+                confirmation.connectionName,
+                stringResource(confirmation.environment.shortLabel()).uppercase(),
+                confirmation.database,
+            ).joinToString(" · "),
+            danger = production,
+        )
+        SqlBlock(confirmation.sql)
+        Text(
+            text = confirmation.estimatedRows
+                ?.let { stringResource(R.string.write_confirm_rows, it) }
+                ?: stringResource(R.string.write_confirm_rows_unknown),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+            color = if (blocked) MaterialTheme.colorScheme.error else semantic.textSecondary,
+        )
+        if (blocked) {
+            Text(
+                text = stringResource(R.string.write_confirm_over_limit, confirmation.maxAffectedRows),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (confirmation.requiresTypedDatabase) {
+            LabeledField(
+                value = typed,
+                onValueChange = onTyped,
+                label = { Text(stringResource(R.string.write_confirm_type_database, confirmation.database.orEmpty())) },
+                mono = true,
+            )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.write_confirm_run),
+            onAction = onConfirm,
+            enabled = !blocked && confirmation.confirms(typed),
+        )
+    }
 }
 
 @Composable
