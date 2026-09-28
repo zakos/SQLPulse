@@ -125,6 +125,9 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   `SemanticColors.cellNumber/cellDate/cellNull` világos témában sötétebb árnyalat.
 - Formák: mező/menü 12, chip teljes kör, kártya 16, dialógus/lap 24 (`SqlPulseShapes`, `Shapes.sheet`).
 - Fejléc: minden `TopAppBar` → `colors = sqlPulseTopBarColors()` (háttérszínű sáv).
+- Dialógusok: nem `AlertDialog`, hanem `BasicAlertDialog { XCard(...) }` — a kártya (`DialogCard`,
+  `DialogHeading`, `SqlBlock`, `DialogButtons` a `components/Dialogs.kt`-ban) külön is kirajzolható,
+  mert a Paparazzi az igazi Dialog-ablakot nem kapja el.
 - Közös komponensek (`ui/components/Components.kt`): `StepIndicator` (összekötött, pipás lépések),
   `ColorRail` (teljes magasság, `IntrinsicSize.Min` sor kell hozzá), `InfoBadge`, `SectionCaption`.
 - Új szövegek: `res/values*/strings_design.xml` (angol + magyar).
@@ -156,6 +159,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   átszínezés volt). Paparazzi képernyőképekkel képernyőnként összevetve a tervvel és átépítve:
   kapcsolatlista, SQL szerkesztő, eredményrács, séma, tábla, térkép (+ nagyítási hiba javítva),
   pulzus, szerver, beállítások, kulcstár, szerkesztő, mentés, diagnosztika, zárolás. Új APK átadva.
+- 2026-09-28: A felhasználó szerint az APK elindul és működik. Következő kör: az írás-megerősítő és
+  törlő ablak (`DialogCard`, `SqlBlock`, `StatementLayout`), az export lap, a CSV import terv-kártya,
+  az EXPLAIN fa (a legdrágább lépés kiemelve, költség-sáv, tördelődő tények), a diagram (kártya,
+  fejléc, rácsvonalak) és az időgép táblázata — mind képernyőképpel a terv mellett.
 
 ## Teendők / nyitott pontok
 
@@ -166,9 +173,10 @@ A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
       van valódi szerveren kipróbálva.
 - [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.
 - [x] Látványterv beépítése (ld. lent).
-- [ ] Terv és kód maradék eltérései: a kiegészítés chip-sor (a tervben felugró lista), a CSV import,
-      az export lap, az írás-megerősítő dialógusok és az EXPLAIN/diagram/időgép nézetek nincsenek
-      képernyőképpel összevetve; a táblagépes nézet a meglévő kéthasábos elrendezés.
+- [ ] Terv és kód maradék eltérései: a kiegészítés chip-sor (a tervben felugró lista), az
+      export lap nem kínál „teljes találat” (újrafuttatás) opciót és a CSV import nem párosít kézzel
+      (a tervben igen — ehhez új funkció kell); a táblagépes nézet a meglévő kéthasábos elrendezés;
+      az olvasás-megerősítés/paraméter dialógusok és a kulcs-import lap nincs képernyőképpel összevetve.
 - [ ] Készüléken megnézni: betűk, ikon a különböző launcherekben, világos téma kontrasztja.
 - [ ] (Megfigyelés) `ui/query/QueryEditorScreen.kt` (~1500 sor) és `QueryEditorViewModel.kt`
       (~1200 sor) nagyok — esetleges szétbontás jelölt, ha hozzányúlunk.
