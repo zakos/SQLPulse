@@ -204,6 +204,13 @@ fun SettingsScreenContent(
                 Switch(checked = settings.blockScreenshots, onCheckedChange = viewModel::setBlockScreenshots)
             }
             ListRow(
+                title = stringResource(R.string.settings_launcher_shortcuts),
+                subtitle = stringResource(R.string.settings_launcher_shortcuts_note),
+                onClick = { viewModel.setLauncherShortcuts(!settings.launcherShortcuts) },
+            ) {
+                Switch(checked = settings.launcherShortcuts, onCheckedChange = viewModel::setLauncherShortcuts)
+            }
+            ListRow(
                 title = stringResource(R.string.settings_manage_keys),
                 onClick = onOpenKeyStore,
             ) { RowChevron() }

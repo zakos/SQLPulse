@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_launcher_shortcuts">Show connections in launcher shortcuts</string>
+    <string name="settings_launcher_shortcuts_note">Long-pressing the app icon lists your three latest connections by name. Production connections are never listed. The name is visible without unlocking the app; opening one still asks for the usual unlock.</string>
+    <string name="shortcut_disabled">This connection is no longer available as a shortcut</string>
+</resources>

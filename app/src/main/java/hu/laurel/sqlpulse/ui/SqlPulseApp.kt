@@ -2,6 +2,11 @@ package hu.laurel.sqlpulse.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -45,8 +50,13 @@ object Routes {
 }
 
 @Composable
-fun SqlPulseApp() {
+fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
     val navController = rememberNavController()
+
+    // A launcher shortcut lands on the list, wherever the user was; the list then does the connecting.
+    LaunchedEffect(connectRequests) {
+        connectRequests.filterNotNull().collect { navController.popBackStack(Routes.CONNECTIONS, false) }
+    }
 
     NavHost(navController = navController, startDestination = Routes.CONNECTIONS) {
         composable(Routes.CONNECTIONS) {

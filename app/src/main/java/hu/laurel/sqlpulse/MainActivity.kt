@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -41,6 +42,8 @@ import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import hu.laurel.sqlpulse.data.settings.Settings
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutPlan
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequests
 import hu.laurel.sqlpulse.security.ActivityHolder
 import hu.laurel.sqlpulse.security.BiometricUnlock
 import hu.laurel.sqlpulse.security.LockManager
@@ -72,6 +75,9 @@ class MainActivity : FragmentActivity() {
     lateinit var unlock: BiometricUnlock
 
     @Inject
+    lateinit var shortcutRequests: ShortcutRequests
+
+    @Inject
     lateinit var settingsRepository: SettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,6 +87,8 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         activityHolder.attach(this)
         lockManager.onUserInteraction()
+        // Not on a recreation (rotation): the intent is still the launcher's, but it was handled.
+        if (savedInstanceState == null) handleLauncherIntent(intent)
 
         setContent {
             val settings by settingsRepository.settings.collectAsState(initial = Settings())
@@ -98,10 +106,24 @@ class MainActivity : FragmentActivity() {
                 if (locked) {
                     LockScreen(onUnlock = ::requestUnlock)
                 } else {
-                    SqlPulseApp()
+                    SqlPulseApp(connectRequests = shortcutRequests.pending)
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLauncherIntent(intent)
+    }
+
+    /**
+     * Only records the wish. The lock screen, the biometric prompt and the production
+     * confirmation are all still ahead of it: the connection list acts on it once unlocked.
+     */
+    private fun handleLauncherIntent(intent: Intent?) {
+        ShortcutPlan.parse(intent)?.let { shortcutRequests.post(it) }
     }
 
     /** Every touch restarts the inactivity timer (§6). */

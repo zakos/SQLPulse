@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface SettingsController {
     fun setAutoLock(minutes: Int)
     fun setBlockScreenshots(block: Boolean)
+    fun setLauncherShortcuts(show: Boolean)
     fun setBlockWritesWithoutWhere(block: Boolean)
     fun setGridFontScale(scale: Int)
     fun setMaxAffectedRows(rows: Int)

@@ -119,6 +119,10 @@ fun ConnectionListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val confirming by viewModel.confirming.collectAsStateWithLifecycle()
+    val shortcut by viewModel.shortcutPending.collectAsStateWithLifecycle()
+
+    // Composed only while unlocked, which is what makes a launcher shortcut wait for the unlock.
+    LaunchedEffect(shortcut) { if (shortcut != null) viewModel.openShortcut() }
 
     // A write window is the one thing on this screen that changes without anybody touching it, so
     // the clock only ticks while one is open — and stops again the moment the last one closes.
