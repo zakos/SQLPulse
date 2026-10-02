@@ -1,17 +1,21 @@
 package hu.laurel.sqlpulse.ui.screenshots
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.data.grid.ColumnStats
-import hu.laurel.sqlpulse.ui.grid.ColumnStatsSheet
-import hu.laurel.sqlpulse.ui.theme.SqlPulseTheme
-import hu.laurel.sqlpulse.ui.theme.ThemePreference
+import hu.laurel.sqlpulse.ui.grid.ColumnStatsSheetContent
+import hu.laurel.sqlpulse.ui.theme.Shapes
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -24,66 +28,84 @@ class ColumnStatsShots {
     @get:Rule
     val paparazzi = designPaparazzi()
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Test
     fun numericColumn() = paparazzi.screen {
-        Box(Modifier.fillMaxSize().padding(bottom = 200.dp)) {
-            ColumnStatsSheet(
-                columnLabel = "price",
-                stats = ColumnStats(
-                    rowCount = 150,
-                    nullCount = 3,
-                    distinctCount = 142,
-                    sum = BigDecimal("4521.75"),
-                    average = "30.279162",
-                    min = "0.99",
-                    max = "999.99",
-                ),
-                onCopy = {},
-                onDismiss = {},
-            )
+        Box(Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                shape = Shapes.sheet,
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                ColumnStatsSheetContent(
+                    columnLabel = "price",
+                    stats = ColumnStats(
+                        rowCount = 150,
+                        nullCount = 3,
+                        distinctCount = 142,
+                        sum = BigDecimal("4521.75"),
+                        average = "30.279162",
+                        min = "0.99",
+                        max = "999.99",
+                    ),
+                    onCopy = {},
+                )
+            }
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Test
     fun textColumn() = paparazzi.screen {
-        Box(Modifier.fillMaxSize().padding(bottom = 200.dp)) {
-            ColumnStatsSheet(
-                columnLabel = "customer_name",
-                stats = ColumnStats(
-                    rowCount = 50,
-                    nullCount = 1,
-                    distinctCount = 48,
-                    sum = null,
-                    average = null,
-                    min = "Alice Johnson",
-                    max = "Zara Wilson",
-                ),
-                onCopy = {},
-                onDismiss = {},
-            )
+        Box(Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                shape = Shapes.sheet,
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                ColumnStatsSheetContent(
+                    columnLabel = "customer_name",
+                    stats = ColumnStats(
+                        rowCount = 50,
+                        nullCount = 1,
+                        distinctCount = 48,
+                        sum = null,
+                        average = null,
+                        min = "Alice Johnson",
+                        max = "Zara Wilson",
+                    ),
+                    onCopy = {},
+                )
+            }
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Test
     fun allNull() = paparazzi.screen {
-        Box(Modifier.fillMaxSize().padding(bottom = 200.dp)) {
-            ColumnStatsSheet(
-                columnLabel = "optional_field",
-                stats = ColumnStats(
-                    rowCount = 25,
-                    nullCount = 25,
-                    distinctCount = 0,
-                    sum = null,
-                    average = null,
-                    min = null,
-                    max = null,
-                ),
-                onCopy = {},
-                onDismiss = {},
-            )
+        Box(Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                shape = Shapes.sheet,
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                ColumnStatsSheetContent(
+                    columnLabel = "optional_field",
+                    stats = ColumnStats(
+                        rowCount = 25,
+                        nullCount = 25,
+                        distinctCount = 0,
+                        sum = null,
+                        average = null,
+                        min = null,
+                        max = null,
+                    ),
+                    onCopy = {},
+                )
+            }
         }
     }
 }

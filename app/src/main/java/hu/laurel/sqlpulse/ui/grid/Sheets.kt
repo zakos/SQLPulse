@@ -411,77 +411,86 @@ fun ColumnStatsSheet(
     onCopy: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val semantic = LocalSemanticColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(),
         shape = Shapes.sheet,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.l)
-                .padding(bottom = Spacing.xl),
-            verticalArrangement = Arrangement.spacedBy(Spacing.m),
-        ) {
-            Text(
-                stringResource(R.string.colstats_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                columnLabel,
-                style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
-            )
-            Text(
-                stringResource(R.string.colstats_based_on, stats.rowCount),
-                style = MaterialTheme.typography.bodySmall,
-                color = semantic.textSecondary,
-            )
+        ColumnStatsSheetContent(columnLabel, stats, onCopy)
+    }
+}
 
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+@Composable
+fun ColumnStatsSheetContent(
+    columnLabel: String,
+    stats: ColumnStats,
+    onCopy: (String) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.l)
+            .padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        Text(
+            stringResource(R.string.colstats_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            columnLabel,
+            style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+        )
+        Text(
+            stringResource(R.string.colstats_based_on, stats.rowCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            StatRow(
+                label = stringResource(R.string.colstats_count),
+                value = stats.rowCount.toString(),
+                onCopy = onCopy,
+            )
+            StatRow(
+                label = stringResource(R.string.colstats_nonnull),
+                value = stats.nonNullCount.toString(),
+                onCopy = onCopy,
+            )
+            StatRow(
+                label = stringResource(R.string.colstats_distinct),
+                value = stats.distinctCount.toString(),
+                onCopy = onCopy,
+            )
+            stats.sum?.let {
                 StatRow(
-                    label = stringResource(R.string.colstats_count),
-                    value = stats.rowCount.toString(),
+                    label = stringResource(R.string.colstats_sum),
+                    value = it.toPlainString(),
                     onCopy = onCopy,
                 )
+            }
+            stats.average?.let {
                 StatRow(
-                    label = stringResource(R.string.colstats_nonnull),
-                    value = stats.nonNullCount.toString(),
+                    label = stringResource(R.string.colstats_average),
+                    value = it,
                     onCopy = onCopy,
                 )
+            }
+            stats.min?.let {
                 StatRow(
-                    label = stringResource(R.string.colstats_distinct),
-                    value = stats.distinctCount.toString(),
+                    label = stringResource(R.string.colstats_minimum),
+                    value = it,
                     onCopy = onCopy,
                 )
-                stats.sum?.let {
-                    StatRow(
-                        label = stringResource(R.string.colstats_sum),
-                        value = it.toPlainString(),
-                        onCopy = onCopy,
-                    )
-                }
-                stats.average?.let {
-                    StatRow(
-                        label = stringResource(R.string.colstats_average),
-                        value = it,
-                        onCopy = onCopy,
-                    )
-                }
-                stats.min?.let {
-                    StatRow(
-                        label = stringResource(R.string.colstats_minimum),
-                        value = it,
-                        onCopy = onCopy,
-                    )
-                }
-                stats.max?.let {
-                    StatRow(
-                        label = stringResource(R.string.colstats_maximum),
-                        value = it,
-                        onCopy = onCopy,
-                    )
-                }
+            }
+            stats.max?.let {
+                StatRow(
+                    label = stringResource(R.string.colstats_maximum),
+                    value = it,
+                    onCopy = onCopy,
+                )
             }
         }
     }
