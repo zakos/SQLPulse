@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="export_markdown">Markdown-táblázat</string>
+    <string name="export_hint_markdown">táblázat</string>
 </resources>
