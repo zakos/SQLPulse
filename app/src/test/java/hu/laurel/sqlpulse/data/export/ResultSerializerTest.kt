@@ -139,4 +139,60 @@ class ResultSerializerTest {
         val rows = table(listOf(CellValue.Number("1"), CellValue.Text("x")))
         assertTrue(ResultSerializer.toSqlInserts(rows, null).startsWith("INSERT INTO `orders`"))
     }
+
+    @Test
+    fun `markdown renders a simple table with headers and separator`() {
+        val md = ResultSerializer.toMarkdown(table(listOf(CellValue.Number("1"), CellValue.Text("ok"))))
+
+        assertEquals(
+            "| id | note |\n" +
+            "| -- | ---- |\n" +
+            "| 1  | ok   |\n",
+            md
+        )
+    }
+
+    @Test
+    fun `markdown escapes pipes in headers and cells`() {
+        val single = ResultTable(
+            columns = listOf(ColumnMeta("a|b", CellType.TEXT, "VARCHAR", "t")),
+            rows = listOf(listOf(CellValue.Text("x|y"))),
+        )
+        val md = ResultSerializer.toMarkdown(single)
+
+        assertTrue(md.contains("a\\|b"))
+        assertTrue(md.contains("x\\|y"))
+    }
+
+    @Test
+    fun `markdown converts newlines to line breaks`() {
+        val single = ResultTable(
+            columns = listOf(ColumnMeta("note", CellType.TEXT, "VARCHAR", "t")),
+            rows = listOf(
+                listOf(CellValue.Text("line1\nline2")),
+                listOf(CellValue.Text("line1\r\nline2")),
+            ),
+        )
+        val md = ResultSerializer.toMarkdown(single)
+
+        assertTrue(md.contains("line1<br>line2"))
+    }
+
+    @Test
+    fun `markdown shows null as NULL`() {
+        val md = ResultSerializer.toMarkdown(table(listOf(CellValue.Number("1"), CellValue.Null)))
+
+        assertTrue(md.contains("NULL"))
+    }
+
+    @Test
+    fun `markdown handles empty result with columns`() {
+        val md = ResultSerializer.toMarkdown(table())
+
+        assertEquals(
+            "| id | note |\n" +
+            "| -- | ---- |\n",
+            md
+        )
+    }
 }
