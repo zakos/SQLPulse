@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -84,9 +85,18 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 @Composable
 fun ServerScreen(
     onBack: () -> Unit,
+    onOpenQuery: () -> Unit,
     viewModel: ServerViewModel = hiltViewModel(),
 ) {
-    ServerScreenContent(onBack = onBack, viewModel = viewModel)
+    ServerScreenContent(
+        onBack = onBack,
+        viewModel = viewModel,
+        // The statement goes to the editor as text in a new tab; nothing is run on the way.
+        onOpenInEditor = { sql ->
+            viewModel.openInEditor(sql)
+            onOpenQuery()
+        },
+    )
 }
 
 /** The screen itself, drawn from whatever [ServerController] it is handed. */
@@ -95,6 +105,7 @@ fun ServerScreen(
 fun ServerScreenContent(
     onBack: () -> Unit,
     viewModel: ServerController,
+    onOpenInEditor: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
@@ -232,6 +243,7 @@ fun ServerScreenContent(
                     onSort = viewModel::setSlowSort,
                     onRefresh = viewModel::refresh,
                     modifier = Modifier.fillMaxSize(),
+                    onOpenInEditor = onOpenInEditor,
                 )
 
                 state.panel == ServerPanel.REPLICATION || state.panel == ServerPanel.SLOW -> Unit
@@ -249,6 +261,7 @@ fun ServerScreenContent(
                 state.panel == ServerPanel.QUERIES -> ProcessCards(
                     table = table,
                     onKill = { id, info -> killTarget = id to info },
+                    onOpenInEditor = onOpenInEditor,
                 )
 
                 else -> ResultGrid(
@@ -320,7 +333,11 @@ fun ServerScreenContent(
 private const val LONG_RUNNING_SECONDS = 30L
 
 @Composable
-private fun ProcessCards(table: ResultTable, onKill: (Long, String) -> Unit) {
+private fun ProcessCards(
+    table: ResultTable,
+    onKill: (Long, String) -> Unit,
+    onOpenInEditor: (String) -> Unit,
+) {
     val semantic = LocalSemanticColors.current
     fun column(name: String) = table.columns.indexOfFirst { it.label.equals(name, ignoreCase = true) }
     val idColumn = column("Id")
@@ -398,6 +415,15 @@ private fun ProcessCards(table: ResultTable, onKill: (Long, String) -> Unit) {
                         color = semantic.textSecondary,
                         modifier = Modifier.weight(1f),
                     )
+                    if (info != null) {
+                        IconButton(onClick = { onOpenInEditor(info) }) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = stringResource(R.string.server_open_in_editor),
+                                tint = semantic.textSecondary,
+                            )
+                        }
+                    }
                     if (id != null && info != null) {
                         OutlinedButton(
                             onClick = {

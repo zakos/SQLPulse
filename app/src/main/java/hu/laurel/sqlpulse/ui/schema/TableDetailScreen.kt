@@ -539,8 +539,9 @@ private fun FilterBar(
     var text by remember(filter?.column) { mutableStateOf(filter?.contains.orEmpty()) }
     val column = filter?.column ?: columns.firstOrNull() ?: return
 
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s),
     ) {
@@ -566,7 +567,9 @@ private fun FilterBar(
                 text = it
                 onFilter(column, it)
             },
-            label = { Text(stringResource(R.string.filter_contains)) },
+            label = {
+                Text(stringResource(if (filter?.exact == true) R.string.filter_equals else R.string.filter_contains))
+            },
             singleLine = true,
             trailingIcon = {
                 if (text.isNotEmpty()) {
@@ -582,6 +585,19 @@ private fun FilterBar(
             },
             modifier = Modifier.weight(1f),
         )
+    }
+    // A hit on a composite key narrows on more than the box shows; say so rather than hide it.
+    if (filter != null && filter.also.isNotEmpty()) {
+        Text(
+            text = stringResource(
+                R.string.filter_also,
+                filter.also.joinToString(", ") { (name, value) -> "$name = $value" },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalSemanticColors.current.textSecondary,
+            modifier = Modifier.padding(top = Spacing.xs),
+        )
+    }
     }
 }
 

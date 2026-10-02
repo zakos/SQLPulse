@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,18 +48,20 @@ import hu.laurel.sqlpulse.data.schema.SlowSort
 import hu.laurel.sqlpulse.data.schema.SlowStatement
 import hu.laurel.sqlpulse.data.schema.SlowStatements
 import hu.laurel.sqlpulse.data.schema.SlowStatementsReport
+import hu.laurel.sqlpulse.data.schema.StorageFormat
+import hu.laurel.sqlpulse.data.sql.DigestPlaceholders
 import hu.laurel.sqlpulse.data.schema.ThreadState
+import hu.laurel.sqlpulse.ui.appLocale
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.InfoBadge
 import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.copyToClipboard
+import hu.laurel.sqlpulse.ui.durationUnits
 import hu.laurel.sqlpulse.ui.query.SqlVisualTransformation
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
-import java.text.NumberFormat
-import java.util.Locale
 
 // The two read-only operations panels of the server screen: replication cards and the slowest
 // statements. Kept out of ServerScreen.kt, which is already long.
@@ -177,7 +180,7 @@ private fun ReplicationCard(channel: ReplicationChannel) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    channel.lagSeconds?.let { ReplicationStatus.formatSeconds(it) }
+                    channel.lagSeconds?.let { ReplicationStatus.formatSeconds(it, durationUnits(), appLocale()) }
                         ?: stringResource(R.string.repl_lag_unknown),
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = if (channel.lagSeconds == null) semantic.textSecondary else colour,
@@ -317,6 +320,7 @@ fun SlowPanel(
     onSort: (SlowSort) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenInEditor: (String) -> Unit = {},
 ) {
     when (report) {
         SlowStatementsReport.PerformanceSchemaOff -> SlowEmpty(R.string.slow_off_title, R.string.slow_off_body, onRefresh, modifier)
@@ -359,7 +363,7 @@ fun SlowPanel(
                             color = semantic.textSecondary,
                         )
                     }
-                    items(report.statements) { statement -> SlowCard(statement, highlight) }
+                    items(report.statements) { statement -> SlowCard(statement, highlight, onOpenInEditor) }
                 }
             }
         }
@@ -378,30 +382,30 @@ private fun SlowEmpty(@StringRes title: Int, @StringRes body: Int, onRefresh: ()
 }
 
 @Composable
-private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformation) {
+private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformation, onOpenInEditor: (String) -> Unit) {
     val semantic = LocalSemanticColors.current
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
-    val numbers = remember { NumberFormat.getIntegerInstance(Locale.getDefault()) }
-    fun count(value: Long) = numbers.format(value)
+    // The app's language for the grouping and the duration words: "1 204 futás", "2 ó 20 p".
+    val locale = appLocale()
+    val units = durationUnits()
+    fun count(value: Long) = StorageFormat.count(value, locale)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface, Shapes.card)
             .border(1.dp, semantic.hairline, Shapes.card)
-            // Copy, never run: a digest has its values replaced by ?, and running it unasked
-            // against a production server is not something a list tap should do.
-            .clickable {
-                context.copyToClipboard(statement.digestText)
-                copied = true
-            }
+            // Open, never run: a digest has its values replaced by ?, which become :p1, :p2 … so
+            // the editor's own parameter dialog asks for them, and running it unasked against a
+            // production server is not something a list tap should do.
+            .clickable { onOpenInEditor(DigestPlaceholders.toNamed(statement.digestText).sql) }
             .padding(horizontal = 14.dp, vertical = Spacing.m),
         verticalArrangement = Arrangement.spacedBy(Spacing.s),
     ) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    SlowStatements.formatPicos(statement.totalPicos),
+                    SlowStatements.formatPicos(statement.totalPicos, locale, units),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(
@@ -412,7 +416,7 @@ private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformatio
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    SlowStatements.formatPicos(statement.avgPicos),
+                    SlowStatements.formatPicos(statement.avgPicos, locale, units),
                     style = MonoStyles.cell.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(
@@ -453,17 +457,26 @@ private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformatio
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Icon(
-                Icons.Default.ContentCopy,
-                contentDescription = stringResource(R.string.slow_copy),
-                tint = semantic.textSecondary,
-                modifier = Modifier.size(16.dp),
-            )
             if (copied) {
                 Text(
                     stringResource(R.string.slow_copied),
                     style = MaterialTheme.typography.labelSmall,
                     color = semantic.success,
+                )
+            }
+            // Copying stays one tap away, as the secondary action.
+            IconButton(
+                onClick = {
+                    context.copyToClipboard(statement.digestText)
+                    copied = true
+                },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = stringResource(R.string.slow_copy),
+                    tint = semantic.textSecondary,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

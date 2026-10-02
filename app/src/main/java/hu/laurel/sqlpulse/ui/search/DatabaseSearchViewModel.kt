@@ -10,6 +10,7 @@ import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.search.DatabaseSearch
 import hu.laurel.sqlpulse.data.search.DatabaseSearchRepository
+import hu.laurel.sqlpulse.data.search.SearchHitFilter
 import hu.laurel.sqlpulse.data.search.SearchMode
 import hu.laurel.sqlpulse.data.search.SearchRow
 import hu.laurel.sqlpulse.data.sql.NoSqlSessionException
@@ -17,6 +18,7 @@ import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.TableFilterHandoff
 import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -92,6 +94,7 @@ class DatabaseSearchViewModel @Inject constructor(
     private val schema: SchemaRepository,
     private val repository: DatabaseSearchRepository,
     private val sessions: SqlSessionManager,
+    private val tableFilters: TableFilterHandoff,
 ) : ViewModel(), DatabaseSearchController {
 
     private val _uiState = MutableStateFlow(initialState())
@@ -110,6 +113,14 @@ class DatabaseSearchViewModel @Inject constructor(
             skipLargeTables = production,
             rowsPerTable = if (production) PRODUCTION_ROWS_PER_TABLE else ROWS_PER_TABLE,
         )
+    }
+
+    /** Leaves the filter for [table]'s screen to pick up, so it opens on this row. */
+    fun offerRowFilter(table: String, row: SearchRow) {
+        val state = _uiState.value
+        val database = state.database ?: return
+        val filter = SearchHitFilter.forRow(row, state.term, state.mode) ?: return
+        tableFilters.offer(database, table, filter)
     }
 
     override fun setTerm(term: String) = _uiState.update { it.copy(term = term) }

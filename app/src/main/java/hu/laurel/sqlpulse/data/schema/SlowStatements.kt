@@ -71,24 +71,28 @@ object SlowStatements {
     fun isAccessDenied(errorCode: Int) = errorCode in DENIED
     fun isMissingTable(errorCode: Int) = errorCode == NO_SUCH_TABLE
 
-    /** Picoseconds as the unit a person reads: ns, µs, ms, s, then minutes and hours. */
-    fun formatPicos(picos: Long): String {
+    /**
+     * Picoseconds as the unit a person reads: ns, µs, ms, s, then minutes and hours.
+     *
+     * [locale] decides the decimal separator (`1,50 ms` in Hungarian) and [units] the words for
+     * the long spans (`2 ó 20 p`); the defaults keep the English, locale-independent form.
+     */
+    fun formatPicos(
+        picos: Long,
+        locale: Locale = Locale.ROOT,
+        units: DurationUnits = DurationUnits.ENGLISH,
+    ): String {
         fun fixed(value: Double, unit: String): String {
             val digits = if (value >= 100) 0 else if (value >= 10) 1 else 2
-            return String.format(Locale.ROOT, "%.${digits}f %s", value, unit)
+            return String.format(locale, "%.${digits}f %s", value, unit)
         }
         return when {
             picos < 1_000L -> "<1 ns"
             picos < 1_000_000L -> fixed(picos / 1_000.0, "ns")
             picos < 1_000_000_000L -> fixed(picos / 1_000_000.0, "µs")
             picos < 1_000_000_000_000L -> fixed(picos / 1_000_000_000.0, "ms")
-            picos < 60_000_000_000_000L -> fixed(picos / 1_000_000_000_000.0, "s")
-            else -> {
-                val seconds = picos / 1_000_000_000_000L
-                val hours = seconds / 3600
-                val minutes = seconds % 3600 / 60
-                if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m ${seconds % 60}s"
-            }
+            picos < 60_000_000_000_000L -> fixed(picos / 1_000_000_000_000.0, units.second)
+            else -> ReplicationStatus.formatSeconds(picos / 1_000_000_000_000L, units, locale)
         }
     }
 

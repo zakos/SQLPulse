@@ -45,7 +45,7 @@
     <string name="slow_seen">%1$s – %2$s</string>
     <string name="slow_copy">Másolás</string>
     <string name="slow_copied">Másolva</string>
-    <string name="slow_hint">Normalizált utasítások, az értékek helyén ?. Koppintásra a vágólapra kerül; semmi nem fut le.</string>
+    <string name="slow_hint">Normalizált utasítások. Koppintásra megnyílik a szerkesztőben; semmi nem fut le. A ? helyén :p1, :p2 … áll, és az értékeket a szerkesztő kéri futtatáskor. A másolás ikon az eredeti szöveget másolja.</string>
     <string name="slow_empty_title">Még nincs rögzített utasítás</string>
     <string name="slow_empty_body">A digest tábla üres. Lehet, hogy a statement digest fogyasztó ki van kapcsolva, vagy a kiszolgáló az imént indult újra.</string>
     <string name="slow_off_title">A performance_schema ki van kapcsolva</string>

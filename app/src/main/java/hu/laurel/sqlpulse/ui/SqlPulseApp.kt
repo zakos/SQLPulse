@@ -80,7 +80,10 @@ fun SqlPulseApp() {
         }
 
         composable(Routes.SERVER) {
-            ServerScreen(onBack = { navController.popBackStack() })
+            ServerScreen(
+                onBack = { navController.popBackStack() },
+                onOpenQuery = { navController.navigate(Routes.QUERY) },
+            )
         }
 
         composable(Routes.PULSE) {

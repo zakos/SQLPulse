@@ -195,4 +195,49 @@ class WriteImpactTest {
     fun `a ceiling of zero turns the check off`() {
         assertFalse(AffectedRowLimit.exceeds(1_000_000, 0))
     }
+
+    @Test
+    fun `a side effect in a subquery of the set list refuses the preview`() {
+        val sqls = listOf(
+            "UPDATE t SET a = (SELECT SLEEP(5)) WHERE id = 1",
+            "UPDATE t SET a = COALESCE((SELECT NEXTVAL(seq)), 0) WHERE id = 1",
+            "UPDATE t SET a = (SELECT GET_LOCK('x', 1) FROM dual) + 1",
+            "UPDATE t SET a = (SELECT @v := 3)",
+            "UPDATE t SET a = (SELECT b FROM u LIMIT 1 FOR UPDATE)",
+            "UPDATE t SET a = (SELECT b FROM u LOCK IN SHARE MODE)",
+            "UPDATE t SET a = (SELECT b INTO @x FROM u)",
+        )
+        sqls.forEach { assertNull(it, WriteImpact.previewQuery(it)) }
+    }
+
+    @Test
+    fun `a side effect in the where refuses both the count and the preview`() {
+        val sqls = listOf(
+            "UPDATE t SET a = 1 WHERE id IN (SELECT id FROM u WHERE SLEEP(1))",
+            "DELETE FROM t WHERE GET_LOCK('k', 0) = 1",
+            "DELETE FROM t WHERE id = (SELECT MAX(id) FROM u FOR UPDATE)",
+            "DELETE FROM t WHERE (@n := @n + 1) > 3",
+            "DELETE FROM t WHERE id = (SELECT id INTO @i FROM u LIMIT 1)",
+        )
+        sqls.forEach {
+            assertNull(it, WriteImpact.previewQuery(it))
+            assertNull(it, WriteImpact.countQuery(it))
+        }
+    }
+
+    @Test
+    fun `a function name in a literal or comment is not a side effect`() {
+        val update = "UPDATE t SET note = 'call SLEEP(5) for update into x' /* GET_LOCK */ WHERE id = 1 -- FOR UPDATE"
+        assertTrue(WriteImpact.previewQuery(update) != null)
+        val delete = "DELETE FROM t WHERE note = 'SLEEP(1) FOR UPDATE'"
+        assertTrue(WriteImpact.countQuery(delete) != null)
+        assertTrue(WriteImpact.previewQuery(delete) != null)
+    }
+
+    @Test
+    fun `an ordinary subquery is still previewed`() {
+        val sql = "UPDATE t SET a = (SELECT MAX(b) FROM u) WHERE id IN (SELECT id FROM v WHERE x > 1)"
+        assertTrue(WriteImpact.previewQuery(sql) != null)
+        assertTrue(WriteImpact.countQuery(sql) != null)
+    }
 }

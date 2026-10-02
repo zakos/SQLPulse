@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Duration words: "2 h 20 m" -->
+    <string name="unit_hour_short">h</string>
+    <string name="unit_minute_short">m</string>
+    <string name="unit_second_short">s</string>
+
+    <!-- Open SQL from another screen in the editor -->
+    <string name="server_open_in_editor">Open in the editor</string>
+
+    <!-- Table opened from a search hit -->
+    <string name="filter_equals">Equals</string>
+    <string name="filter_also">and %1$s</string>
+
+    <!-- Snapshot line when the snapshot is from another connection or database -->
+    <string name="snapshot_state_from">Snapshot: %1$s · %2$d rows · from %3$s</string>
+</resources>

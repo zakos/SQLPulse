@@ -166,4 +166,15 @@ class ReplicationStatusTest {
         assertEquals("5 m 3 s", ReplicationStatus.formatSeconds(303))
         assertEquals("2 h 4 m", ReplicationStatus.formatSeconds(7440))
     }
+
+    @Test
+    fun `lag formatting in hungarian`() {
+        val units = DurationUnits.HUNGARIAN
+        val hu = java.util.Locale.forLanguageTag("hu-HU")
+        assertEquals("45 mp", ReplicationStatus.formatSeconds(45, units, hu))
+        assertEquals("5 p 3 mp", ReplicationStatus.formatSeconds(303, units, hu))
+        assertEquals("2 ó 4 p", ReplicationStatus.formatSeconds(7440, units, hu))
+        // No digit grouping inside a duration: "1 200 ó" would read as two numbers.
+        assertEquals("1200 ó 0 p", ReplicationStatus.formatSeconds(1200L * 3600, units, hu))
+    }
 }

@@ -15,8 +15,8 @@ class SlowStatementsTest {
         assertEquals("120 ms", SlowStatements.formatPicos(120_000_000_000))
         assertEquals("1.23 s", SlowStatements.formatPicos(1_234_000_000_000))
         assertEquals("12.0 s", SlowStatements.formatPicos(12_000_000_000_000))
-        assertEquals("2m 5s", SlowStatements.formatPicos(125_000_000_000_000))
-        assertEquals("3h 1m", SlowStatements.formatPicos(10_860_000_000_000_000))
+        assertEquals("2 m 5 s", SlowStatements.formatPicos(125_000_000_000_000))
+        assertEquals("3 h 1 m", SlowStatements.formatPicos(10_860_000_000_000_000))
     }
 
     @Test
@@ -65,5 +65,15 @@ class SlowStatementsTest {
         assertTrue(version.mariaDb)
         assertEquals(10, version.major)
         assertEquals(6, version.minor)
+    }
+
+    @Test
+    fun `durations follow the locale and its unit words`() {
+        val hu = java.util.Locale.forLanguageTag("hu-HU")
+        val units = DurationUnits.HUNGARIAN
+        assertEquals("1,50 µs", SlowStatements.formatPicos(1_500_000, hu, units))
+        assertEquals("1,23 mp", SlowStatements.formatPicos(1_234_000_000_000, hu, units))
+        assertEquals("2 p 5 mp", SlowStatements.formatPicos(125_000_000_000_000, hu, units))
+        assertEquals("2 ó 20 p", SlowStatements.formatPicos(8_400_000_000_000_000, hu, units))
     }
 }
