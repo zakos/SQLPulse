@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.server
 
+import hu.laurel.sqlpulse.data.schema.SlowSort
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -11,6 +12,8 @@ interface ServerController {
     fun kill(processId: Long)
     fun refresh()
     fun selectPanel(panel: ServerPanel)
+    fun setReplicationRaw(raw: Boolean)
+    fun setSlowSort(sort: SlowSort)
     fun showGrants(account: String)
     val uiState: StateFlow<ServerUiState>
 }

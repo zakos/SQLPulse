@@ -6,7 +6,10 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.ServerFact
+import hu.laurel.sqlpulse.data.schema.ReplicationReport
 import hu.laurel.sqlpulse.data.schema.ServerRepository
+import hu.laurel.sqlpulse.data.schema.SlowSort
+import hu.laurel.sqlpulse.data.schema.SlowStatementsReport
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -22,7 +25,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /** What the server screen is showing. Each is a question a DBA asks separately. */
-enum class ServerPanel { QUERIES, TRANSACTIONS, LOCKS, REPLICATION, USERS }
+enum class ServerPanel { QUERIES, TRANSACTIONS, LOCKS, REPLICATION, SLOW, USERS }
 
 data class ServerUiState(
     val facts: List<ServerFact> = emptyList(),
@@ -30,7 +33,11 @@ data class ServerUiState(
     val processes: ResultTable? = null,
     val transactions: ResultTable? = null,
     val lockWaits: ResultTable? = null,
-    val replication: ResultTable? = null,
+    val replication: ReplicationReport? = null,
+    /** Raw `SHOW REPLICA STATUS` instead of the cards, for the columns the cards leave out. */
+    val replicationRaw: Boolean = false,
+    val slow: SlowStatementsReport? = null,
+    val slowSort: SlowSort = SlowSort.TOTAL,
     val users: ResultTable? = null,
     /** The account whose grants are on screen, with what the server said about it. */
     val grants: AccountGrants? = null,
@@ -43,8 +50,17 @@ data class ServerUiState(
             ServerPanel.QUERIES -> processes
             ServerPanel.TRANSACTIONS -> transactions
             ServerPanel.LOCKS -> lockWaits
-            ServerPanel.REPLICATION -> replication
+            ServerPanel.REPLICATION -> (replication as? ReplicationReport.Channels)?.raw
+            ServerPanel.SLOW -> null
             ServerPanel.USERS -> users
+        }
+
+    /** False until the panel on screen has been asked for once. */
+    val panelLoaded: Boolean
+        get() = when (panel) {
+            ServerPanel.REPLICATION -> replication != null
+            ServerPanel.SLOW -> slow != null
+            else -> table != null
         }
 }
 
@@ -75,6 +91,7 @@ class ServerViewModel @Inject constructor(
                         transactions = null,
                         lockWaits = null,
                         replication = null,
+                        slow = null,
                         users = null,
                     )
                 }
@@ -84,7 +101,7 @@ class ServerViewModel @Inject constructor(
 
     override fun selectPanel(panel: ServerPanel) {
         _uiState.value = _uiState.value.copy(panel = panel)
-        if (_uiState.value.table == null) refresh()
+        if (!_uiState.value.panelLoaded) refresh()
     }
 
     /**
@@ -104,6 +121,7 @@ class ServerViewModel @Inject constructor(
                     ServerPanel.TRANSACTIONS -> state.copy(transactions = server.transactions())
                     ServerPanel.LOCKS -> state.copy(lockWaits = server.lockWaits())
                     ServerPanel.REPLICATION -> state.copy(replication = server.replication())
+                    ServerPanel.SLOW -> state.copy(slow = server.slowStatements(state.slowSort))
                     ServerPanel.USERS -> state.copy(users = server.users())
                 }
                 // The overview is optional: a user without those variables still gets the list.
@@ -117,6 +135,18 @@ class ServerViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    override fun setSlowSort(sort: SlowSort) {
+        if (sort == _uiState.value.slowSort) return
+        // The order is part of the query (LIMIT 25 of a different ranking is a different set),
+        // so a new sort asks the server again rather than re-sorting what is on screen.
+        _uiState.value = _uiState.value.copy(slowSort = sort)
+        refresh()
+    }
+
+    override fun setReplicationRaw(raw: Boolean) {
+        _uiState.value = _uiState.value.copy(replicationRaw = raw)
     }
 
     /** Asks the server what one account may do. Read-only, like everything on this screen. */

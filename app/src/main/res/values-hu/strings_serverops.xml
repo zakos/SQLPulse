@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kiszolgáló képernyő: replikáció állapota és a leglassabb utasítások -->
+    <string name="server_panel_slow">Lassú</string>
+
+    <string name="repl_health_ok">Rendben</string>
+    <string name="repl_health_lagging">Késik</string>
+    <string name="repl_health_far_behind">Sokat késik</string>
+    <string name="repl_health_stopped">Leállt</string>
+    <string name="repl_health_error">Hiba</string>
+    <string name="repl_health_unknown">Ismeretlen</string>
+
+    <string name="repl_default_channel">Alapcsatorna</string>
+    <string name="repl_source">Forrás</string>
+    <string name="repl_lag">Lemaradás</string>
+    <string name="repl_lag_unknown">Nincs adat</string>
+    <string name="repl_io_thread">IO szál</string>
+    <string name="repl_sql_thread">SQL szál</string>
+    <string name="repl_thread_running">fut</string>
+    <string name="repl_thread_connecting">kapcsolódik</string>
+    <string name="repl_thread_stopped">leállt</string>
+    <string name="repl_thread_unknown">ismeretlen</string>
+    <string name="repl_last_error">Utolsó hiba</string>
+    <string name="repl_delay_note">%1$d mp késleltetés van beállítva, ezt a lemaradásból kivontuk.</string>
+    <string name="repl_positions">GTID és pozíciók</string>
+    <string name="repl_retrieved_gtid">Letöltött GTID-halmaz</string>
+    <string name="repl_executed_gtid">Végrehajtott GTID-halmaz</string>
+    <string name="repl_source_log">Forrás napló</string>
+    <string name="repl_relay_log">Relay napló</string>
+    <string name="repl_exec_pos">Eddig hajtotta végre</string>
+    <string name="repl_raw">Nyers</string>
+    <string name="repl_not_replica_title">Ez a kiszolgáló nem replika</string>
+    <string name="repl_not_replica_body">A kiszolgáló üresen válaszolt a replikáció állapotára, ahogy egy forrás vagy egy önálló kiszolgáló szokott.</string>
+    <string name="repl_no_privilege_title">Nincs jogosultság a kérdéshez</string>
+    <string name="repl_no_privilege_body">A replikáció állapotához REPLICATION CLIENT jog kell (régebbi kiszolgálón SUPER). Ez nem mond semmit arról, hogy a kiszolgáló replikál-e.</string>
+
+    <string name="slow_sort_total">Összidő</string>
+    <string name="slow_sort_average">Átlag</string>
+    <string name="slow_sort_count">Darab</string>
+    <string name="slow_total">össz</string>
+    <string name="slow_avg">átlag</string>
+    <string name="slow_calls">%1$s futás</string>
+    <string name="slow_rows">%1$s vizsgált · %2$s visszaadott</string>
+    <string name="slow_no_index">%1$s index nélkül</string>
+    <string name="slow_seen">%1$s – %2$s</string>
+    <string name="slow_copy">Másolás</string>
+    <string name="slow_copied">Másolva</string>
+    <string name="slow_hint">Normalizált utasítások, az értékek helyén ?. Koppintásra a vágólapra kerül; semmi nem fut le.</string>
+    <string name="slow_empty_title">Még nincs rögzített utasítás</string>
+    <string name="slow_empty_body">A digest tábla üres. Lehet, hogy a statement digest fogyasztó ki van kapcsolva, vagy a kiszolgáló az imént indult újra.</string>
+    <string name="slow_off_title">A performance_schema ki van kapcsolva</string>
+    <string name="slow_off_body">Amíg a performance_schema le van tiltva, a kiszolgáló nem vezet utasítás-statisztikát. Csak a kiszolgáló beállításában kapcsolható be, újraindítással.</string>
+    <string name="slow_no_privilege_title">A statisztika olvasása nem engedélyezett</string>
+    <string name="slow_no_privilege_body">Ehhez SELECT jog kell a performance_schema.events_statements_summary_by_digest táblán.</string>
+    <string name="slow_unsupported_title">Ezen a kiszolgálón nem érhető el</string>
+    <string name="slow_unsupported_body">Az utasítás-statisztikához MySQL 5.6 vagy újabb, illetve MariaDB 10.5 vagy újabb kell.</string>
+</resources>

@@ -106,20 +106,98 @@ class ServerRepository @Inject constructor(
     /**
      * Replication, as this server sees it.
      *
-     * `SHOW REPLICA STATUS` is the 8.0.22 name and `SHOW SLAVE STATUS` the older one; both need a
-     * grant that plenty of read-only users do not have. A server that is not a replica answers
-     * with no rows at all, which is the same empty table as "not allowed to ask" — so the screen
-     * says "nothing to show" rather than claiming the server is not replicating.
+     * `SHOW REPLICA STATUS` is the 8.0.22 name and `SHOW SLAVE STATUS` the older one (MariaDB adds
+     * `SHOW ALL SLAVES STATUS` for several connections); both need a grant that plenty of
+     * read-only users do not have. The outcomes are kept apart on purpose: a statement that ran
+     * and returned no rows means "not a replica", while refusals on every spelling mean "not
+     * allowed to ask" — blaming a missing grant on a server that simply is not a replica, or the
+     * reverse, would send somebody looking in the wrong place.
      */
-    suspend fun replication(): ResultTable = sessions.withConnection { connection ->
-        listOf("SHOW REPLICA STATUS", "SHOW SLAVE STATUS").firstNotNullOfOrNull { sql ->
-            runCatching {
-                connection.createStatement().use { statement ->
-                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, 10) }
+    suspend fun replication(): ReplicationReport = sessions.withConnection { connection ->
+        val version = serverVersion(connection)
+        var denied = false
+        for (sql in ReplicationStatus.statements(version)) {
+            try {
+                val table = connection.createStatement().use { statement ->
+                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_CHANNELS) }
                 }
-            }.getOrNull()
-        } ?: ResultTable.EMPTY
+                return@withConnection if (table.rows.isEmpty()) {
+                    ReplicationReport.NotReplica
+                } else {
+                    ReplicationReport.Channels(
+                        ReplicationStatus.sortedBySeverity(ReplicationStatus.parse(table)),
+                        table,
+                    )
+                }
+            } catch (e: java.sql.SQLException) {
+                // A syntax error is just the wrong generation of the statement; try the next.
+                if (ReplicationStatus.isAccessDenied(e.errorCode)) denied = true
+            }
+        }
+        if (denied) ReplicationReport.NoPrivilege else ReplicationReport.NotReplica
     }
+
+    /**
+     * The statements that cost the most time, from the server's own digest table.
+     *
+     * Read-only and cheap (the table is a fixed-size summary in memory). Three states a plain
+     * error would blur are told apart: the server is too old, performance_schema is switched off
+     * (the table exists but stays empty, so asking would mislead), and the user lacks SELECT on it.
+     */
+    suspend fun slowStatements(sort: SlowSort): SlowStatementsReport = sessions.withConnection { connection ->
+        if (!SlowStatements.supported(serverVersion(connection))) {
+            return@withConnection SlowStatementsReport.Unsupported
+        }
+        val enabled = runCatching {
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT @@performance_schema").use { rows ->
+                    rows.next() && rows.getInt(1) == 1
+                }
+            }
+        }.getOrDefault(true)
+        if (!enabled) return@withConnection SlowStatementsReport.PerformanceSchemaOff
+        try {
+            val statements = connection.createStatement().use { statement ->
+                statement.executeQuery(SlowStatements.query(sort)).use { rows ->
+                    buildList {
+                        while (rows.next()) {
+                            add(
+                                SlowStatement(
+                                    digestText = rows.getString(1).orEmpty(),
+                                    schema = rows.getString(2)?.takeIf { it.isNotBlank() },
+                                    count = SlowStatements.parseCounter(rows.getString(3)),
+                                    totalPicos = SlowStatements.parseCounter(rows.getString(4)),
+                                    avgPicos = SlowStatements.parseCounter(rows.getString(5)),
+                                    rowsExamined = SlowStatements.parseCounter(rows.getString(6)),
+                                    rowsSent = SlowStatements.parseCounter(rows.getString(7)),
+                                    noIndexUsed = SlowStatements.parseCounter(rows.getString(8)),
+                                    noGoodIndexUsed = SlowStatements.parseCounter(rows.getString(9)),
+                                    firstSeen = rows.getString(10),
+                                    lastSeen = rows.getString(11),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            SlowStatementsReport.Rows(statements, sort)
+        } catch (e: java.sql.SQLException) {
+            when {
+                SlowStatements.isAccessDenied(e.errorCode) -> SlowStatementsReport.NoPrivilege
+                SlowStatements.isMissingTable(e.errorCode) -> SlowStatementsReport.Unsupported
+                else -> throw e
+            }
+        }
+    }
+
+    private fun serverVersion(connection: java.sql.Connection): ServerVersion =
+        runCatching {
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT VERSION()").use { rows ->
+                    ServerVersion.parse(if (rows.next()) rows.getString(1) else null)
+                }
+            }
+        }.getOrDefault(ServerVersion.UNKNOWN)
 
     /**
      * The server's accounts (research summary, §2.0).
@@ -273,5 +351,8 @@ class ServerRepository @Inject constructor(
     private companion object {
         /** A busy server can have thousands of connections; the screen shows the first page. */
         const val MAX_PROCESSES = 500
+
+        /** Multi-source replicas have a handful of channels, not hundreds. */
+        const val MAX_CHANNELS = 64
     }
 }

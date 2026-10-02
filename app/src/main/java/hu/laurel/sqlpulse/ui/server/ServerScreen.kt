@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -173,7 +175,11 @@ fun ServerScreenContent(
 
             // One row of tabs, because these are four separate questions and each one costs a
             // query against a server that may be busy.
+            // The chosen chip is scrolled into view: the later panels sit off the right edge.
+            val chipState = rememberLazyListState()
+            LaunchedEffect(state.panel) { chipState.animateScrollToItem(state.panel.ordinal) }
             LazyRow(
+                state = chipState,
                 contentPadding = PaddingValues(horizontal = Spacing.l),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s),
             ) {
@@ -208,7 +214,27 @@ fun ServerScreenContent(
             }
 
             val table = state.table
+            val replication = state.replication
+            val slow = state.slow
             when {
+                state.panel == ServerPanel.REPLICATION && replication != null -> ReplicationPanel(
+                    report = replication,
+                    raw = state.replicationRaw,
+                    onRawChange = viewModel::setReplicationRaw,
+                    onRefresh = viewModel::refresh,
+                    rawContent = { if (table != null) ResultGrid(table = table, modifier = Modifier.fillMaxSize()) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                state.panel == ServerPanel.SLOW && slow != null -> SlowPanel(
+                    report = slow,
+                    sort = state.slowSort,
+                    onSort = viewModel::setSlowSort,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                state.panel == ServerPanel.REPLICATION || state.panel == ServerPanel.SLOW -> Unit
                 table == null -> Unit
                 table.rows.isEmpty() && !state.loading -> EmptyState(
                     title = stringResource(state.panel.emptyRes()),
@@ -230,8 +256,8 @@ fun ServerScreenContent(
                     modifier = Modifier.fillMaxSize(),
                     onCellClick = { selection ->
                         when (state.panel) {
-                            // Replication has no thread to end and no account to look up.
-                            ServerPanel.REPLICATION -> Unit
+                            // Replication and the digest list are read-only and have no thread or account.
+                            ServerPanel.REPLICATION, ServerPanel.SLOW -> Unit
                             ServerPanel.USERS -> viewModel.showGrants(selection.value.asText())
                             else -> killTarget = selection.toKillTarget(table)
                         }
@@ -432,6 +458,7 @@ private fun ServerPanel.labelRes(): Int = when (this) {
     ServerPanel.TRANSACTIONS -> R.string.server_panel_transactions
     ServerPanel.LOCKS -> R.string.server_panel_locks
     ServerPanel.REPLICATION -> R.string.server_panel_replication
+    ServerPanel.SLOW -> R.string.server_panel_slow
     ServerPanel.USERS -> R.string.server_panel_users
 }
 
@@ -442,5 +469,6 @@ private fun ServerPanel.emptyRes(): Int = when (this) {
     ServerPanel.TRANSACTIONS -> R.string.server_no_transactions
     ServerPanel.LOCKS -> R.string.server_no_locks
     ServerPanel.REPLICATION -> R.string.server_no_replication
+    ServerPanel.SLOW -> R.string.slow_empty_title
     ServerPanel.USERS -> R.string.server_no_users
 }
