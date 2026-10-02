@@ -389,3 +389,41 @@ data class CachedForeignKeyEntity(
     val referencedTable: String,
     val referencedColumn: String,
 )
+
+/**
+ * One write the app sent to a server (the "Írási napló").
+ *
+ * No foreign key to `connection`, on purpose: the log answers "who wrote what, where" long after the
+ * connection may have been renamed or deleted, so the name, colour and environment are copied here
+ * as they were at that moment and the row outlives its connection. Enum-valued columns are stored
+ * as their names, like the rest of the schema, so a reader never depends on an ordinal.
+ */
+@Entity(tableName = "write_log", indices = [Index("time")])
+data class WriteLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Epoch milliseconds when the statement was sent. */
+    val time: Long,
+    /** Null when the write ran with no session to name (it then failed anyway). */
+    val connectionId: Long?,
+    val connectionName: String,
+    /** Name of a ui.theme.ConnectionColor entry, copied so the log keeps its colour rail. */
+    val connectionColor: String,
+    /** Name of a ConnectionEnvironment entry at that moment. */
+    val environment: String,
+    val database: String?,
+    /** Name of a data.writelog.WriteSource entry. */
+    val source: String,
+    val statement: String,
+    /** Rows the server said it changed; null when the statement failed before it could say. */
+    val affectedRows: Int?,
+    /** Name of a data.writelog.WriteOutcome entry. */
+    val outcome: String,
+    /** Short error class and message for a failed write; never credentials. */
+    val error: String?,
+    val durationMs: Long,
+    /**
+     * True when a manual transaction was open. Whether it was later committed or rolled back is
+     * not tracked, so this only says the write was not auto-committed.
+     */
+    val inTransaction: Boolean,
+)

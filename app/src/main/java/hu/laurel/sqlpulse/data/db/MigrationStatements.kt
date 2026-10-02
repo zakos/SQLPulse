@@ -254,6 +254,35 @@ object MigrationStatements {
     )
 
     /**
+     * 9→10 adds the write log: one table, empty, and nothing existing touched.
+     *
+     * No foreign key to `connection`: the log has to outlive a deleted or renamed connection, so
+     * the connection's name, colour and environment are copied into each row instead. The index on
+     * `time` serves the newest-first read and both retention deletes.
+     */
+    val MIGRATION_9_10: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `write_log` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `time` INTEGER NOT NULL,
+            `connectionId` INTEGER,
+            `connectionName` TEXT NOT NULL,
+            `connectionColor` TEXT NOT NULL,
+            `environment` TEXT NOT NULL,
+            `database` TEXT,
+            `source` TEXT NOT NULL,
+            `statement` TEXT NOT NULL,
+            `affectedRows` INTEGER,
+            `outcome` TEXT NOT NULL,
+            `error` TEXT,
+            `durationMs` INTEGER NOT NULL,
+            `inTransaction` INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_write_log_time` ON `write_log` (`time`)",
+    )
+
+    /**
      * Every migration in order, keyed by the version it leaves the database at: index 0 is 1→2.
      * The test walks this list, so a ninth migration added to [Migrations] without being added
      * here goes untested — and a migration added here without being wired into [Migrations] does
@@ -268,5 +297,6 @@ object MigrationStatements {
         6 to MIGRATION_6_7,
         7 to MIGRATION_7_8,
         8 to MIGRATION_8_9,
+        9 to MIGRATION_9_10,
     )
 }

@@ -55,12 +55,14 @@ fun SettingsScreen(
      * elsewhere — can be pointed at it in its own change without this file having to land first.
      */
     onOpenBackup: () -> Unit = {},
+    onOpenWriteLog: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     SettingsScreenContent(
         onBack = onBack,
         onOpenKeyStore = onOpenKeyStore,
         onOpenBackup = onOpenBackup,
+        onOpenWriteLog = onOpenWriteLog,
         viewModel = viewModel,
     )
 }
@@ -72,6 +74,7 @@ fun SettingsScreenContent(
     onBack: () -> Unit,
     onOpenKeyStore: () -> Unit,
     onOpenBackup: () -> Unit = {},
+    onOpenWriteLog: () -> Unit = {},
     viewModel: SettingsController,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -210,6 +213,11 @@ fun SettingsScreenContent(
             ListRow(
                 title = stringResource(R.string.settings_open_backup),
                 onClick = onOpenBackup,
+            ) { RowChevron() }
+            ListRow(
+                title = stringResource(R.string.writelog_open),
+                subtitle = stringResource(R.string.writelog_open_note),
+                onClick = onOpenWriteLog,
             ) { RowChevron() }
 
             Text(

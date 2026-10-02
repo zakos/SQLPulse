@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="writelog_title">Write log</string>
+    <string name="writelog_open">Write log</string>
+    <string name="writelog_open_note">Every write this app sent, kept on this phone only</string>
+    <string name="writelog_more">More</string>
+    <string name="writelog_search">Search statements</string>
+    <string name="writelog_clear_search">Clear search</string>
+    <string name="writelog_filter_all">All</string>
+    <string name="writelog_source_sql_editor">Editor</string>
+    <string name="writelog_source_row_edit">Row edit</string>
+    <string name="writelog_source_result_edit">Result edit</string>
+    <string name="writelog_source_csv_import">CSV import</string>
+    <string name="writelog_source_undo">Undo</string>
+    <string name="writelog_outcome_ok">OK</string>
+    <string name="writelog_outcome_failed">Failed</string>
+    <string name="writelog_rows">%1$d rows</string>
+    <string name="writelog_rows_one">1 row</string>
+    <string name="writelog_rows_unknown">no count</string>
+    <string name="writelog_in_transaction">In transaction</string>
+    <string name="writelog_in_transaction_note">Ran inside a manual transaction; whether it was committed or rolled back is not recorded.</string>
+    <string name="writelog_duration_ms">%1$d ms</string>
+    <string name="writelog_database_none">no database</string>
+    <string name="writelog_expand">Show the whole statement</string>
+    <string name="writelog_collapse">Collapse</string>
+    <string name="writelog_count">%1$d of %2$d entries</string>
+    <string name="writelog_empty_title">Nothing written yet</string>
+    <string name="writelog_empty_body">Every INSERT, UPDATE, DELETE, row edit and CSV import sent from this app is recorded here, with the connection and the result. Nothing leaves the phone unless you export it.</string>
+    <string name="writelog_no_match_title">No entry matches</string>
+    <string name="writelog_no_match_body">Loosen the filters or the search text to see more of the log.</string>
+    <string name="writelog_no_match_action">Show everything</string>
+    <string name="writelog_export_csv">Export as CSV</string>
+    <string name="writelog_export_json">Export as JSON</string>
+    <string name="writelog_export_failed">The log could not be exported.</string>
+    <string name="writelog_clear">Clear the log</string>
+    <string name="writelog_clear_title">Clear the write log?</string>
+    <string name="writelog_clear_subtitle">%1$d entries</string>
+    <string name="writelog_clear_body">Every entry is deleted from this phone. Writes on the servers are not touched, and the log cannot be restored. Exports you already shared stay where they went.</string>
+    <string name="writelog_clear_confirm">Delete all</string>
+    <string name="writelog_keep_title">Keep for</string>
+    <string name="writelog_keep_days">%1$d days</string>
+    <string name="writelog_keep_note">Older entries are deleted when the next write is logged. At most 5000 entries are kept either way. Backups do not include the log.</string>
+    <string name="writelog_values_note">Statements are logged with the values written in, so the log can hold the data that was written.</string>
+</resources>

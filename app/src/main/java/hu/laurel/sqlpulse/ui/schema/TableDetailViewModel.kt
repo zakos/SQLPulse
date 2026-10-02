@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.data.csv.CsvImporter
 import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.schema.LinkTrail
@@ -378,7 +379,7 @@ class TableDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(undoable = null)
             try {
-                rowEditor.execute(undo)
+                rowEditor.execute(undo, WriteSource.UNDO)
                 reload()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = describe(e))

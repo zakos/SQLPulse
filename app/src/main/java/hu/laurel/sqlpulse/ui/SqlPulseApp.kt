@@ -20,6 +20,7 @@ import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
 import hu.laurel.sqlpulse.ui.schemadiff.SchemaDiffScreen
 import hu.laurel.sqlpulse.ui.server.ServerScreen
 import hu.laurel.sqlpulse.ui.storage.StorageScreen
+import hu.laurel.sqlpulse.ui.writelog.WriteLogScreen
 import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
 
 object Routes {
@@ -36,6 +37,7 @@ object Routes {
     const val SEARCH = "search"
     const val SCHEMA_DIFF = "schema-diff"
     const val STORAGE = "storage"
+    const val WRITE_LOG = "write_log"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -123,7 +125,12 @@ fun SqlPulseApp() {
                 onBack = { navController.popBackStack() },
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                onOpenWriteLog = { navController.navigate(Routes.WRITE_LOG) },
             )
+        }
+
+        composable(Routes.WRITE_LOG) {
+            WriteLogScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.QUERY) {
