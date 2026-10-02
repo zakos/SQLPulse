@@ -66,8 +66,9 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
-import java.text.DateFormat
-import java.util.Date
+import androidx.compose.ui.platform.LocalConfiguration
+import hu.laurel.sqlpulse.data.snapshot.SnapshotLabels
+import java.util.Locale
 
 /**
  * The time machine's answer, as a sheet over the result it is about.
@@ -139,7 +140,9 @@ internal fun OutcomeBody(outcome: ComparisonOutcome, onPickKey: ((List<String>) 
 @Composable
 internal fun DiffBody(diff: ResultDiff, onPickKey: ((List<String>) -> Unit)? = null) {
     val semantic = LocalSemanticColors.current
-    val times = DateFormat.getTimeInstance(DateFormat.MEDIUM)
+    // The app's language, not the JVM's: Hungarian shows 14:05:09, not 2:05:09 PM.
+    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    fun time(millis: Long) = SnapshotLabels.clock(millis, locale, withSeconds = true)
     val before = diff.beforeOrigin
     val after = diff.afterOrigin
     val cross = diff.crossConnection && before != null && after != null
@@ -147,8 +150,8 @@ internal fun DiffBody(diff: ResultDiff, onPickKey: ((List<String>) -> Unit)? = n
     if (cross && before != null && after != null) {
         // Two sides, each with its own connection colour: which database a row came from is the
         // one thing that must never be a guess when one of them is production.
-        SideCard("A", before, diff.beforeRowCount, times.format(Date(diff.takenAt)))
-        SideCard("B", after, diff.afterRowCount, times.format(Date(diff.comparedAt)))
+        SideCard("A", before, diff.beforeRowCount, time(diff.takenAt))
+        SideCard("B", after, diff.afterRowCount, time(diff.comparedAt))
         if (diff.queryDiffers) {
             Text(
                 text = stringResource(R.string.datacompare_query_differs),
@@ -160,8 +163,8 @@ internal fun DiffBody(diff: ResultDiff, onPickKey: ((List<String>) -> Unit)? = n
         Text(
             text = stringResource(
                 R.string.snapshot_times,
-                times.format(Date(diff.takenAt)),
-                times.format(Date(diff.comparedAt)),
+                time(diff.takenAt),
+                time(diff.comparedAt),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = semantic.textSecondary,

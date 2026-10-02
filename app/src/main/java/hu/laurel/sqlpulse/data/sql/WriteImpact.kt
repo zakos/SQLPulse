@@ -30,8 +30,9 @@ object WriteImpact {
      * An UPDATE is refused on top of that when its SET list cannot be evaluated on the old row
      * alone: a column assigned twice, a later expression that reads an earlier-assigned column
      * (MySQL evaluates the list left to right, so it would see the new value, the preview the old
-     * one), or an expression with a side effect (`NEXTVAL`, `GET_LOCK`, `@v := ...`) that running
-     * it as a SELECT would trigger for real.
+     * one), or an expression with a side effect (`NEXTVAL`, `GET_LOCK`, `@v := ...`, `SELECT ... INTO`,
+     * `FOR UPDATE`) that running it as a SELECT would trigger for real, anywhere in the SET list or
+     * the WHERE, subqueries included.
      */
     fun previewQuery(sql: String, limit: Int = PREVIEW_ROWS): WritePreviewQuery? {
         if (limit <= 0) return null
@@ -69,11 +70,16 @@ object WriteImpact {
         val start = skipSpace(masked, 0)
         val keyword = readWord(masked, start).lowercase()
         val after = skipSpace(clean, start + keyword.length)
-        return when (keyword) {
+        val parsed = when (keyword) {
             "update" -> parseUpdate(clean, masked, after)
             "delete" -> parseDelete(clean, masked, after)
             else -> null
-        }
+        } ?: return null
+        // The WHERE is copied into a SELECT that runs before the write does, so anything in it that
+        // acts on the server (a lock, a sleep, a variable assignment, a locking read in a
+        // subquery) would happen once more than the user agreed to.
+        if (hasSideEffect(parsed.tail)) return null
+        return parsed
     }
 
     /** `UPDATE [modifiers] table [alias] SET ... [WHERE ...]` and nothing more adventurous. */
@@ -159,9 +165,18 @@ object WriteImpact {
         return names
     }
 
-    private fun hasSideEffect(expression: String): Boolean {
-        val masked = blankLiterals(expression)
-        return masked.contains(":=") || referencedNames(expression).any { it in SIDE_EFFECT_WORDS }
+    /**
+     * True when running [text] as part of a SELECT would do something besides read.
+     *
+     * The whole text is scanned, parentheses and all: a subquery is where `(SELECT SLEEP(5))` or
+     * `(SELECT ... FOR UPDATE)` hides from a check that only looks at the top level. Literals and
+     * comments are masked first, so a string that merely mentions SLEEP does not refuse anything.
+     */
+    private fun hasSideEffect(text: String): Boolean {
+        val masked = blankLiterals(blankComments(text))
+        return masked.contains(":=") ||
+            LOCKING_OR_INTO.containsMatchIn(masked) ||
+            referencedNames(blankComments(text)).any { it in SIDE_EFFECT_WORDS }
     }
 
     private fun quoteIdentifier(name: String) = "`" + name.replace("`", "``") + "`"
@@ -278,6 +293,11 @@ object WriteImpact {
     private val SIDE_EFFECT_WORDS = setOf(
         "nextval", "setval", "lastval", "get_lock", "release_lock", "release_all_locks", "sleep", "benchmark",
         "load_file", "master_pos_wait", "source_pos_wait",
+    )
+
+    /** `SELECT ... INTO @v`, and the locking reads, which take row locks just by being run. */
+    private val LOCKING_OR_INTO = Regex(
+        "(?i)\\binto\\b|\\bfor\\s+(update|share)\\b|\\block\\s+in\\s+share\\s+mode\\b",
     )
 
     /** `col`, `t.col` or `db.t.col`, each part bare or backquoted. */

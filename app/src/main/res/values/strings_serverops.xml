@@ -45,7 +45,7 @@
     <string name="slow_seen">%1$s – %2$s</string>
     <string name="slow_copy">Copy</string>
     <string name="slow_copied">Copied</string>
-    <string name="slow_hint">Normalised statements, with the values replaced by ?. Tap one to copy it; nothing is run.</string>
+    <string name="slow_hint">Normalised statements. Tap one to open it in the editor; nothing is run. Each ? becomes :p1, :p2 … and the editor asks for the values when you run it. The copy icon copies the text as it is.</string>
     <string name="slow_empty_title">No statements recorded yet</string>
     <string name="slow_empty_body">The digest table is empty. The statement digest consumer may be switched off, or the server was restarted a moment ago.</string>
     <string name="slow_off_title">performance_schema is off</string>

@@ -179,7 +179,7 @@ class ServerOpsIntegrationTest {
         assertEquals(1, reports.getValue(SlowSort.COUNT).count { it.digestText.contains(table) && it.digestText.contains("COUNT") })
         assertNotNull(frequentRow.firstSeen)
         assertNotNull(frequentRow.lastSeen)
-        assertTrue(SlowStatements.formatPicos(frequentRow.totalPicos).matches(Regex("""<1 ns|[\d.]+ (ns|µs|ms|s)|\d+h \d+m|\d+m \d+s""")))
+        assertTrue(SlowStatements.formatPicos(frequentRow.totalPicos).matches(Regex("""<1 ns|[\d.]+ (ns|µs|ms|s)|\d+ h \d+ m|\d+ m \d+ s""")))
         assertEquals(300L, frequentRow.rowsSent)
     }
 

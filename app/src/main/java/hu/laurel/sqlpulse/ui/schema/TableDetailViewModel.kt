@@ -37,6 +37,7 @@ import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.TableFilterHandoff
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import java.sql.SQLException
@@ -136,6 +137,7 @@ class TableDetailViewModel @Inject constructor(
     private val importer: CsvImporter,
     private val exports: ExportManager,
     private val sessions: SqlSessionManager,
+    tableFilters: TableFilterHandoff,
 ) : ViewModel(), TableDetailController {
 
     private val database: String = Uri.decode(savedStateHandle["database"] ?: "")
@@ -149,6 +151,9 @@ class TableDetailViewModel @Inject constructor(
     init {
         val connection = sessions.currentConnection()
         _uiState.value = _uiState.value.copy(
+            // A search hit that was tapped: the table opens on that row, with the filter visible
+            // in the bar so it can be cleared.
+            filter = tableFilters.take(database, table),
             isProduction = ConnectionColor.fromName(connection?.color) == ConnectionColor.Production,
         )
         select(TableTab.DATA)

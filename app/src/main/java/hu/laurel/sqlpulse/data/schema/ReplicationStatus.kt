@@ -2,6 +2,8 @@ package hu.laurel.sqlpulse.data.schema
 
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import java.text.NumberFormat
+import java.util.Locale
 
 /** State of one replication thread as the server words it (`Yes`, `No`, `Connecting`, …). */
 enum class ThreadState {
@@ -162,11 +164,19 @@ object ReplicationStatus {
     fun sortedBySeverity(channels: List<ReplicationChannel>): List<ReplicationChannel> =
         channels.sortedByDescending { severity(it.health) }
 
-    /** Lag as a person reads it: `45 s`, `5 m 3 s`, `2 h 4 m`. */
-    fun formatSeconds(seconds: Long): String = when {
-        seconds < 60 -> "$seconds s"
-        seconds < 3600 -> "${seconds / 60} m ${seconds % 60} s"
-        else -> "${seconds / 3600} h ${seconds % 3600 / 60} m"
+    /** Lag as a person reads it: `45 s`, `5 m 3 s`, `2 h 4 m` (Hungarian: `2 ó 4 p`). */
+    fun formatSeconds(
+        seconds: Long,
+        units: DurationUnits = DurationUnits.ENGLISH,
+        locale: Locale = Locale.ROOT,
+    ): String {
+        val number = NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed = false }
+        fun n(value: Long) = number.format(value)
+        return when {
+            seconds < 60 -> "${n(seconds)} ${units.second}"
+            seconds < 3600 -> "${n(seconds / 60)} ${units.minute} ${n(seconds % 60)} ${units.second}"
+            else -> "${n(seconds / 3600)} ${units.hour} ${n(seconds % 3600 / 60)} ${units.minute}"
+        }
     }
 
     /** MySQL error numbers that mean "you may not ask", as opposed to "this syntax is unknown". */

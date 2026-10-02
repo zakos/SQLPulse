@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Időtartam-egységek: "2 ó 20 p" -->
+    <string name="unit_hour_short">ó</string>
+    <string name="unit_minute_short">p</string>
+    <string name="unit_second_short">mp</string>
+
+    <!-- SQL megnyitása a szerkesztőben más képernyőről -->
+    <string name="server_open_in_editor">Megnyitás a szerkesztőben</string>
+
+    <!-- Keresési találatból megnyitott tábla -->
+    <string name="filter_equals">Egyenlő</string>
+    <string name="filter_also">és %1$s</string>
+
+    <!-- Felvétel-sor, ha a felvétel másik kapcsolatról vagy adatbázisból való -->
+    <string name="snapshot_state_from">Felvétel: %1$s · %2$d sor · innen: %3$s</string>
+</resources>

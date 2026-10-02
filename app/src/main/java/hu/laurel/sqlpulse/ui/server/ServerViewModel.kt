@@ -15,6 +15,7 @@ import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.EditorHandoff
 import java.sql.SQLException
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,7 +74,11 @@ class ServerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val server: ServerRepository,
     sessions: SqlSessionManager,
+    private val editorHandoff: EditorHandoff,
 ) : ViewModel(), ServerController {
+
+    /** Leaves SQL for the query editor to open in a new tab. It is never executed here. */
+    fun openInEditor(sql: String) = editorHandoff.offer(sql)
 
     private val _uiState = MutableStateFlow(ServerUiState())
     override val uiState: StateFlow<ServerUiState> = _uiState.asStateFlow()

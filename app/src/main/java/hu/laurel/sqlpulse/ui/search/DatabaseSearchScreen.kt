@@ -61,8 +61,8 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 /**
  * "Search the whole database": type a value, see which tables and columns hold it.
  *
- * A tap on a hit opens that table; the table page cannot be pre-filtered from here, so the row's
- * key is shown on the hit to find it by.
+ * A tap on a hit opens that table filtered to that row (its primary key, or the matching cell when
+ * the table has none); a tap on the table's name opens the whole table.
  */
 @Composable
 fun DatabaseSearchScreen(
@@ -70,7 +70,15 @@ fun DatabaseSearchScreen(
     onOpenTable: (database: String, table: String) -> Unit,
     viewModel: DatabaseSearchViewModel = hiltViewModel(),
 ) {
-    DatabaseSearchScreenContent(onBack = onBack, onOpenTable = onOpenTable, viewModel = viewModel)
+    DatabaseSearchScreenContent(
+        onBack = onBack,
+        onOpenTable = onOpenTable,
+        viewModel = viewModel,
+        onOpenRow = { table, row ->
+            viewModel.offerRowFilter(table, row)
+            onOpenTable(viewModel.uiState.value.database.orEmpty(), table)
+        },
+    )
 }
 
 /** The screen itself, drawn from whatever [DatabaseSearchController] it is handed. */
@@ -80,6 +88,9 @@ fun DatabaseSearchScreenContent(
     onBack: () -> Unit,
     onOpenTable: (database: String, table: String) -> Unit,
     viewModel: DatabaseSearchController,
+    onOpenRow: (table: String, row: SearchRow) -> Unit = { table, _ ->
+        onOpenTable(viewModel.uiState.value.database.orEmpty(), table)
+    },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
@@ -148,6 +159,7 @@ fun DatabaseSearchScreenContent(
                         term = state.term,
                         mode = state.mode,
                         onOpen = { onOpenTable(state.database.orEmpty(), hits.table) },
+                        onOpenRow = { row -> onOpenRow(hits.table, row) },
                     )
                 }
             } else if (!state.running && state.searched && state.error == null) {
@@ -354,14 +366,20 @@ private fun Progress(state: DatabaseSearchUiState) {
 }
 
 @Composable
-private fun TableGroup(hits: TableHits, term: String, mode: SearchMode, onOpen: () -> Unit) {
+private fun TableGroup(
+    hits: TableHits,
+    term: String,
+    mode: SearchMode,
+    onOpen: () -> Unit,
+    onOpenRow: (SearchRow) -> Unit,
+) {
     val semantic = LocalSemanticColors.current
     HairlineCard(modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s)) {
-        Column(modifier = Modifier.clickable(onClick = onOpen)) {
+        Column {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                modifier = Modifier.fillMaxWidth().padding(Spacing.m),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(Spacing.m),
             ) {
                 Text(
                     text = hits.table,
@@ -379,18 +397,19 @@ private fun TableGroup(hits: TableHits, term: String, mode: SearchMode, onOpen: 
             }
             hits.rows.forEach { row ->
                 HorizontalDivider(color = semantic.hairline)
-                HitRow(row, term, mode)
+                HitRow(row, term, mode, onClick = { onOpenRow(row) })
             }
         }
     }
 }
 
 @Composable
-private fun HitRow(row: SearchRow, term: String, mode: SearchMode) {
+private fun HitRow(row: SearchRow, term: String, mode: SearchMode, onClick: () -> Unit) {
     val semantic = LocalSemanticColors.current
     val highlight = MaterialTheme.colorScheme.primary
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.m, vertical = Spacing.s),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = Spacing.m, vertical = Spacing.s),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         if (row.key.isNotEmpty()) {

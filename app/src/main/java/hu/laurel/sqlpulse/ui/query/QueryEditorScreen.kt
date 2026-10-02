@@ -151,6 +151,9 @@ import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
+import hu.laurel.sqlpulse.data.snapshot.SnapshotLabels
+import androidx.compose.ui.platform.LocalConfiguration
 
 /**
  * Query editor (§7.4): monospace field with highlighting, the key row the phone keyboard lacks,
@@ -954,12 +957,17 @@ private fun ResultPanel(
             // snapshot is one that gets compared against by accident an hour later. When it
             // was taken, and how much of it there is, is the whole of what has to be said here.
             state.snapshot?.let { snapshot ->
+                val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+                val time = SnapshotLabels.clock(snapshot.takenAt, locale)
+                // A snapshot from another connection or database says so: dev and production
+                // results look alike, and the line is the only place that tells them apart.
+                val from = SnapshotLabels.originNote(snapshot.origin, state.connectionId, state.database)
                 Text(
-                    text = stringResource(
-                        R.string.snapshot_state,
-                        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(snapshot.takenAt)),
-                        snapshot.rowCount,
-                    ),
+                    text = if (from == null) {
+                        stringResource(R.string.snapshot_state, time, snapshot.rowCount)
+                    } else {
+                        stringResource(R.string.snapshot_state_from, time, snapshot.rowCount, from)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalSemanticColors.current.textSecondary,
                     maxLines = 1,

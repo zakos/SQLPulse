@@ -143,7 +143,7 @@ class SchemaRepository @Inject constructor(
             }
             connection.prepareStatement(sql).use { statement ->
                 statement.fetchSize = limit
-                TableQuery.whereParameter(filter)?.let { statement.setString(1, it) }
+                TableQuery.whereParameters(filter).forEachIndexed { i, value -> statement.setString(i + 1, value) }
                 val started = System.currentTimeMillis()
                 statement.executeQuery().use { rows ->
                     ResultTable.from(rows, limit)
@@ -158,7 +158,7 @@ class SchemaRepository @Inject constructor(
             val sql = "SELECT COUNT(*) FROM ${quoteIdentifier(database)}.${quoteIdentifier(table)}" +
                 TableQuery.where(filter)
             connection.prepareStatement(sql).use { statement ->
-                TableQuery.whereParameter(filter)?.let { statement.setString(1, it) }
+                TableQuery.whereParameters(filter).forEachIndexed { i, value -> statement.setString(i + 1, value) }
                 statement.executeQuery().use { rows -> if (rows.next()) rows.getLong(1) else 0L }
             }
         }

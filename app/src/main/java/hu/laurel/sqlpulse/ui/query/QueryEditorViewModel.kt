@@ -50,8 +50,10 @@ import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.UnguardedWriteException
 import hu.laurel.sqlpulse.data.sql.UnsupportedStatementException
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.EditorHandoff
 import java.sql.SQLException
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -64,6 +66,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -143,6 +146,8 @@ data class QueryEditorUiState(
     val databases: List<String> = emptyList(),
     val readOnly: Boolean = true,
     val connectionName: String? = null,
+    /** The live connection's id, 0 when none; tells a carried snapshot whether it is from elsewhere. */
+    val connectionId: Long = 0,
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
@@ -231,6 +236,7 @@ class QueryEditorViewModel @Inject constructor(
     rowEditor: RowEditor,
     writeUnlock: WriteUnlockStore,
     private val snapshotVault: SnapshotVault,
+    private val editorHandoff: EditorHandoff,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
@@ -273,6 +279,9 @@ class QueryEditorViewModel @Inject constructor(
     private var lastWritten: DraftBook? = null
     private var draftsRestored = false
 
+    /** Completed once the saved drafts are back, so SQL handed over by another screen cannot beat them. */
+    private val draftsReady = CompletableDeferred<Unit>()
+
     override val history: StateFlow<List<QueryHistoryEntity>> = connectionId
         .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else queries.observeHistory(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -285,6 +294,7 @@ class QueryEditorViewModel @Inject constructor(
         // A snapshot taken on another connection, before the user switched to this one.
         _uiState.value = _uiState.value.copy(carriedSnapshot = snapshotVault.snapshot)
         restoreDrafts()
+        acceptHandedOverSql()
         editing.track(_uiState.map { it.resultEditKey() }.distinctUntilChanged())
 
         // The draft is written after the typing stops, not during it: a keystroke costs nothing
@@ -303,6 +313,7 @@ class QueryEditorViewModel @Inject constructor(
                         _uiState.value = _uiState.value.copy(
                             readOnly = state.connection.readOnly,
                             connectionName = state.connection.name,
+                            connectionId = state.connection.id,
                         )
                         loadDatabases()
                     }
@@ -311,7 +322,7 @@ class QueryEditorViewModel @Inject constructor(
                         connectionId.value = 0L
                         tableNames = emptyList()
                         tableDatabase = null
-                        _uiState.value = _uiState.value.copy(connectionName = null)
+                        _uiState.value = _uiState.value.copy(connectionName = null, connectionId = 0)
                     }
                 }
             }
@@ -1178,7 +1189,7 @@ class QueryEditorViewModel @Inject constructor(
      * honest — nothing has been run in this process yet.
      */
     private fun restoreDrafts() {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
             val book = drafts.load()
             draftsRestored = true
             if (book.drafts.isEmpty()) return@launch
@@ -1204,6 +1215,39 @@ class QueryEditorViewModel @Inject constructor(
             lastWritten = book
             refreshSuggestions()
         }
+        job.invokeOnCompletion { draftsReady.complete(Unit) }
+    }
+
+    /**
+     * SQL another screen asked to have opened (a slow statement, a running query). It lands in a
+     * tab of its own, and is never run: a statement from a list is something to read first.
+     */
+    private fun acceptHandedOverSql() {
+        viewModelScope.launch {
+            draftsReady.await()
+            editorHandoff.pending.filterNotNull().collect {
+                editorHandoff.take()?.let(::openHandedOverSql)
+            }
+        }
+    }
+
+    private fun openHandedOverSql(sql: String) {
+        val state = _uiState.value
+        val active = state.active
+        // A fresh, untouched tab is used as it is; stacking a new tab next to an empty one is clutter.
+        if (active.sql.isBlank() && active.result == null) {
+            load(sql)
+            return
+        }
+        val id = nextTabId
+        val opened = QueryTabs.open(state.tabs, id, sql = sql, database = state.database)
+        if (opened == null) {
+            _uiState.value = state.copy(tabLimitReached = true)
+            return
+        }
+        nextTabId++
+        _uiState.value = state.copy(tabs = opened, activeTabId = id, tabLimitReached = false)
+        noteDraftChange()
     }
 
     private fun noteDraftChange() {
