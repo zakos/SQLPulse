@@ -7,6 +7,7 @@ import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.schema.Health
 import hu.laurel.sqlpulse.data.schema.Series
 import hu.laurel.sqlpulse.data.schema.ServerFact
+import hu.laurel.sqlpulse.data.schema.SlowSort
 import hu.laurel.sqlpulse.data.settings.Settings
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
@@ -96,6 +97,8 @@ class ToolScreenShots {
             override fun kill(processId: Long) = Unit
             override fun refresh() = Unit
             override fun selectPanel(panel: ServerPanel) = Unit
+            override fun setReplicationRaw(raw: Boolean) = Unit
+            override fun setSlowSort(sort: SlowSort) = Unit
             override fun showGrants(account: String) = Unit
         })
     }

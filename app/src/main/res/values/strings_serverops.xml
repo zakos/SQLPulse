@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server screen: replication status and slowest statements -->
+    <string name="server_panel_slow">Slow</string>
+
+    <string name="repl_health_ok">Healthy</string>
+    <string name="repl_health_lagging">Lagging</string>
+    <string name="repl_health_far_behind">Far behind</string>
+    <string name="repl_health_stopped">Stopped</string>
+    <string name="repl_health_error">Error</string>
+    <string name="repl_health_unknown">Unknown</string>
+
+    <string name="repl_default_channel">Default channel</string>
+    <string name="repl_source">Source</string>
+    <string name="repl_lag">Lag behind source</string>
+    <string name="repl_lag_unknown">Not reported</string>
+    <string name="repl_io_thread">IO thread</string>
+    <string name="repl_sql_thread">SQL thread</string>
+    <string name="repl_thread_running">running</string>
+    <string name="repl_thread_connecting">connecting</string>
+    <string name="repl_thread_stopped">stopped</string>
+    <string name="repl_thread_unknown">unknown</string>
+    <string name="repl_last_error">Last error</string>
+    <string name="repl_delay_note">A delay of %1$d s is configured, so it is left out of the lag.</string>
+    <string name="repl_positions">GTID and positions</string>
+    <string name="repl_retrieved_gtid">Retrieved GTID set</string>
+    <string name="repl_executed_gtid">Executed GTID set</string>
+    <string name="repl_source_log">Source log</string>
+    <string name="repl_relay_log">Relay log</string>
+    <string name="repl_exec_pos">Executed up to</string>
+    <string name="repl_raw">Raw</string>
+    <string name="repl_not_replica_title">This server is not a replica</string>
+    <string name="repl_not_replica_body">The server answered the replication status question with nothing, which is what a source or a stand-alone server does.</string>
+    <string name="repl_no_privilege_title">Not allowed to ask</string>
+    <string name="repl_no_privilege_body">Replication status needs the REPLICATION CLIENT grant (SUPER on older servers). This says nothing about whether the server replicates.</string>
+
+    <string name="slow_sort_total">Total time</string>
+    <string name="slow_sort_average">Average</string>
+    <string name="slow_sort_count">Count</string>
+    <string name="slow_total">total</string>
+    <string name="slow_avg">avg</string>
+    <string name="slow_calls">%1$s runs</string>
+    <string name="slow_rows">%1$s examined · %2$s sent</string>
+    <string name="slow_no_index">%1$s without index</string>
+    <string name="slow_seen">%1$s – %2$s</string>
+    <string name="slow_copy">Copy</string>
+    <string name="slow_copied">Copied</string>
+    <string name="slow_hint">Normalised statements, with the values replaced by ?. Tap one to copy it; nothing is run.</string>
+    <string name="slow_empty_title">No statements recorded yet</string>
+    <string name="slow_empty_body">The digest table is empty. The statement digest consumer may be switched off, or the server was restarted a moment ago.</string>
+    <string name="slow_off_title">performance_schema is off</string>
+    <string name="slow_off_body">The server keeps no statement statistics while performance_schema is disabled. It can only be switched on in the server configuration, followed by a restart.</string>
+    <string name="slow_no_privilege_title">Not allowed to read the statistics</string>
+    <string name="slow_no_privilege_body">This needs SELECT on performance_schema.events_statements_summary_by_digest.</string>
+    <string name="slow_unsupported_title">Not available on this server</string>
+    <string name="slow_unsupported_body">Statement statistics need MySQL 5.6 or later, or MariaDB 10.5 or later.</string>
+</resources>
