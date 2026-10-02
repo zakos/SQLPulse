@@ -18,3 +18,4 @@ keystore.properties
 # Generated on every build: the Kotlin compiler's state, and Room's exported schema.
 .kotlin/
 app/schemas/
+.claude/worktrees/
