@@ -10,6 +10,7 @@ import hu.laurel.sqlpulse.data.connection.WriteAccess
 import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
+import hu.laurel.sqlpulse.data.shortcuts.LauncherShortcuts
 import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequests
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelManager
@@ -61,6 +62,7 @@ class ConnectionListViewModel @Inject constructor(
     private val tunnelManager: TunnelManager,
     private val writeUnlock: WriteUnlockStore,
     private val shortcutRequests: ShortcutRequests,
+    private val launcherShortcuts: LauncherShortcuts,
 ) : ViewModel() {
 
     /**
@@ -75,7 +77,10 @@ class ConnectionListViewModel @Inject constructor(
      */
     fun openShortcut() {
         val request = shortcutRequests.take() ?: return
-        viewModelScope.launch { repository.byId(request.connectionId)?.let(::connect) }
+        viewModelScope.launch {
+            if (!launcherShortcuts.allows(request.connectionId)) return@launch
+            repository.byId(request.connectionId)?.let(::connect)
+        }
     }
 
     val uiState: StateFlow<ConnectionListUiState> = combine(

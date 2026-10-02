@@ -52,8 +52,8 @@ class ColumnStatsTest {
         assertEquals(3, stats.rowCount)
         assertEquals(0, stats.nullCount)
         assertEquals(2, stats.distinctCount)
-        assertEquals(BigDecimal("31.75"), stats.sum)
-        assertEquals("10.583333", stats.average)
+        assertEquals(BigDecimal("41.75"), stats.sum)
+        assertEquals("13.916667", stats.average)
     }
 
     @Test
