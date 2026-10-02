@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.security
 
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.snapshot.SnapshotVault
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import java.util.concurrent.TimeUnit
@@ -28,6 +29,7 @@ class LockManager @Inject constructor(
     private val tunnelManager: TunnelManager,
     private val settings: SettingsRepository,
     private val exports: ExportManager,
+    private val snapshots: SnapshotVault,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -53,6 +55,7 @@ class LockManager @Inject constructor(
         _locked.value = true
         tunnelManager.disconnect()
         exports.clearExports()
+        snapshots.clear()
     }
 
     /** Called after a successful unlock; the caller owns the biometric prompt. */

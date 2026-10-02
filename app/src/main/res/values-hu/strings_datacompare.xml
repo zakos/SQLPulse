@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adatok összehasonlítása két kapcsolat között. -->
+    <string name="datacompare_stat_only_a">csak A-ban</string>
+    <string name="datacompare_stat_only_b">csak B-ben</string>
+    <string name="datacompare_stat_identical">azonos</string>
+    <string name="datacompare_rows">%1$d sor</string>
+    <string name="datacompare_identical">A két oldal megegyezik, már amennyire ez az összehasonlítás látja.</string>
+    <string name="datacompare_partial">Az eredménynek csak egy részét hasonlítottuk össze: A-ban %1$d sor, B-ben %2$d sor van.</string>
+    <string name="datacompare_query_differs">A két oldalon nem ugyanaz a lekérdezés futott, ezért az eltérés a lekérdezésből is jöhet, nem csak az adatból.</string>
+
+    <string name="datacompare_key_choose">Kulcsoszlopok kiválasztása</string>
+    <string name="datacompare_key_hint">Válassza ki a sort azonosító oszlopokat, például az id-t. Ezután a két oldal sorai párosíthatók, és a módosult sorban látszik, mely cellák változtak.</string>
+    <string name="datacompare_key_apply">Összehasonlítás kulccsal</string>
+
+    <string name="datacompare_side_a">A-ban</string>
+    <string name="datacompare_side_b">B-ben</string>
+    <string name="datacompare_unusable_duplicate">Nem hasonlítottuk össze: a(z) %1$s kulcs nem egyedi %2$s — %3$d sor osztozik a(z) %4$s értéken.</string>
+    <string name="datacompare_unusable_null">Nem hasonlítottuk össze: a(z) %1$s kulcs %3$d sorban NULL %2$s, a NULL pedig nem azonosít sort.</string>
+    <string name="datacompare_unusable_missing">Nem hasonlítottuk össze: a(z) %1$s kulcsoszlop nincs meg mindkét eredményben.</string>
+    <string name="datacompare_unusable_hint">Ismétlődő kulcson nem párosítunk sorokat, mert a számok találgatás lennének. Válasszon más oszlopokat, vagy szűkítse a lekérdezést.</string>
+
+    <string name="datacompare_columns_only_a">Csak A-ban: %1$s</string>
+    <string name="datacompare_columns_only_b">Csak B-ben: %1$s</string>
+    <string name="datacompare_columns_order">Az oszlopok nevei egyeznek, de a sorrendjük vagy a számuk nem.</string>
+</resources>

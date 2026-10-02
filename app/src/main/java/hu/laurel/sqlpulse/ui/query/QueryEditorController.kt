@@ -19,6 +19,7 @@ interface QueryEditorController {
     fun cancel()
     fun closeTab(id: Long)
     fun compareWithSnapshot()
+    fun compareWithSnapshotByKey(keyColumns: List<String>) = Unit
     fun complete(suggestion: String)
     fun confirmWrite()
     fun deleteFavourite(favourite: SavedQueryEntity)

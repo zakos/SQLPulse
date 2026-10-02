@@ -24,6 +24,8 @@ import hu.laurel.sqlpulse.data.snapshot.ResultDiffs
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshot
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
 import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
+import hu.laurel.sqlpulse.data.snapshot.SnapshotOrigin
+import hu.laurel.sqlpulse.data.snapshot.SnapshotVault
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.WriteRowPreview
 import hu.laurel.sqlpulse.data.chart.ChartSpec
@@ -160,6 +162,11 @@ data class QueryEditorUiState(
      * nothing about a result is ever written to disk (§9).
      */
     val snapshots: Map<Long, ResultSnapshot> = emptyMap(),
+    /**
+     * The snapshot carried over from another screen instance (typically another connection), from
+     * the process-wide [SnapshotVault]. A tab's own snapshot wins over it.
+     */
+    val carriedSnapshot: ResultSnapshot? = null,
     /** Set while the comparison sheet is up. */
     val comparison: ComparisonOutcome? = null,
     /** Set right after a snapshot was taken, or refused. */
@@ -201,7 +208,7 @@ data class QueryEditorUiState(
     val hasSelection: Boolean get() = active.hasSelection
 
     /** The active tab's snapshot, if it has one. */
-    val snapshot: ResultSnapshot? get() = snapshots[activeTabId]
+    val snapshot: ResultSnapshot? get() = snapshots[activeTabId] ?: carriedSnapshot
 
     /** The tab a close confirmation is about, if one is open. */
     val closing: QueryTab? get() = closingTab?.let { id -> tabs.firstOrNull { it.id == id } }
@@ -223,6 +230,7 @@ class QueryEditorViewModel @Inject constructor(
     private val settings: SettingsRepository,
     rowEditor: RowEditor,
     writeUnlock: WriteUnlockStore,
+    private val snapshotVault: SnapshotVault,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
@@ -274,6 +282,8 @@ class QueryEditorViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
+        // A snapshot taken on another connection, before the user switched to this one.
+        _uiState.value = _uiState.value.copy(carriedSnapshot = snapshotVault.snapshot)
         restoreDrafts()
         editing.track(_uiState.map { it.resultEditKey() }.distinctUntilChanged())
 
@@ -1045,11 +1055,18 @@ class QueryEditorViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val keyColumns = keyColumnsOf(tab.database, result)
-            when (val outcome = ResultSnapshots.take(result, System.currentTimeMillis(), keyColumns)) {
+            val origin = currentOrigin(tab.database, tab.sql)
+            when (
+                val outcome = ResultSnapshots.take(
+                    result, System.currentTimeMillis(), keyColumns, origin = origin,
+                )
+            ) {
                 is SnapshotOutcome.Taken -> {
                     val snapshot = outcome.snapshot
+                    snapshotVault.keep(snapshot)
                     _uiState.value = _uiState.value.copy(
                         snapshots = _uiState.value.snapshots + (tabId to snapshot),
+                        carriedSnapshot = snapshot,
                         snapshotNotice = SnapshotNotice.Taken(
                             rows = snapshot.rowCount,
                             trimmedFrom = snapshot.sourceRowCount.takeIf { snapshot.truncated },
@@ -1079,15 +1096,42 @@ class QueryEditorViewModel @Inject constructor(
      */
     override fun compareWithSnapshot() {
         val state = _uiState.value
-        val snapshot = state.snapshots[state.activeTabId] ?: return
+        val snapshot = state.snapshot ?: return
         // Both sides are what the screen shows, for the same reason taking one is.
         val result = state.visibleResult
+        val origin = currentOrigin(state.database, state.sql)
         val outcome = if (result == null) {
             ComparisonOutcome.NoResult
         } else {
-            ResultDiffs.compare(snapshot, result, System.currentTimeMillis())
+            ResultDiffs.compare(snapshot, result, System.currentTimeMillis(), afterOrigin = origin)
         }
         _uiState.value = state.copy(comparison = outcome)
+    }
+
+    /** The same comparison on key columns the user picked, for results with no detectable key. */
+    override fun compareWithSnapshotByKey(keyColumns: List<String>) {
+        val state = _uiState.value
+        val snapshot = state.snapshot ?: return
+        val result = state.visibleResult ?: return
+        val origin = currentOrigin(state.database, state.sql)
+        _uiState.value = state.copy(
+            comparison = ResultDiffs.compareByKey(
+                snapshot, result, keyColumns, System.currentTimeMillis(), afterOrigin = origin,
+            ),
+        )
+    }
+
+    /** Which connection, database and query a result belongs to, for the cross-connection sheet. */
+    private fun currentOrigin(database: String?, sql: String): SnapshotOrigin? {
+        val connection = sessions.currentConnection() ?: return null
+        return SnapshotOrigin(
+            connectionId = connection.id,
+            connectionName = connection.name,
+            environment = ConnectionEnvironment.fromName(connection.environment),
+            colorName = connection.color,
+            database = database ?: connection.database,
+            sql = sql,
+        )
     }
 
     override fun dismissComparison() {
@@ -1101,8 +1145,10 @@ class QueryEditorViewModel @Inject constructor(
     /** Throws the snapshot away, for when the next one should be taken from a different run. */
     override fun discardSnapshot() {
         val state = _uiState.value
+        snapshotVault.clear()
         _uiState.value = state.copy(
             snapshots = state.snapshots - state.activeTabId,
+            carriedSnapshot = null,
             comparison = null,
         )
     }
