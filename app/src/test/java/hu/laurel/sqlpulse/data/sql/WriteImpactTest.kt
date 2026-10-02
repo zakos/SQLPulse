@@ -43,6 +43,24 @@ class WriteImpactTest {
     }
 
     @Test
+    fun `a table that starts with a backtick is still the table`() {
+        // The quoted name is blanked while the statement is scanned for keywords; finding where
+        // the table starts must not skip over that blank as if it were whitespace.
+        assertEquals(
+            "SELECT COUNT(*) FROM `orders` WHERE id = 1",
+            WriteImpact.countQuery("DELETE FROM `orders` WHERE id = 1"),
+        )
+        assertEquals(
+            "SELECT COUNT(*) FROM `my orders` WHERE id = 1",
+            WriteImpact.countQuery("UPDATE LOW_PRIORITY `my orders` SET paid = 1 WHERE id = 1"),
+        )
+        assertEquals(
+            "SELECT *, (1) AS `paid (new)` FROM `orders` LIMIT 20",
+            WriteImpact.previewQuery("UPDATE `orders` SET paid = 1")?.sql,
+        )
+    }
+
+    @Test
     fun `a trailing semicolon and stray whitespace are dropped`() {
         // The WHERE is copied over as it was written, down to its case: it is the user's text.
         assertEquals(
