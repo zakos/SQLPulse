@@ -1178,6 +1178,12 @@ fun WriteConfirmCard(
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
             color = if (blocked) MaterialTheme.colorScheme.error else semantic.textSecondary,
         )
+        confirmation.previews.forEach { preview ->
+            WriteRowPreviewTable(
+                preview = preview,
+                statementNumber = (preview.statementIndex + 1).takeIf { confirmation.statements.size > 1 },
+            )
+        }
         if (blocked) {
             Text(
                 text = stringResource(R.string.write_confirm_over_limit, confirmation.maxAffectedRows),

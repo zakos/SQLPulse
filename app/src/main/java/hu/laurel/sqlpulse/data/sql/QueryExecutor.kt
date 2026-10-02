@@ -177,6 +177,37 @@ class QueryExecutor @Inject constructor(
         }.getOrNull()
     }
 
+    /**
+     * The rows the write in [sql] would change (up to [WriteImpact.PREVIEW_ROWS]), or null when no
+     * preview can be derived or it failed to run — the card then simply has no table, and the write
+     * is not held up by it.
+     *
+     * It goes through exactly the path the count takes: a plain SELECT on the session, with the
+     * session's query timeout, not recorded in the history. [WriteImpact.previewQuery] only ever
+     * produces a single SELECT (the check below keeps it that way), so it has no way to write; the
+     * one thing it cannot rule out is a function with side effects hidden in a subquery, which is
+     * why the SET expressions are screened there.
+     */
+    suspend fun previewWrite(
+        sql: String,
+        parameters: Map<String, ParameterValue> = emptyMap(),
+    ): WriteRowPreview? {
+        val query = WriteImpact.previewQuery(sql) ?: return null
+        if (!query.sql.startsWith("SELECT ")) return null
+        val bound = SqlGuards.bindParameters(query.sql)
+        return runCatching {
+            sessions.withConnection { connection ->
+                connection.prepareStatement(bound.sql).use { statement ->
+                    bind(statement, bound.parameterOrder, parameters)
+                    statement.queryTimeout = sessions.queryTimeoutSeconds()
+                    statement.executeQuery().use { rows ->
+                        WriteRowPreview(query.kind, query.changedColumns, ResultTable.from(rows, WriteImpact.PREVIEW_ROWS))
+                    }
+                }
+            }
+        }.getOrNull()
+    }
+
     /** Binds the values by the type the user gave each one (§7.4). */
     private fun bind(
         statement: PreparedStatement,

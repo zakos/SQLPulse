@@ -24,6 +24,7 @@ import hu.laurel.sqlpulse.data.snapshot.ResultSnapshot
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
 import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
+import hu.laurel.sqlpulse.data.sql.WriteRowPreview
 import hu.laurel.sqlpulse.data.chart.ChartSpec
 import hu.laurel.sqlpulse.data.grid.ResultFilter
 import hu.laurel.sqlpulse.data.grid.ResultFilters
@@ -81,6 +82,8 @@ data class WriteConfirmation(
     val database: String?,
     /** The ceiling from settings; 0 when it is turned off. */
     val maxAffectedRows: Int,
+    /** The rows each write would change, for the statements that could be previewed. */
+    val previews: List<WriteRowPreview> = emptyList(),
 ) {
     val sql: String get() = statements.joinToString(";\n")
 
@@ -788,11 +791,17 @@ class QueryEditorViewModel @Inject constructor(
         updateActive { it.copy(error = null, errorDetail = null) }
         viewModelScope.launch {
             val connection = sessions.currentConnection()
+            val counts = writes.map { executor.estimateAffectedRows(it, parameters) }
+            // A preview that fails or cannot be derived is left out: it is information, never a gate.
+            val previews = writes.take(MAX_PREVIEWED_STATEMENTS).mapIndexedNotNull { index, sql ->
+                executor.previewWrite(sql, parameters)?.copy(totalRows = counts[index], statementIndex = index)
+            }
             _uiState.value = _uiState.value.copy(
                 running = false,
                 writeConfirmation = WriteConfirmation(
                     statements = writes,
-                    estimatedRows = estimate(writes, parameters),
+                    estimatedRows = total(counts),
+                    previews = previews,
                     connectionName = connection?.name ?: _uiState.value.connectionName,
                     environment = ConnectionEnvironment.fromName(connection?.environment),
                     database = _uiState.value.database ?: connection?.database,
@@ -808,16 +817,8 @@ class QueryEditorViewModel @Inject constructor(
      * One uncountable statement makes the total a half-truth, and a half-truth shown as a number
      * is worse than "unknown" — so the whole estimate goes.
      */
-    private suspend fun estimate(
-        writes: List<String>,
-        parameters: Map<String, ParameterValue>,
-    ): Long? {
-        var total = 0L
-        for (sql in writes) {
-            total += executor.estimateAffectedRows(sql, parameters) ?: return null
-        }
-        return total
-    }
+    private fun total(counts: List<Long?>): Long? =
+        if (counts.any { it == null }) null else counts.sumOf { it ?: 0L }
 
     /** Runs what the dialog was asking about. */
     override fun confirmWrite() {
@@ -1161,6 +1162,9 @@ class QueryEditorViewModel @Inject constructor(
         const val EXPLAIN_JSON = "EXPLAIN FORMAT=JSON "
 
         const val MAX_ROW_LIMIT = 10_000
+
+        /** Three tables on a phone card is already a lot to read before pressing the button. */
+        const val MAX_PREVIEWED_STATEMENTS = 3
         const val MAX_SUGGESTIONS = 8
 
         /** Long enough that a word's worth of typing is one write, short enough to never notice. */

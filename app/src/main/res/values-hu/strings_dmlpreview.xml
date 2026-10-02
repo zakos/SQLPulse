@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A megerősítő ablakban az írás előtt látszik, mely sorokat módosítaná. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="hu">
+    <string name="dml_preview_first_of">Az első %1$d a(z) %2$d sorból</string>
+    <string name="dml_preview_first">Az első %1$d sor</string>
+    <string name="dml_preview_empty">Jelenleg egy sor sem egyezik, ezért nem változna semmi.</string>
+    <string name="dml_preview_statement">%1$d. utasítás</string>
+    <plurals name="dml_preview_all">
+        <item quantity="one">A(z) %1$d érintett sor</item>
+        <item quantity="other">Mind a(z) %1$d érintett sor</item>
+    </plurals>
+</resources>

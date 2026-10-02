@@ -14,6 +14,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.sql.CellType
+import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.ColumnMeta
+import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.WriteKind
+import hu.laurel.sqlpulse.data.sql.WriteRowPreview
 import hu.laurel.sqlpulse.ui.grid.ConfirmStatementCard
 import hu.laurel.sqlpulse.ui.query.QueryEditorContent
 import hu.laurel.sqlpulse.ui.query.QueryEditorUiState
@@ -98,6 +104,82 @@ class DialogShots {
                     maxAffectedRows = 5_000,
                 ),
                 typed = "sh",
+                onTyped = {},
+                onConfirm = {},
+                onDismiss = {},
+            )
+        }
+    }
+
+    private fun invoiceColumns(vararg extra: String) =
+        (listOf("id", "ugyfel", "osszeg", "statusz", "kiallitva") + extra).map {
+            ColumnMeta(it, if (it == "id" || it.startsWith("osszeg")) CellType.NUMBER else CellType.TEXT, "VARCHAR", "invoices")
+        }
+
+    private fun invoiceRow(id: Int, status: String, newStatus: String? = null) = listOfNotNull(
+        CellValue.Number(id.toString()),
+        CellValue.Text("Kovács és Társa Kft. $id"),
+        CellValue.Number("${id * 37 % 900 + 100}.50"),
+        CellValue.Text(status),
+        CellValue.Date("2026-09-${id % 28 + 1}"),
+        newStatus?.let { CellValue.Text(it) },
+    )
+
+    @Test
+    fun updatePreview() = paparazzi.screen {
+        Over {
+            WriteConfirmCard(
+                confirmation = WriteConfirmation(
+                    statements = listOf("UPDATE invoices SET statusz = 'paid' WHERE statusz = 'overdue'"),
+                    estimatedRows = 37,
+                    connectionName = "Számlázó",
+                    environment = ConnectionEnvironment.TEST,
+                    database = "billing",
+                    maxAffectedRows = 1_000,
+                    previews = listOf(
+                        WriteRowPreview(
+                            kind = WriteKind.UPDATE,
+                            changedColumns = listOf("statusz"),
+                            table = ResultTable(
+                                columns = invoiceColumns("statusz (new)"),
+                                rows = (20401..20405).map { invoiceRow(it, "overdue", "paid") },
+                            ),
+                            totalRows = 37,
+                        ),
+                    ),
+                ),
+                typed = "",
+                onTyped = {},
+                onConfirm = {},
+                onDismiss = {},
+            )
+        }
+    }
+
+    @Test
+    fun deletePreview() = paparazzi.screen {
+        Over {
+            WriteConfirmCard(
+                confirmation = WriteConfirmation(
+                    statements = listOf("DELETE FROM invoices WHERE statusz = 'void'"),
+                    estimatedRows = 3,
+                    connectionName = "Webshop",
+                    environment = ConnectionEnvironment.PRODUCTION,
+                    database = "shop",
+                    maxAffectedRows = 1_000,
+                    previews = listOf(
+                        WriteRowPreview(
+                            kind = WriteKind.DELETE,
+                            changedColumns = emptyList(),
+                            table = ResultTable(
+                                columns = invoiceColumns(),
+                                rows = (20411..20413).map { invoiceRow(it, "void") },
+                            ),
+                            totalRows = 3,
+                        ),
+                    ),
+                ),
+                typed = "",
                 onTyped = {},
                 onConfirm = {},
                 onDismiss = {},
