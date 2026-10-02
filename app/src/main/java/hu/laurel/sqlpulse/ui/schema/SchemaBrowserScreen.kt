@@ -119,6 +119,7 @@ fun SchemaBrowserScreen(
     onOpenServer: () -> Unit,
     onOpenPulse: () -> Unit,
     onOpenMap: () -> Unit,
+    onOpenSearch: () -> Unit = {},
     viewModel: SchemaBrowserViewModel = hiltViewModel(),
     cacheViewModel: SchemaCacheMarkerViewModel = hiltViewModel(),
 ) {
@@ -147,6 +148,7 @@ fun SchemaBrowserScreen(
             onOpenServer = onOpenServer,
             onOpenPulse = onOpenPulse,
             onOpenMap = onOpenMap,
+            onOpenSearch = onOpenSearch,
             onRefresh = viewModel::refresh,
             onSelectDatabase = viewModel::selectDatabase,
             onSelectObjectKind = viewModel::selectObjectKind,
@@ -165,6 +167,7 @@ data class SchemaBrowserActions(
     val onOpenServer: () -> Unit = {},
     val onOpenPulse: () -> Unit = {},
     val onOpenMap: () -> Unit = {},
+    val onOpenSearch: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onSelectDatabase: (String) -> Unit = {},
     val onSelectObjectKind: (ObjectKind) -> Unit = {},
@@ -206,6 +209,12 @@ fun SchemaBrowserContent(
                     }
                 },
                 actions = {
+                    IconButton(onClick = actions.onOpenSearch) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = stringResource(R.string.dbsearch_open),
+                        )
+                    }
                     IconButton(onClick = actions.onOpenMap) {
                         Icon(
                             Icons.Default.AccountTree,

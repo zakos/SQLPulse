@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dbsearch_title">Keresés az adatbázisban</string>
+    <string name="dbsearch_open">Keresés az egész adatbázisban</string>
+    <string name="dbsearch_placeholder">Egy érték, pl. ügyfélkód</string>
+    <string name="dbsearch_clear">Törlés</string>
+    <string name="dbsearch_mode_contains">Tartalmazza</string>
+    <string name="dbsearch_mode_exact">Pontos egyezés</string>
+    <string name="dbsearch_tables_all">Minden tábla</string>
+    <string name="dbsearch_tables_limit">%1$d tábla</string>
+    <string name="dbsearch_skip_large">Nagy táblák kihagyása</string>
+    <string name="dbsearch_start">Keresés</string>
+    <string name="dbsearch_stop">Leállítás</string>
+    <string name="dbsearch_scope">A szöveges oszlopokban keres%1$s. A táblákat egymás után olvassa, mindegyikből legfeljebb %2$d sort.</string>
+    <string name="dbsearch_scope_numbers">, számértéknél a szám oszlopokban is</string>
+    <string name="dbsearch_production_warning">Éles kapcsolat: a keresés minden táblát végigolvas. A nagy táblákat kihagyja és kevesebb sort listáz, hogy ne terhelje a szervert.</string>
+    <string name="dbsearch_progress">%1$d / %2$d tábla</string>
+    <string name="dbsearch_reading">Olvasás: %1$s</string>
+    <string name="dbsearch_summary">%1$d sor %2$d táblában</string>
+    <string name="dbsearch_summary_none">Nincs találat</string>
+    <string name="dbsearch_none_body">Egyik tábla egyik átvizsgált oszlopa sem tartalmazza ezt az értéket. Próbáld a „Tartalmazza” módot, vagy az érték rövidebb részletét.</string>
+    <string name="dbsearch_not_searched">%1$d táblát kihagyott a tábla-korlát vagy a méretük miatt.</string>
+    <string name="dbsearch_skipped_title">%1$d táblát nem sikerült olvasni</string>
+    <string name="dbsearch_capped">az első %1$d</string>
+    <string name="dbsearch_rows_in_table">%1$d sor</string>
+    <string name="dbsearch_no_session_title">Nincs élő kapcsolat</string>
+    <string name="dbsearch_no_session">A kapcsolat megszakadt a keresés közben.</string>
+    <string name="dbsearch_idle_title">Hol van egy érték?</string>
+    <string name="dbsearch_idle_body">Írj be egy ügyfélkódot, e-mail-címet vagy bármilyen értéket. A keresés a(z) %1$s adatbázis minden táblájában körülnéz, és kilistázza a sorokat, amelyek tartalmazzák.</string>
+</resources>

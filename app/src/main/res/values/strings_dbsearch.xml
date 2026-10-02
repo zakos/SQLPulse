@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dbsearch_title">Search database</string>
+    <string name="dbsearch_open">Search the whole database</string>
+    <string name="dbsearch_placeholder">A value, e.g. a customer code</string>
+    <string name="dbsearch_clear">Clear</string>
+    <string name="dbsearch_mode_contains">Contains</string>
+    <string name="dbsearch_mode_exact">Exact</string>
+    <string name="dbsearch_tables_all">All tables</string>
+    <string name="dbsearch_tables_limit">%1$d tables</string>
+    <string name="dbsearch_skip_large">Skip big tables</string>
+    <string name="dbsearch_start">Search</string>
+    <string name="dbsearch_stop">Stop</string>
+    <string name="dbsearch_scope">Looks in text columns%1$s. Tables are read one after another, at most %2$d rows from each.</string>
+    <string name="dbsearch_scope_numbers">, and number columns for a numeric value</string>
+    <string name="dbsearch_production_warning">Production connection: every table is read in full for this search. Big tables are skipped and fewer rows are listed, so the server is not slowed down.</string>
+    <string name="dbsearch_progress">%1$d / %2$d tables</string>
+    <string name="dbsearch_reading">Reading %1$s</string>
+    <string name="dbsearch_summary">%1$d rows in %2$d tables</string>
+    <string name="dbsearch_summary_none">Nothing found</string>
+    <string name="dbsearch_none_body">No searched column of any table holds this value. Try \"Contains\", or a shorter part of it.</string>
+    <string name="dbsearch_not_searched">%1$d tables were left out by the table limit or because they are big.</string>
+    <string name="dbsearch_skipped_title">%1$d tables could not be read</string>
+    <string name="dbsearch_capped">first %1$d</string>
+    <string name="dbsearch_rows_in_table">%1$d rows</string>
+    <string name="dbsearch_no_session_title">No live connection</string>
+    <string name="dbsearch_no_session">The connection was lost during the search.</string>
+    <string name="dbsearch_idle_title">Find where a value lives</string>
+    <string name="dbsearch_idle_body">Type a customer code, an e-mail address or any other value. The search looks in every table of %1$s and lists the rows that hold it.</string>
+</resources>
