@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.snapshot
 
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
 import hu.laurel.sqlpulse.data.sql.ResultTable
@@ -40,6 +41,40 @@ object SnapshotLimits {
      * four hundred is not a comparison, it is a trap.
      */
     const val MAX_COLUMNS = 120
+}
+
+/**
+ * Where a result came from: which connection, which database, which query.
+ *
+ * Kept so that a snapshot taken on one connection can be compared with the result on another
+ * (dev against production) without the two sides ever being confused. Only labels and the query
+ * text are kept, never a credential; [colorName] is the connection's colour so the sheet can draw
+ * each side with its own rail.
+ */
+data class SnapshotOrigin(
+    val connectionId: Long,
+    val connectionName: String?,
+    val environment: ConnectionEnvironment = ConnectionEnvironment.UNSET,
+    val colorName: String? = null,
+    val database: String? = null,
+    val sql: String? = null,
+) {
+    /** True when [other] is a different connection, which is what makes a comparison cross-connection. */
+    fun isOtherConnection(other: SnapshotOrigin): Boolean = connectionId != other.connectionId
+
+    /** True when both query texts are known and differ once whitespace and a trailing `;` are ignored. */
+    fun queryDiffers(other: SnapshotOrigin): Boolean {
+        val mine = normalised(sql) ?: return false
+        val theirs = normalised(other.sql) ?: return false
+        return mine != theirs
+    }
+
+    private fun normalised(text: String?): String? =
+        text?.trim()?.trimEnd(';')?.trim()?.replace(WHITESPACE, " ")?.takeIf { it.isNotEmpty() }
+
+    private companion object {
+        val WHITESPACE = Regex("\\s+")
+    }
 }
 
 /**
@@ -84,6 +119,8 @@ data class ResultSnapshot(
     val sourceRowCount: Int,
     /** True when the query itself had already stopped short of the whole answer. */
     val sourceTruncated: Boolean,
+    /** The connection it was taken on; null for a snapshot that predates the feature or a test. */
+    val origin: SnapshotOrigin? = null,
 ) {
     /** True when rows were dropped to fit [SnapshotLimits]. */
     val truncated: Boolean get() = rows.size < sourceRowCount
@@ -126,6 +163,7 @@ object ResultSnapshots {
         keyColumns: List<String> = emptyList(),
         maxRows: Int = SnapshotLimits.MAX_ROWS,
         maxCells: Int = SnapshotLimits.MAX_CELLS,
+        origin: SnapshotOrigin? = null,
     ): SnapshotOutcome {
         val labels = table.columns.map { it.label }
         if (labels.isEmpty()) return SnapshotOutcome.NoResult
@@ -150,6 +188,7 @@ object ResultSnapshots {
                 takenAt = takenAt,
                 sourceRowCount = table.rows.size,
                 sourceTruncated = table.truncated,
+                origin = origin,
             ),
         )
     }

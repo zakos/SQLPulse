@@ -776,7 +776,11 @@ fun QueryEditorContent(
     }
 
     state.comparison?.let { outcome ->
-        SnapshotSheet(outcome = outcome, onDismiss = viewModel::dismissComparison)
+        SnapshotSheet(
+            outcome = outcome,
+            onDismiss = viewModel::dismissComparison,
+            onPickKey = viewModel::compareWithSnapshotByKey,
+        )
     }
 
     state.snapshotNotice?.let { notice ->
