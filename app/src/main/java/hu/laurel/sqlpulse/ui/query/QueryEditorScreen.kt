@@ -139,7 +139,6 @@ import hu.laurel.sqlpulse.ui.connections.shortLabel
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.explain.ExplainPlanSection
 import hu.laurel.sqlpulse.ui.grid.CellSelection
-import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ExportSheet
 import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
@@ -182,6 +181,8 @@ fun QueryEditorContent(
     var findOpen by remember { mutableStateOf(false) }
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
+    var detailRow by remember { mutableStateOf<Int?>(null) }
+    val editState by viewModel.resultEditing.state.collectAsStateWithLifecycle()
     var snapshotMenuOpen by remember { mutableStateOf(false) }
     val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
     val environment = ConnectionEnvironment.fromName(
@@ -584,6 +585,9 @@ fun QueryEditorContent(
                         else -> ResultPanel(
                             state = state,
                             onCellSelected = { selectedCell = it },
+                            editState = editState,
+                            onUndoEdit = viewModel.resultEditing::undo,
+                            onRowLongPress = { detailRow = it },
                             onSort = viewModel::sortResult,
                             onFilterChange = viewModel::setResultFilter,
                             onChartSpec = viewModel::setChartSpec,
@@ -696,18 +700,18 @@ fun QueryEditorContent(
         }
     }
 
-    selectedCell?.let { selection ->
-        CellSheet(
-            column = selection.column,
-            value = selection.value,
-            // Editing needs a table and a primary key, which an arbitrary query does not have (§7.6).
-            canEdit = false,
-            editBlockedReason = null,
-            onCopy = { context.copyToClipboard(it) },
-            onEdit = {},
-            onDismiss = { selectedCell = null },
-        )
-    }
+    // Editing needs a table and a key, which only some queries have (§7.6); the sheets, the
+    // confirmation and the rest of it live with the edit code.
+    ResultEditDialogs(
+        controller = viewModel.resultEditing,
+        state = editState,
+        rows = state.visibleResult,
+        selectedCell = selectedCell,
+        onSelectedCellChange = { selectedCell = it },
+        detailRow = detailRow,
+        onDetailRowChange = { detailRow = it },
+        onCopy = { context.copyToClipboard(it) },
+    )
 
     if (state.pendingParameters.isNotEmpty()) {
         ParameterDialog(
@@ -856,6 +860,9 @@ private fun Placeholder(textId: Int) {
 private fun ResultPanel(
     state: QueryEditorUiState,
     onCellSelected: (CellSelection) -> Unit,
+    editState: ResultEditUiState,
+    onUndoEdit: () -> Unit,
+    onRowLongPress: (Int) -> Unit,
     onSort: (String) -> Unit,
     onFilterChange: (ResultFilter) -> Unit,
     onChartSpec: (ChartSpec) -> Unit,
@@ -937,6 +944,8 @@ private fun ResultPanel(
                 extraActions()
             }
 
+            ResultEditStrip(editState, onUndo = onUndoEdit)
+
             // A snapshot leaves no mark on the result it was taken from, and an unmarked
             // snapshot is one that gets compared against by accident an hour later. When it
             // was taken, and how much of it there is, is the whole of what has to be said here.
@@ -978,6 +987,7 @@ private fun ResultPanel(
                     showLimitNote = false,
                     modifier = Modifier.fillMaxSize(),
                     onCellClick = { onCellSelected(it) },
+                    onRowLongPress = onRowLongPress,
                     sort = state.resultSort,
                     onSort = onSort,
                 )

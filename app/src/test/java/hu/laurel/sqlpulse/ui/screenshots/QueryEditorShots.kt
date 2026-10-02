@@ -17,6 +17,8 @@ import hu.laurel.sqlpulse.ui.query.QueryEditorController
 import hu.laurel.sqlpulse.ui.query.QueryEditorUiState
 import hu.laurel.sqlpulse.ui.query.QueryPanel
 import hu.laurel.sqlpulse.ui.query.QueryTab
+import hu.laurel.sqlpulse.ui.query.ResultEditController
+import hu.laurel.sqlpulse.ui.query.ResultEditUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Rule
@@ -102,7 +104,11 @@ class QueryEditorShots {
 }
 
 /** A controller that holds still: the state it is given, and nothing that answers back. */
-class FakeQueryController(state: QueryEditorUiState) : QueryEditorController {
+class FakeQueryController(
+    state: QueryEditorUiState,
+    edit: ResultEditUiState = ResultEditUiState(),
+) : QueryEditorController {
+    override val resultEditing: ResultEditController = FakeResultEditController(edit)
     override val uiState: StateFlow<QueryEditorUiState> = MutableStateFlow(state)
     override val history: StateFlow<List<QueryHistoryEntity>> = MutableStateFlow(emptyList())
     override val favourites: StateFlow<List<SavedQueryEntity>> = MutableStateFlow(emptyList())
@@ -154,4 +160,16 @@ class FakeQueryController(state: QueryEditorUiState) : QueryEditorController {
     override fun toggleChart() = Unit
     override fun toggleEditor() = Unit
     override fun toggleFilterBar() = Unit
+}
+
+class FakeResultEditController(state: ResultEditUiState) : ResultEditController {
+    override val state: StateFlow<ResultEditUiState> = MutableStateFlow(state)
+    override fun prepareCellEdit(rowIndex: Int, columnIndex: Int, newValue: String?) = Unit
+    override fun prepareRowDelete(rowIndex: Int) = Unit
+    override fun confirmEdit() = Unit
+    override fun dismissEdit() = Unit
+    override fun overwriteConflict() = Unit
+    override fun dismissConflict() = Unit
+    override fun undo() = Unit
+    override fun dismissError() = Unit
 }

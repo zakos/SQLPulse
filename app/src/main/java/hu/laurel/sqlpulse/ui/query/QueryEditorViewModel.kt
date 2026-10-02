@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
@@ -35,6 +36,7 @@ import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.WritesLockedException
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlFormatter
 import hu.laurel.sqlpulse.data.sql.SqlGuards
@@ -57,10 +59,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -217,10 +221,25 @@ class QueryEditorViewModel @Inject constructor(
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
     private val settings: SettingsRepository,
+    rowEditor: RowEditor,
+    writeUnlock: WriteUnlockStore,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
     override val uiState: StateFlow<QueryEditorUiState> = _uiState.asStateFlow()
+
+    /** Editing the rows of the result in place, when the statement maps onto one table. */
+    private val editing = QueryResultEditing(
+        scope = viewModelScope,
+        schema = schema,
+        rowEditor = rowEditor,
+        sessions = sessions,
+        writeUnlock = writeUnlock,
+        describe = ::describe,
+        source = { _uiState.value.visibleResult?.let { ResultEditSource(_uiState.value.activeTabId, it) } },
+        refresh = ::refreshResult,
+    )
+    override val resultEditing: ResultEditController get() = editing
 
     private val connectionId = MutableStateFlow(0L)
     private var runJob: Job? = null
@@ -256,6 +275,7 @@ class QueryEditorViewModel @Inject constructor(
 
     init {
         restoreDrafts()
+        editing.track(_uiState.map { it.resultEditKey() }.distinctUntilChanged())
 
         // The draft is written after the typing stops, not during it: a keystroke costs nothing
         // here, and the file is rewritten whole. Half a second is short enough that the only way
@@ -854,6 +874,34 @@ class QueryEditorViewModel @Inject constructor(
                 resultSort = sort,
                 result = if (sort == null) result else result.sortedBy(index, sort.descending),
             )
+        }
+    }
+
+    /**
+     * Runs the shown statement again after a row was written, so the grid holds what the server
+     * holds. Sorting is re-applied; the filter, the editor and the scroll position are left alone.
+     */
+    private suspend fun refreshResult(tabId: Long) {
+        val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        val index = tab.selectedStatement
+        val run = tab.statements.getOrNull(index) ?: return
+        try {
+            val table = executor.run(
+                connectionId = connectionId.value,
+                sql = run.sql,
+                parameters = tab.parameters,
+                rowLimit = _uiState.value.rowLimit,
+                readOnly = _uiState.value.readOnly,
+            ).table ?: return
+            updateTab(tabId) { current ->
+                val sort = current.resultSort
+                current.copy(
+                    statements = current.statements.mapIndexed { i, r -> if (i == index) r.copy(table = table) else r },
+                    result = if (sort == null) table else table.sortedBy(table.columns.indexOfFirst { it.label == sort.column }, sort.descending),
+                )
+            }
+        } catch (e: Exception) {
+            updateTab(tabId) { it.copy(error = describe(e)) }
         }
     }
 

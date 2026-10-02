@@ -50,6 +50,7 @@ interface QueryEditorController {
     fun selectPanel(panel: QueryPanel)
     fun selectStatement(index: Int)
     fun selectTab(id: Long)
+    val resultEditing: ResultEditController
     val sessionState: StateFlow<SqlSessionState>
     fun setChartSpec(spec: ChartSpec)
     fun setResultFilter(filter: ResultFilter)
