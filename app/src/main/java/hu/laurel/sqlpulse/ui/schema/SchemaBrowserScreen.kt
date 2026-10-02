@@ -32,12 +32,16 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
@@ -57,6 +61,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +127,7 @@ fun SchemaBrowserScreen(
     onOpenPulse: () -> Unit,
     onOpenMap: () -> Unit,
     onOpenSearch: () -> Unit = {},
+    onOpenStorage: () -> Unit = {},
     viewModel: SchemaBrowserViewModel = hiltViewModel(),
     cacheViewModel: SchemaCacheMarkerViewModel = hiltViewModel(),
 ) {
@@ -149,6 +157,7 @@ fun SchemaBrowserScreen(
             onOpenPulse = onOpenPulse,
             onOpenMap = onOpenMap,
             onOpenSearch = onOpenSearch,
+            onOpenStorage = onOpenStorage,
             onRefresh = viewModel::refresh,
             onSelectDatabase = viewModel::selectDatabase,
             onSelectObjectKind = viewModel::selectObjectKind,
@@ -168,6 +177,7 @@ data class SchemaBrowserActions(
     val onOpenPulse: () -> Unit = {},
     val onOpenMap: () -> Unit = {},
     val onOpenSearch: () -> Unit = {},
+    val onOpenStorage: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onSelectDatabase: (String) -> Unit = {},
     val onSelectObjectKind: (ObjectKind) -> Unit = {},
@@ -235,6 +245,23 @@ fun SchemaBrowserContent(
                     }
                     IconButton(onClick = actions.onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
+                    }
+                    // The bar is full; less-used screens go behind the overflow.
+                    var overflowOpen by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { overflowOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.storage_more))
+                        }
+                        DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.storage_title)) },
+                                leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                                onClick = {
+                                    overflowOpen = false
+                                    actions.onOpenStorage()
+                                },
+                            )
+                        }
                     }
                 },
             )

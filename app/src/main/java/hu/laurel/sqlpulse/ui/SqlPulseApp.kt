@@ -19,6 +19,7 @@ import hu.laurel.sqlpulse.ui.settings.SettingsScreen
 import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
 import hu.laurel.sqlpulse.ui.schemadiff.SchemaDiffScreen
 import hu.laurel.sqlpulse.ui.server.ServerScreen
+import hu.laurel.sqlpulse.ui.storage.StorageScreen
 import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
 
 object Routes {
@@ -34,6 +35,7 @@ object Routes {
     const val BACKUP = "backup"
     const val SEARCH = "search"
     const val SCHEMA_DIFF = "schema-diff"
+    const val STORAGE = "storage"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -107,6 +109,15 @@ fun SqlPulseApp() {
             )
         }
 
+        composable(Routes.STORAGE) {
+            StorageScreen(
+                onBack = { navController.popBackStack() },
+                onOpenTable = { database, table ->
+                    navController.navigate(Routes.table(database, table))
+                },
+            )
+        }
+
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
@@ -127,6 +138,7 @@ fun SqlPulseApp() {
                 onOpenPulse = { navController.navigate(Routes.PULSE) },
                 onOpenMap = { navController.navigate(Routes.MAP) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                onOpenStorage = { navController.navigate(Routes.STORAGE) },
                 onOpenTable = { database, table ->
                     navController.navigate(Routes.table(database, table))
                 },

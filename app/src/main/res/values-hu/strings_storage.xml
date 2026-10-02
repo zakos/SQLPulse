@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_title">Tárhely</string>
+    <string name="storage_open">Tárhely: tábla- és indexméretek</string>
+    <string name="storage_more">Továbbiak</string>
+    <string name="storage_no_session_title">Nincs kapcsolat</string>
+    <string name="storage_no_database_title">Nincs adatbázis kiválasztva</string>
+    <string name="storage_no_database_body">Előbb válassz adatbázist a sémaböngészőben; a méreteket egyszerre egy adatbázisra olvassuk.</string>
+    <string name="storage_empty_title">Nincs tábla</string>
+    <string name="storage_empty_body">Ebben az adatbázisban nincs alaptábla; a nézetek nem foglalnak saját helyet, ezért kimaradnak.</string>
+    <string name="storage_total_data">Adat</string>
+    <string name="storage_total_index">Indexek</string>
+    <string name="storage_total_free">Szabad</string>
+    <plurals name="storage_table_count">
+        <item quantity="one">%1$d tábla</item>
+        <item quantity="other">%1$d tábla</item>
+    </plurals>
+    <string name="storage_estimate_note">A méretek és a sorszámok a kiszolgáló saját becslései, nem pontos értékek.</string>
+    <string name="storage_sort_total">Teljes méret</string>
+    <string name="storage_sort_rows">Sorok</string>
+    <string name="storage_sort_free">Szabad hely</string>
+    <string name="storage_sort_name">Név</string>
+    <string name="storage_legend_data">Adat</string>
+    <string name="storage_legend_index">Indexek</string>
+    <string name="storage_rows_estimate">~%1$s sor becsl.</string>
+    <string name="storage_free_space">%1$s szabad</string>
+    <string name="storage_updated">módosítva: %1$s</string>
+    <string name="storage_ai_warning">AUTO_INCREMENT %1$s betelt</string>
+    <string name="storage_index_sizes_unavailable">Az indexenkénti méret nem olvasható ezen a kiszolgálón (mysql.innodb_index_stats); a táblák csak az adat- és indexösszegeket mutatják.</string>
+    <string name="storage_unused_title">Nem használt indexek</string>
+    <string name="storage_unused_note">Nem használt = a kiszolgáló legutóbbi indítása óta senki nem olvasta (üzemidő: %1$s). Egy csak havi riportban használt index is megjelenhet itt.</string>
+    <string name="storage_unused_note_unknown">Nem használt = a kiszolgáló legutóbbi indítása óta senki nem olvasta. Egy csak havi riportban használt index is megjelenhet itt.</string>
+    <string name="storage_unused_note_userstat">Nem használt = a MariaDB felhasználói statisztikáinak bekapcsolása vagy utolsó ürítése óta senki nem olvasta. Egy csak havi riportban használt index is megjelenhet itt.</string>
+    <string name="storage_unused_none">Nincs nem használt index.</string>
+    <string name="storage_redundant_title">Felesleges indexek</string>
+    <string name="storage_redundant_none">Nincs felesleges index.</string>
+    <string name="storage_redundant_covered">lefedi: %1$s</string>
+    <string name="storage_ddl_note">Az SQLPulse nem módosítja a sémát. Az index törlését máshol kell elvégezni.</string>
+    <string name="storage_unavailable_not_on_server">Ezen a kiszolgálón nem érhető el.</string>
+    <string name="storage_unavailable_userstat">Ezen a kiszolgálón nem érhető el: a MariaDB csak bekapcsolt userstat változó mellett jegyzi az indexhasználatot.</string>
+    <string name="storage_unavailable_perfschema">Ezen a kiszolgálón nem érhető el: a performance schema nem gyűjti a táblák I/O-ját, így minden index nem használtnak látszana.</string>
+    <string name="storage_unavailable_failed">Nem olvasható: %1$s</string>
+    <string name="storage_uptime_days">%1$d n %2$d ó</string>
+    <string name="storage_uptime_hours">%1$d ó %2$d p</string>
+    <string name="storage_uptime_minutes">%1$d p</string>
+</resources>
