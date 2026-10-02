@@ -9,6 +9,8 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
     /** Tabs instead of commas: what spreadsheets paste cleanly and shells cut easily. */
     TSV("tsv", "text/tab-separated-values"),
     JSON("json", "application/json"),
+    /** Markdown table format. */
+    MARKDOWN("md", "text/markdown"),
     /** INSERT statements, to carry a handful of rows to another database. */
     SQL("sql", "application/sql"),
 }
@@ -26,6 +28,7 @@ object ResultSerializer {
             ExportFormat.CSV -> toCsv(table)
             ExportFormat.TSV -> toTsv(table)
             ExportFormat.JSON -> toJson(table)
+            ExportFormat.MARKDOWN -> toMarkdown(table)
             ExportFormat.SQL -> toSqlInserts(table, tableName)
         }
 
@@ -90,6 +93,54 @@ object ResultSerializer {
             append("}")
         }
         append("]")
+    }
+
+    /**
+     * Markdown table format with pipe-delimited cells.
+     *
+     * Inspired by dbx (crates/dbx-formats/src/text_export.rs): escapes pipes and newlines,
+     * pads columns for readability. NULL is shown as "NULL".
+     */
+    fun toMarkdown(table: ResultTable): String {
+        if (table.columns.isEmpty()) return ""
+
+        // Escape pipes and newlines in all column headers and cell values
+        val headers = table.columns.map { markdownCell(it.label) }
+        val rows = table.rows.map { row ->
+            row.map { markdownCell(plainText(it) ?: "NULL") }
+        }
+
+        // Calculate column widths for padding
+        val widths = headers.indices.map { colIndex ->
+            val headerWidth = headers.getOrNull(colIndex)?.length ?: 0
+            val maxRowWidth = rows.maxOfOrNull { it.getOrNull(colIndex)?.length ?: 0 } ?: 0
+            maxOf(headerWidth, maxRowWidth)
+        }
+
+        return buildString {
+            // Header row
+            append("| ")
+            append(headers.mapIndexed { index, header ->
+                padRight(header, widths[index])
+            }.joinToString(" | "))
+            append(" |\n")
+
+            // Separator row (minimum 2 dashes per column)
+            append("| ")
+            append(widths.mapIndexed { index, width ->
+                "-".repeat(maxOf(width, 2))
+            }.joinToString(" | "))
+            append(" |\n")
+
+            // Data rows
+            rows.forEach { row ->
+                append("| ")
+                append(row.mapIndexed { index, cell ->
+                    padRight(cell, widths[index])
+                }.joinToString(" | "))
+                append(" |\n")
+            }
+        }
     }
 
     /**
@@ -167,4 +218,16 @@ object ResultSerializer {
         }
         append('"')
     }
+
+    /** Escape pipes and newlines for Markdown cells. */
+    private fun markdownCell(value: String): String =
+        value.replace("\\", "\\\\")
+            .replace("|", "\\|")
+            .replace("\r\n", "<br>")
+            .replace("\n", "<br>")
+            .replace("\r", "<br>")
+
+    /** Pad value to width by appending spaces. */
+    private fun padRight(value: String, width: Int): String =
+        if (value.length >= width) value else value + " ".repeat(width - value.length)
 }
