@@ -163,12 +163,18 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   törlő ablak (`DialogCard`, `SqlBlock`, `StatementLayout`), az export lap, a CSV import terv-kártya,
   az EXPLAIN fa (a legdrágább lépés kiemelve, költség-sáv, tördelődő tények), a diagram (kártya,
   fejléc, rácsvonalak) és az időgép táblázata — mind képernyőképpel a terv mellett.
+- 2026-10-02: A t8y2/dbx (Rust/Tauri asztali kliens, Apache-2.0) átnézve: kód közvetlenül nem
+  vehető át, az algoritmusok igen. Elemzés és rangsor: `docs/dbx-elemzes.md`.
 
 ## Teendők / nyitott pontok
 
 A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
 
 - [ ] **Séma-összehasonlítás** — két kapcsolat szerkezete egymás mellett (dev vs. éles eltérések).
+      Mintának a dbx `schema_diff.rs`-e (ld. `docs/dbx-elemzes.md`).
+- [ ] dbx-ből átvehető ötletek (`docs/dbx-elemzes.md`): DML előnézet, lekérdezés-eredmény
+      szerkesztése, keresés az egész adatbázisban, adat-összehasonlítás két kapcsolat között,
+      Markdown export. Felhasználói döntésre vár, melyik és milyen sorrendben.
 - [ ] **Éles próba minden képernyőn** — eddig csak a kapcsolat, a legacy driver ág és az SSH ág
       van valódi szerveren kipróbálva.
 - [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.
