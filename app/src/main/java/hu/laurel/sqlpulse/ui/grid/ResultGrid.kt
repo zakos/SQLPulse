@@ -93,6 +93,8 @@ fun ResultGrid(
     sort: ColumnSort? = null,
     /** Called with a column label when its sort icon is tapped. Null hides the icons. */
     onSort: ((String) -> Unit)? = null,
+    /** Called with a column index when its header is long-pressed. */
+    onColumnStats: ((Int) -> Unit)? = null,
     /** False where the caller already says so in its own summary line. */
     showLimitNote: Boolean = true,
 ) {
@@ -141,6 +143,7 @@ fun ResultGrid(
             },
             sort = sort,
             onSort = onSort,
+            onColumnStats = onColumnStats,
         )
         HorizontalDivider(color = semantic.hairline)
 
@@ -216,6 +219,7 @@ private fun HeaderRow(
     onResize: (Int, Float) -> Unit,
     sort: ColumnSort?,
     onSort: ((String) -> Unit)?,
+    onColumnStats: ((Int) -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -232,6 +236,7 @@ private fun HeaderRow(
                 sort = sort,
                 onSort = onSort,
                 onResize = { onResize(0, it) },
+                onLongPress = { onColumnStats?.invoke(0) },
             )
         }
         Row(
@@ -245,12 +250,14 @@ private fun HeaderRow(
                     sort = sort,
                     onSort = onSort,
                     onResize = { onResize(offset + 1, it) },
+                    onLongPress = { onColumnStats?.invoke(offset + 1) },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HeaderCell(
     label: String,
@@ -258,6 +265,7 @@ private fun HeaderCell(
     sort: ColumnSort?,
     onSort: ((String) -> Unit)?,
     onResize: (Float) -> Unit,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val semantic = LocalSemanticColors.current
     val sorted = sort?.takeIf { it.column == label }
@@ -286,8 +294,13 @@ private fun HeaderCell(
                 .weight(1f)
                 .fillMaxHeight()
                 .then(
-                    if (onSort != null) {
-                        Modifier.clickable(onClickLabel = sortLabel, role = Role.Button) { onSort(label) }
+                    if (onSort != null || onLongPress != null) {
+                        Modifier.combinedClickable(
+                            onClick = { if (onSort != null) onSort(label) },
+                            onLongClick = onLongPress,
+                            onClickLabel = if (onSort != null) sortLabel else null,
+                            role = if (onSort != null) Role.Button else null,
+                        )
                     } else {
                         Modifier
                     },

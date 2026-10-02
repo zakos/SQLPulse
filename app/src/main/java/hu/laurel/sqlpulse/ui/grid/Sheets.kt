@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.ui.grid
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.grid.ColumnStats
 import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
@@ -393,6 +395,118 @@ fun LinkWalkSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Column statistics: count, non-null count, distinct count, sum, average, min, max.
+ * Each value is copyable to clipboard. Numeric stats are shown only when the column's
+ * values parse as numbers.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ColumnStatsSheet(
+    columnLabel: String,
+    stats: ColumnStats,
+    onCopy: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        shape = Shapes.sheet,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.l)
+                .padding(bottom = Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.m),
+        ) {
+            Text(
+                stringResource(R.string.colstats_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                columnLabel,
+                style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                stringResource(R.string.colstats_based_on, stats.rowCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                StatRow(
+                    label = stringResource(R.string.colstats_count),
+                    value = stats.rowCount.toString(),
+                    onCopy = onCopy,
+                )
+                StatRow(
+                    label = stringResource(R.string.colstats_nonnull),
+                    value = stats.nonNullCount.toString(),
+                    onCopy = onCopy,
+                )
+                StatRow(
+                    label = stringResource(R.string.colstats_distinct),
+                    value = stats.distinctCount.toString(),
+                    onCopy = onCopy,
+                )
+                stats.sum?.let {
+                    StatRow(
+                        label = stringResource(R.string.colstats_sum),
+                        value = it.toPlainString(),
+                        onCopy = onCopy,
+                    )
+                }
+                stats.average?.let {
+                    StatRow(
+                        label = stringResource(R.string.colstats_average),
+                        value = it,
+                        onCopy = onCopy,
+                    )
+                }
+                stats.min?.let {
+                    StatRow(
+                        label = stringResource(R.string.colstats_minimum),
+                        value = it,
+                        onCopy = onCopy,
+                    )
+                }
+                stats.max?.let {
+                    StatRow(
+                        label = stringResource(R.string.colstats_maximum),
+                        value = it,
+                        onCopy = onCopy,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, value: String, onCopy: (String) -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background, Shapes.button)
+            .border(1.dp, semantic.hairline, Shapes.button)
+            .clickable { onCopy(value) }
+            .padding(horizontal = Spacing.m, vertical = Spacing.s),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+        Text(
+            value,
+            style = MonoStyles.cell.copy(fontSize = 14.sp),
+        )
     }
 }
 

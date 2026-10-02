@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="colstats_title">Column summary</string>
+    <string name="colstats_based_on">Based on the %1$d rows loaded</string>
+    <string name="colstats_count">Count</string>
+    <string name="colstats_nonnull">Non-null</string>
+    <string name="colstats_distinct">Distinct</string>
+    <string name="colstats_sum">Sum</string>
+    <string name="colstats_average">Average</string>
+    <string name="colstats_minimum">Minimum</string>
+    <string name="colstats_maximum">Maximum</string>
+</resources>
