@@ -109,12 +109,30 @@ class ToolScreenShots {
             override val settings: StateFlow<Settings> = MutableStateFlow(Settings(theme = ThemePreference.Dark, autoLockMinutes = 15))
             override fun setAutoLock(minutes: Int) = Unit
             override fun setBlockScreenshots(block: Boolean) = Unit
+            override fun setLauncherShortcuts(show: Boolean) = Unit
             override fun setBlockWritesWithoutWhere(block: Boolean) = Unit
             override fun setGridFontScale(scale: Int) = Unit
             override fun setMaxAffectedRows(rows: Int) = Unit
             override fun setRowLimit(limit: Int) = Unit
             override fun setTheme(theme: ThemePreference) = Unit
         })
+    }
+
+    @Test
+    fun settingsFull() {
+        // The screen scrolls; a tall frame (pixels) shows the security rows at the bottom too.
+        paparazzi.unsafeUpdateConfig(deviceConfig = DesignPhone.copy(screenHeight = 2500))
+        paparazzi.screen { SettingsScreenContent(onBack = {}, onOpenKeyStore = {}, onOpenBackup = {}, viewModel = object : SettingsController {
+            override val settings: StateFlow<Settings> = MutableStateFlow(Settings(theme = ThemePreference.Dark, autoLockMinutes = 15))
+            override fun setAutoLock(minutes: Int) = Unit
+            override fun setBlockScreenshots(block: Boolean) = Unit
+            override fun setLauncherShortcuts(show: Boolean) = Unit
+            override fun setBlockWritesWithoutWhere(block: Boolean) = Unit
+            override fun setGridFontScale(scale: Int) = Unit
+            override fun setMaxAffectedRows(rows: Int) = Unit
+            override fun setRowLimit(limit: Int) = Unit
+            override fun setTheme(theme: ThemePreference) = Unit
+        }) }
     }
 
     @Test

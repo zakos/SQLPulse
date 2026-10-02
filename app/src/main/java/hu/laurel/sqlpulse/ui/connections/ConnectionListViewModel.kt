@@ -9,6 +9,8 @@ import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.WriteAccess
 import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequests
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import hu.laurel.sqlpulse.ssh.TunnelState
@@ -58,7 +60,23 @@ class ConnectionListViewModel @Inject constructor(
     private val repository: ConnectionRepository,
     private val tunnelManager: TunnelManager,
     private val writeUnlock: WriteUnlockStore,
+    private val shortcutRequests: ShortcutRequests,
 ) : ViewModel() {
+
+    /**
+     * A launcher shortcut waiting to be opened. Acting on it is left to the screen, which only
+     * exists while the app is unlocked: a ViewModel can outlive the lock, a request must not.
+     */
+    val shortcutPending: StateFlow<ShortcutRequest?> = shortcutRequests.pending
+
+    /**
+     * A shortcut is just a tap on the connection's card: connect() decides whether the production
+     * question comes first. A deleted or unknown id is silently dropped.
+     */
+    fun openShortcut() {
+        val request = shortcutRequests.take() ?: return
+        viewModelScope.launch { repository.byId(request.connectionId)?.let(::connect) }
+    }
 
     val uiState: StateFlow<ConnectionListUiState> = combine(
         repository.observeAll(),

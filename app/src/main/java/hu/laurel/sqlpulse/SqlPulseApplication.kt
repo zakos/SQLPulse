@@ -9,6 +9,7 @@ import hu.laurel.sqlpulse.data.crypto.CryptoProviders
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.shortcuts.LauncherShortcuts
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.ssh.TunnelManager
@@ -40,6 +41,9 @@ class SqlPulseApplication : Application() {
     lateinit var exports: ExportManager
 
     @Inject
+    lateinit var launcherShortcuts: LauncherShortcuts
+
+    @Inject
     @ApplicationScope
     lateinit var scope: CoroutineScope
 
@@ -50,6 +54,8 @@ class SqlPulseApplication : Application() {
         keystoreCrypto.ensureKeys()
         // §7.7, §9: an export from a previous session must not outlive it.
         exports.clearExports()
+
+        launcherShortcuts.start()
 
         // §9: query history is kept for 30 days, then dropped.
         scope.launch {

@@ -35,6 +35,8 @@ class SettingsViewModel @Inject constructor(
 
     override fun setBlockScreenshots(block: Boolean) = launch { repository.setBlockScreenshots(block) }
 
+    override fun setLauncherShortcuts(show: Boolean) = launch { repository.setLauncherShortcuts(show) }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

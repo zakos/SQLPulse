@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_launcher_shortcuts">Kapcsolatok az indítóikon parancsikonjai között</string>
+    <string name="settings_launcher_shortcuts_note">Az ikon hosszan nyomva a három legutóbbi kapcsolatot mutatja, névvel. Az éles kapcsolatok sosem szerepelnek. A név az alkalmazás feloldása nélkül is látszik; a megnyitás a szokásos feloldást kéri.</string>
+    <string name="shortcut_disabled">Ez a kapcsolat már nem érhető el parancsikonként</string>
+</resources>
