@@ -57,7 +57,7 @@ class ResultEditingIntegrationTest {
         session = SqlSession(config)
         val manager = IntegrationSessions.manager(session, config.database)
         schema = SchemaRepository(manager)
-        editor = RowEditor(manager, WriteGate(manager, WriteUnlockStore()))
+        editor = RowEditor(manager, WriteGate(manager, WriteUnlockStore()), io.mockk.mockk(relaxed = true))
 
         session.use { connection ->
             connection.execute(

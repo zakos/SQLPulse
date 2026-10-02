@@ -5,7 +5,14 @@ import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
+import hu.laurel.sqlpulse.data.sql.NoSqlSessionException
+import hu.laurel.sqlpulse.data.sql.PreparedSql
+import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.WriteGate
+import hu.laurel.sqlpulse.data.sql.WritesLockedException
+import hu.laurel.sqlpulse.data.writelog.WriteLogEntries
+import hu.laurel.sqlpulse.data.writelog.WriteLogger
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -39,6 +46,7 @@ class CsvImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessions: SqlSessionManager,
     private val writeGate: WriteGate,
+    private val writeLog: WriteLogger,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -91,7 +99,31 @@ class CsvImporter @Inject constructor(
         if (statements.isEmpty()) return 0
         writeGate.check()
 
-        return sessions.withConnection { connection ->
+        val started = System.currentTimeMillis()
+        // One entry per import, not per row: what matters is that these N rows went into this
+        // table in one transaction, and a 5 000-row file would otherwise bury the rest of the log.
+        val summary = WriteLogEntries.csvImport(database, table, plan.rowCount, statements.first().sql)
+        try {
+            val written = run(statements)
+            writeLog.record(
+                WriteSource.CSV_IMPORT, summary, written, null, started,
+                System.currentTimeMillis() - started, inTransaction = false,
+            )
+            return written
+        } catch (e: Exception) {
+            if (e !is ReadOnlyConnectionException && e !is WritesLockedException && e !is NoSqlSessionException) {
+                // Rolled back as a whole, so nothing was written; 0 says that.
+                writeLog.record(
+                    WriteSource.CSV_IMPORT, summary, 0, e, started,
+                    System.currentTimeMillis() - started, inTransaction = false,
+                )
+            }
+            throw e
+        }
+    }
+
+    private suspend fun run(statements: List<PreparedSql>): Int =
+        sessions.withConnection { connection ->
             val previousAutoCommit = connection.autoCommit
             connection.autoCommit = false
             try {
@@ -113,7 +145,6 @@ class CsvImporter @Inject constructor(
                 runCatching { connection.autoCommit = previousAutoCommit }
             }
         }
-    }
 
     private companion object {
         /**

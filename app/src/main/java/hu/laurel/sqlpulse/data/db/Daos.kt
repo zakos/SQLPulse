@@ -127,6 +127,28 @@ interface QueryHistoryDao {
 }
 
 @Dao
+interface WriteLogDao {
+    @Query("SELECT * FROM write_log ORDER BY time DESC, id DESC")
+    fun observeAll(): Flow<List<WriteLogEntity>>
+
+    @Insert
+    suspend fun insert(entry: WriteLogEntity): Long
+
+    @Query("DELETE FROM write_log WHERE time < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
+
+    /** Keeps the newest [keep] entries; the id tiebreak makes entries in the same millisecond stable. */
+    @Query(
+        "DELETE FROM write_log WHERE id NOT IN " +
+            "(SELECT id FROM write_log ORDER BY time DESC, id DESC LIMIT :keep)",
+    )
+    suspend fun trimToNewest(keep: Int)
+
+    @Query("DELETE FROM write_log")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface SavedQueryDao {
     @Query("SELECT * FROM saved_query WHERE connectionId = :connectionId ORDER BY name")
     fun observeAll(connectionId: Long): Flow<List<SavedQueryEntity>>
@@ -317,4 +339,11 @@ object SchemaCacheDaoModule {
 
     @Provides
     fun provideSchemaCacheDao(db: SqlPulseDatabase): SchemaCacheDao = db.schemaCache()
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object WriteLogDaoModule {
+    @Provides
+    fun provideWriteLogDao(db: SqlPulseDatabase): WriteLogDao = db.writeLog()
 }

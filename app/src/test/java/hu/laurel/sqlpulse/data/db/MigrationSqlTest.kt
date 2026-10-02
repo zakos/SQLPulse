@@ -141,7 +141,7 @@ class MigrationSqlTest {
     // ------------------------------------------------------- the whole ladder
 
     /**
-     * Every table and column the current entities declare exists after 1 → 9, with matching
+     * Every table and column the current entities declare exists after 1 → 10, with matching
      * nullability. The expectation is read out of `Entities.kt` itself (see [EntitySource]), so a
      * field added to an entity without a migration fails here.
      */
@@ -205,7 +205,7 @@ class MigrationSqlTest {
 
     /** The user's saved connection, key and sealed password come out the other side unchanged. */
     @Test
-    fun `data written at version 1 survives to version 9`() {
+    fun `data written at version 1 survives to version 10`() {
         seedVersion1()
         migrateToCurrent()
 
@@ -488,6 +488,45 @@ class MigrationSqlTest {
     }
 
     /** 4→5 adds the SSH password table without disturbing the MySQL one. */
+    /**
+     * 9→10 adds the write log. It has to arrive empty, leave every existing row alone, and — the
+     * point of the design — survive the deletion of a connection: the log is evidence of what was
+     * written, so it is denormalised and carries no foreign key.
+     */
+    @Test
+    fun `the 9 to 10 write log starts empty and outlives its connection`() {
+        seedVersion1()
+        migrate(1, 9)
+        assertFalse("`write_log` must not exist before version 10", tables().contains("write_log"))
+
+        migrate(9, 10)
+
+        assertTrue(tables().contains("write_log"))
+        assertEquals(0, rows("SELECT * FROM write_log").size)
+        assertEquals(1, rows("SELECT * FROM `connection`").size)
+        assertTrue(
+            "`index_write_log_time` must exist, or retention scans the whole log",
+            rows("PRAGMA index_list(`write_log`)").any { it["name"] == "index_write_log_time" },
+        )
+        assertEquals(
+            "no foreign key: the log must survive its connection",
+            0,
+            rows("PRAGMA foreign_key_list(`write_log`)").size,
+        )
+
+        exec(
+            "INSERT INTO write_log (time, connectionId, connectionName, connectionColor, environment," +
+                " `database`, source, statement, affectedRows, outcome, error, durationMs, inTransaction)" +
+                " VALUES (1700000000000, $CONNECTION_ID, 'prod reporting', 'Production', 'PRODUCTION'," +
+                " 'reporting', 'SQL_EDITOR', 'UPDATE t SET a = 1 WHERE id = 2', 1, 'OK', NULL, 12, 0)",
+        )
+        exec("PRAGMA foreign_keys = ON")
+        exec("DELETE FROM `connection` WHERE id = $CONNECTION_ID")
+        val kept = rows("SELECT * FROM write_log").single()
+        assertEquals("prod reporting", kept["connectionName"])
+        assertEquals("PRODUCTION", kept["environment"])
+    }
+
     @Test
     fun `the 4 to 5 credential table is added alongside the existing one`() {
         seedVersion1()
@@ -536,7 +575,7 @@ class MigrationSqlTest {
          * it imports Room — so bumping the schema means bumping this too, and `every version step
          * is covered` then fails until the new migration is listed.
          */
-        const val CURRENT_VERSION = 9
+        const val CURRENT_VERSION = 10
 
         /** The five tables the offline schema cache lives in, added at version 9. */
         val CACHE_TABLES = listOf(

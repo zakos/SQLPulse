@@ -15,6 +15,7 @@ import hu.laurel.sqlpulse.data.sql.RowEdit
 import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.WritesLockedException
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.schema.EditConflict
 import kotlinx.coroutines.CoroutineScope
@@ -216,7 +217,7 @@ class QueryResultEditing(
             try {
                 val access = writeAccess()
                 if (!access.allowed) throw WritesLockedException(access)
-                rowEditor.execute(edit)
+                rowEditor.execute(edit, WriteSource.RESULT_EDIT)
                 _state.value = _state.value.copy(busy = false, undoable = edit.takeIf { it.undo != null })
                 startUndoWindow()
                 refresh(tab)
@@ -237,7 +238,7 @@ class QueryResultEditing(
         scope.launch {
             _state.value = _state.value.copy(conflict = null, busy = true)
             try {
-                rowEditor.overwrite(conflict.edit)
+                rowEditor.overwrite(conflict.edit, WriteSource.RESULT_EDIT)
                 _state.value = _state.value.copy(busy = false)
                 refresh(tab)
             } catch (e: Exception) {
@@ -254,7 +255,7 @@ class QueryResultEditing(
         scope.launch {
             _state.value = _state.value.copy(undoable = null)
             try {
-                rowEditor.execute(undo)
+                rowEditor.execute(undo, WriteSource.UNDO)
                 refresh(tab)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = describe(e))

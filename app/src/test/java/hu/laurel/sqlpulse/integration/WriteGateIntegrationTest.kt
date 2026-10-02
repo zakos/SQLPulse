@@ -212,13 +212,13 @@ class WriteGateIntegrationTest {
 
     private fun editorFor(environment: String, unlock: WriteUnlockStore, readOnly: Boolean = false): RowEditor {
         val manager = IntegrationSessions.manager(session, config.database, environment, readOnly, CONNECTION_ID)
-        return RowEditor(manager, WriteGate(manager, unlock))
+        return RowEditor(manager, WriteGate(manager, unlock), io.mockk.mockk(relaxed = true))
     }
 
     private fun importerFor(environment: String, unlock: WriteUnlockStore, readOnly: Boolean = false): CsvImporter {
         val manager = IntegrationSessions.manager(session, config.database, environment, readOnly, CONNECTION_ID)
         // The context is only for reading the file, which `plan` below does without it.
-        return CsvImporter(mockk<Context>(), manager, WriteGate(manager, unlock), Dispatchers.Unconfined)
+        return CsvImporter(mockk<Context>(), manager, WriteGate(manager, unlock), mockk(relaxed = true), Dispatchers.Unconfined)
     }
 
     /**

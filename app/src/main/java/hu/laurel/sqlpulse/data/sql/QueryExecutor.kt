@@ -6,6 +6,9 @@ import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.writelog.WriteLogEntries
+import hu.laurel.sqlpulse.data.writelog.WriteLogger
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.sql.PreparedStatement
 import java.sql.Statement
@@ -55,6 +58,7 @@ class QueryExecutor @Inject constructor(
     private val history: QueryHistoryDao,
     private val settings: SettingsRepository,
     private val writeUnlock: WriteUnlockStore,
+    private val writeLog: WriteLogger,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -102,31 +106,43 @@ class QueryExecutor @Inject constructor(
         val bound = SqlGuards.bindParameters(limited.sql)
 
         val started = System.currentTimeMillis()
-        val outcome = sessions.withConnection { connection ->
-            connection.prepareStatement(bound.sql).use { statement ->
-                bind(statement, bound.parameterOrder, parameters)
-                statement.queryTimeout = sessions.queryTimeoutSeconds()
-                running = statement
-                try {
-                    if (statement.execute()) {
-                        statement.resultSet.use { rows ->
+        // Taken before the write: a COMMIT from elsewhere while it runs must not change what the
+        // log says about this statement.
+        val inTransaction = sessions.inTransaction.value
+        val outcome = try {
+            sessions.withConnection { connection ->
+                connection.prepareStatement(bound.sql).use { statement ->
+                    bind(statement, bound.parameterOrder, parameters)
+                    statement.queryTimeout = sessions.queryTimeoutSeconds()
+                    running = statement
+                    try {
+                        if (statement.execute()) {
+                            statement.resultSet.use { rows ->
+                                QueryOutcome(
+                                    table = ResultTable.from(rows, rowLimit)
+                                        .copy(limitAdded = limited.limitAdded),
+                                    sqlRun = bound.sql,
+                                )
+                            }
+                        } else {
                             QueryOutcome(
-                                table = ResultTable.from(rows, rowLimit)
-                                    .copy(limitAdded = limited.limitAdded),
+                                table = ResultTable.EMPTY,
+                                updateCount = statement.updateCount,
                                 sqlRun = bound.sql,
                             )
                         }
-                    } else {
-                        QueryOutcome(
-                            table = ResultTable.EMPTY,
-                            updateCount = statement.updateCount,
-                            sqlRun = bound.sql,
-                        )
+                    } finally {
+                        running = null
                     }
-                } finally {
-                    running = null
                 }
             }
+        } catch (e: Exception) {
+            // Every guard above throws before this point, so a failure here means the statement
+            // was sent. Only writes are logged; a failed SELECT is not a write.
+            if (kind == StatementKind.WRITE && e !is NoSqlSessionException) {
+                logWrite(sql, bound, parameters, started, null, e, inTransaction)
+            }
+            throw e
         }
 
         // A session that has written is never reconnected to automatically: the server rolled the
@@ -134,6 +150,9 @@ class QueryExecutor @Inject constructor(
         if (kind == StatementKind.WRITE) sessions.noteWrite()
 
         val duration = System.currentTimeMillis() - started
+        if (kind == StatementKind.WRITE) {
+            logWrite(sql, bound, parameters, started, outcome.updateCount, null, inTransaction)
+        }
         withContext(io) {
             // §9: the history keeps the SQL and the timings, never the result.
             history.insert(
@@ -148,6 +167,25 @@ class QueryExecutor @Inject constructor(
         }
         return outcome.copy(table = outcome.table.copy(durationMs = duration))
     }
+
+    /** Records a write that was sent, with the bound values written out next to the SQL. */
+    private suspend fun logWrite(
+        sql: String,
+        bound: SqlGuards.BoundStatement,
+        parameters: Map<String, ParameterValue>,
+        started: Long,
+        affectedRows: Int?,
+        failure: Throwable?,
+        inTransaction: Boolean,
+    ) = writeLog.record(
+        source = WriteSource.SQL_EDITOR,
+        statement = WriteLogEntries.withParameters(sql, bound.parameterOrder, parameters),
+        affectedRows = affectedRows,
+        failure = failure,
+        startedAt = started,
+        durationMs = System.currentTimeMillis() - started,
+        inTransaction = inTransaction,
+    )
 
     /**
      * How many rows the write in [sql] would touch, or null when that cannot be said.
