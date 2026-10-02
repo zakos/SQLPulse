@@ -143,4 +143,5 @@ private fun ExportFormat.hintRes(): Int = when (this) {
     ExportFormat.TSV -> R.string.export_hint_tsv
     ExportFormat.JSON -> R.string.export_hint_json
     ExportFormat.SQL -> R.string.export_hint_sql
+    ExportFormat.MARKDOWN -> R.string.export_markdown
 }
