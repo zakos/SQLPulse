@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.csv.CsvImporter
@@ -29,7 +30,9 @@ import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEdit
 import hu.laurel.sqlpulse.data.sql.RowChangedException
 import hu.laurel.sqlpulse.data.sql.RowEditor
+import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.SqlFailures
+import hu.laurel.sqlpulse.data.sql.WritesLockedException
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.data.sql.TableQuery
@@ -670,6 +673,8 @@ class TableDetailViewModel @Inject constructor(
 
     private fun describe(e: Exception): String = when (e) {
         is SQLException -> context.explain(SqlFailures.of(e))
+        is ReadOnlyConnectionException -> context.getString(R.string.error_read_only)
+        is WritesLockedException -> context.getString(R.string.error_writes_locked)
         else -> e.message ?: e.toString()
     }
 

@@ -5,6 +5,7 @@ import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
+import hu.laurel.sqlpulse.data.sql.WriteGate
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -37,6 +38,7 @@ data class ImportPlan(
 class CsvImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessions: SqlSessionManager,
+    private val writeGate: WriteGate,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -87,6 +89,7 @@ class CsvImporter @Inject constructor(
             rows = plan.table.rows,
         )
         if (statements.isEmpty()) return 0
+        writeGate.check()
 
         return sessions.withConnection { connection ->
             val previousAutoCommit = connection.autoCommit

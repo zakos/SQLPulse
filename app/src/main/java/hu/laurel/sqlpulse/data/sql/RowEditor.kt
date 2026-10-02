@@ -45,13 +45,14 @@ class RowChangedException(val currentValue: String?, val rowExists: Boolean) :
     Exception("the row changed since it was read")
 
 /**
- * Runs row edits inside a transaction (§7.6). Nothing here decides whether an edit is allowed —
- * that is the read-only flag and the MySQL grants (§3); this only makes sure that what runs is
- * exactly one row, and that it can be taken back.
+ * Runs row edits inside a transaction (§7.6). Whether an edit is allowed at all is [WriteGate]'s
+ * call and the MySQL grants' (§3); this makes sure that what runs is exactly one row, and that it
+ * can be taken back.
  */
 @Singleton
 class RowEditor @Inject constructor(
     private val sessions: SqlSessionManager,
+    private val writeGate: WriteGate,
 ) {
 
     /**
@@ -161,6 +162,7 @@ class RowEditor @Inject constructor(
      * key that matched three rows is a bug, not something to commit and apologise for (§11).
      */
     suspend fun execute(statement: PreparedSql): Int = sessions.withConnection { connection ->
+        writeGate.check()
         // Inside a manual transaction the user owns the commit: committing here would quietly
         // write everything else they have run since they opened it. The row count is still
         // checked, and a wrong count is reported without a rollback, so what to do about it stays
