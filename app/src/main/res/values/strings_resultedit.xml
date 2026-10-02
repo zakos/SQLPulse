@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="resultedit_editable">Editable: %1$s</string>
+    <string name="resultedit_readonly">Read-only: %1$s</string>
+    <string name="resultedit_applied">Change applied.</string>
+    <string name="resultedit_undo">Undo</string>
+    <string name="resultedit_error_title">The row was not changed</string>
+    <string name="resultedit_close">Close</string>
+
+    <string name="resultedit_reason_not_select">not a SELECT</string>
+    <string name="resultedit_reason_multiple_statements">several statements</string>
+    <string name="resultedit_reason_cte">WITH clause</string>
+    <string name="resultedit_reason_union">UNION</string>
+    <string name="resultedit_reason_join">JOIN</string>
+    <string name="resultedit_reason_subquery_in_from">subquery in FROM</string>
+    <string name="resultedit_reason_distinct">DISTINCT</string>
+    <string name="resultedit_reason_group_by">GROUP BY</string>
+    <string name="resultedit_reason_having">HAVING</string>
+    <string name="resultedit_reason_aggregate">aggregate function</string>
+    <string name="resultedit_reason_window">window function</string>
+    <string name="resultedit_reason_expression">computed column</string>
+    <string name="resultedit_reason_no_table">no table</string>
+    <string name="resultedit_reason_unsupported">statement too complex to map to a table</string>
+    <string name="resultedit_reason_no_database">no database selected</string>
+    <string name="resultedit_reason_unknown_table">table not found</string>
+    <string name="resultedit_reason_unknown_column">unknown column</string>
+    <string name="resultedit_reason_column_mismatch">columns do not match the table</string>
+    <string name="resultedit_reason_no_key">the table has no key</string>
+    <string name="resultedit_reason_key_not_selected">the key is not in the result</string>
+    <string name="resultedit_reason_writes_locked">writes are locked on this connection</string>
+</resources>
