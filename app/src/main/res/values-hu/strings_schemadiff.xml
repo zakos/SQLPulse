@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="schemadiff_title">Séma-összehasonlítás</string>
+    <string name="schemadiff_swap">Oldalak cseréje</string>
+    <string name="schemadiff_connection">Kapcsolat</string>
+    <string name="schemadiff_database">Adatbázis</string>
+    <string name="schemadiff_pick">Válasszon…</string>
+    <string name="schemadiff_no_databases">Ennek a kapcsolatnak egyetlen adatbázisát sem nyitották még meg ezen a telefonon.</string>
+    <string name="schemadiff_never_listed">Ezt az adatbázist még nem nyitották meg itt, így nincs mentett séma, amit össze lehetne vetni.</string>
+    <string name="schemadiff_live">Élő kapcsolat</string>
+    <string name="schemadiff_offline">Mentett séma</string>
+    <string name="schemadiff_taken">Táblalista: %1$s</string>
+    <string name="schemadiff_coverage">%1$d tábla · ebből %2$d szerkezete mentve</string>
+    <string name="schemadiff_oldest">a legrégebbi szerkezet %1$s</string>
+    <string name="schemadiff_incomplete">A meg nem nyitott tábláknak nincs mentett szerkezete; ezeknél csak a név kerül összevetésre.</string>
+    <string name="schemadiff_refresh">Minden beolvasása a szerverről</string>
+    <string name="schemadiff_refreshing">Szerkezetek olvasása… %1$d / %2$d</string>
+    <string name="schemadiff_refresh_failed">A frissítés nem sikerült; a korábbi mentés látszik.</string>
+
+    <string name="schemadiff_opt_case">Kis-/nagybetű mindegy</string>
+    <string name="schemadiff_opt_charset">Illesztés nélkül</string>
+    <string name="schemadiff_opt_comments">Megjegyzések nélkül</string>
+    <string name="schemadiff_opt_order">Oszlopsorrend</string>
+
+    <string name="schemadiff_stat_only_a">csak A-ban</string>
+    <string name="schemadiff_stat_changed">eltér</string>
+    <string name="schemadiff_stat_only_b">csak B-ben</string>
+    <string name="schemadiff_rest">Egyezik: %1$d · nem összevethető: %2$d</string>
+    <string name="schemadiff_identical">A két séma minden összevetett pontban egyezik.</string>
+    <string name="schemadiff_waiting">Válasszon kapcsolatot és adatbázist mindkét oldalra.</string>
+    <string name="schemadiff_no_connections">Előbb mentsen el egy kapcsolatot: az összehasonlítás annak adatbázisait olvassa.</string>
+    <string name="schemadiff_limits">Összevetve: táblák, oszlopok (típus, NULL, alapérték, extra, sorrend), indexek és idegen kulcsok. A mentett séma nem tárolja a nézetek definícióját, a triggereket, a rutinokat, a CHECK feltételeket, az oszlopok illesztését és az idegen kulcsok szabályait, ezért ezek nincsenek összevetve.</string>
+
+    <string name="schemadiff_section_table">Tábla</string>
+    <string name="schemadiff_section_columns">Oszlopok</string>
+    <string name="schemadiff_section_indexes">Indexek</string>
+    <string name="schemadiff_section_keys">Idegen kulcsok</string>
+    <string name="schemadiff_section_unchecked">Nem összevethető</string>
+    <string name="schemadiff_view">nézet</string>
+    <string name="schemadiff_gap_a">az A oldalon nincs mentett szerkezet</string>
+    <string name="schemadiff_gap_b">a B oldalon nincs mentett szerkezet</string>
+    <string name="schemadiff_gap_both">egyik oldalon sincs mentett szerkezet</string>
+    <string name="schemadiff_status_only_a">csak A-ban</string>
+    <string name="schemadiff_status_only_b">csak B-ben</string>
+    <string name="schemadiff_status_changed">eltér</string>
+
+    <string name="schemadiff_field_name">név</string>
+    <string name="schemadiff_field_kind">fajta</string>
+    <string name="schemadiff_field_engine">motor</string>
+    <string name="schemadiff_field_collation">illesztés</string>
+    <string name="schemadiff_field_comment">megjegyzés</string>
+    <string name="schemadiff_field_type">típus</string>
+    <string name="schemadiff_field_nullable">NULL</string>
+    <string name="schemadiff_field_default">alapérték</string>
+    <string name="schemadiff_field_extra">extra</string>
+    <string name="schemadiff_field_position">hely</string>
+    <string name="schemadiff_field_unique">egyedi</string>
+    <string name="schemadiff_field_columns">oszlopok</string>
+    <string name="schemadiff_field_references">hivatkozik</string>
+    <string name="schemadiff_field_definition">a definíció eltér</string>
+</resources>

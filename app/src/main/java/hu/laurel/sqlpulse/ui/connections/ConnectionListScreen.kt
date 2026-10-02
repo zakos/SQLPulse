@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Settings
@@ -88,6 +89,7 @@ data class ConnectionListActions(
     val onOpenSchema: () -> Unit = {},
     val onOpenQuery: () -> Unit = {},
     val onOpenSettings: () -> Unit = {},
+    val onOpenSchemaDiff: () -> Unit = {},
     val onConnect: (ConnectionEntity) -> Unit = {},
     val onConfirmConnect: () -> Unit = {},
     val onCancelConnect: () -> Unit = {},
@@ -112,6 +114,7 @@ fun ConnectionListScreen(
     onOpenSchema: () -> Unit,
     onOpenQuery: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSchemaDiff: () -> Unit = {},
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -138,6 +141,7 @@ fun ConnectionListScreen(
             onOpenSchema = onOpenSchema,
             onOpenQuery = onOpenQuery,
             onOpenSettings = onOpenSettings,
+            onOpenSchemaDiff = onOpenSchemaDiff,
             onConnect = viewModel::connect,
             onConfirmConnect = viewModel::confirmConnect,
             onCancelConnect = viewModel::cancelConnect,
@@ -171,6 +175,16 @@ fun ConnectionListContent(
                     if (state.tunnel is TunnelState.Active) {
                         IconButton(onClick = actions.onOpenQuery) {
                             Icon(Icons.Default.Code, contentDescription = stringResource(R.string.query_title))
+                        }
+                    }
+                    // Comparing works from the stored schemas, so it needs no open connection —
+                    // only something to compare, which one saved connection already is.
+                    if (state.connections.isNotEmpty()) {
+                        IconButton(onClick = actions.onOpenSchemaDiff) {
+                            Icon(
+                                Icons.Default.CompareArrows,
+                                contentDescription = stringResource(R.string.schemadiff_title),
+                            )
                         }
                     }
                     IconButton(onClick = actions.onOpenKeyStore) {

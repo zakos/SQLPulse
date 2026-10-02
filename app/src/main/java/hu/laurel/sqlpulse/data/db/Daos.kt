@@ -256,6 +256,31 @@ interface SchemaCacheDao {
     )
     suspend fun deleteForeignKeys(connectionId: Long, database: String, table: String)
 
+    // The whole database's structure in three reads, for the schema comparison: one query per
+    // table would be hundreds of reads of an encrypted file for a screen that needs all of them.
+
+    @Query(
+        "SELECT * FROM cached_column WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, position",
+    )
+    suspend fun columnsOfDatabase(connectionId: Long, database: String): List<CachedColumnEntity>
+
+    @Query(
+        "SELECT * FROM cached_index WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, position",
+    )
+    suspend fun indexesOfDatabase(connectionId: Long, database: String): List<CachedIndexEntity>
+
+    @Query(
+        "SELECT * FROM cached_foreign_key WHERE connectionId = :connectionId" +
+            " AND `database` = :database ORDER BY tableName, constraintName, `column`",
+    )
+    suspend fun foreignKeysOfDatabase(connectionId: Long, database: String): List<CachedForeignKeyEntity>
+
+    /** Every database of one connection that has at least its table list captured. */
+    @Query("SELECT DISTINCT `database` FROM cached_table WHERE connectionId = :connectionId ORDER BY `database`")
+    suspend fun databasesWithTables(connectionId: Long): List<String>
+
     /**
      * Everything cached for one connection, dropped.
      *
