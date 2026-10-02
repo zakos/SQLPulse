@@ -110,7 +110,7 @@ fun ExportSheetContent(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        format.name,
+                        format.extension.uppercase(),
                         style = MonoStyles.cell.copy(fontWeight = FontWeight.SemiBold),
                         color = if (on) accent else MaterialTheme.colorScheme.onSurface,
                     )
