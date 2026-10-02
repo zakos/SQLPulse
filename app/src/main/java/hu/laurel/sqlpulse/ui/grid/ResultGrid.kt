@@ -47,9 +47,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.grid.ColumnStatsComputer
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
@@ -93,7 +96,10 @@ fun ResultGrid(
     sort: ColumnSort? = null,
     /** Called with a column label when its sort icon is tapped. Null hides the icons. */
     onSort: ((String) -> Unit)? = null,
-    /** Called with a column index when its header is long-pressed. */
+    /**
+     * Called with a column index when its header is long-pressed. Null opens the grid's own
+     * column summary sheet, so every result table gets it without each screen wiring it up.
+     */
     onColumnStats: ((Int) -> Unit)? = null,
     /** False where the caller already says so in its own summary line. */
     showLimitNote: Boolean = true,
@@ -122,6 +128,22 @@ fun ResultGrid(
         }
     }
 
+    var statsColumn by remember(table) { mutableStateOf<Int?>(null) }
+    val clipboard = LocalClipboardManager.current
+    statsColumn?.let { index ->
+        val stats = remember(table, index) { ColumnStatsComputer.compute(table, index) }
+        if (stats == null) {
+            statsColumn = null
+        } else {
+            ColumnStatsSheet(
+                columnLabel = table.columns[index].label,
+                stats = stats,
+                onCopy = { clipboard.setText(AnnotatedString(it)) },
+                onDismiss = { statsColumn = null },
+            )
+        }
+    }
+
     Column(modifier = modifier) {
         if (table.limitAdded && showLimitNote) {
             Text(
@@ -143,7 +165,7 @@ fun ResultGrid(
             },
             sort = sort,
             onSort = onSort,
-            onColumnStats = onColumnStats,
+            onColumnStats = onColumnStats ?: { statsColumn = it },
         )
         HorizontalDivider(color = semantic.hairline)
 
