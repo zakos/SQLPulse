@@ -18,6 +18,11 @@ típusrendszerükre épülnek, a ráfordítás és az APK-méret nem érné meg.
 **Amit érdemes:** az algoritmusokat és a döntéseket Kotlinban újraírni. Az Apache-2.0 ezt
 megengedi; ahol egy függvény logikáját szorosan követjük, a fájl fejében hivatkozzunk a forrásra.
 
+## Állapot (2026-10-02)
+
+Az 1–6. tétel beépült (ld. `docs/roadmap.md`, „A dbx-ből átvett ötletek”). A 7. (AST-alapú
+írás-osztályozás) szándékosan kimaradt: csak akkor éri meg, ha a mostani őrök hibáznak.
+
 ## Javasolt átvételek, fontossági sorrendben
 
 | # | dbx megoldás | Hol van a dbx-ben | Mit adna a SQLPulse-nak | Ráfordítás |

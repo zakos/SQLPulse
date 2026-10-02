@@ -52,15 +52,17 @@ data/
   sql/         SqlSession (JDBC, driverválasztás), SqlSessionManager (pool, tranzakció),
                QueryExecutor (read-only, WHERE nélküli írás tiltás), SqlGuards, SqlScript,
                QueryParameters (:param), RowEditor/RowSqlBuilder/ColumnEditor (sorszerkesztés),
+               WriteImpact (darabszám + DML előnézet), ResultEditability, WriteGate (éles írászár),
                SqlFormatter, SqlHighlighter, ExplainJson/ExplainAdvice, SqlFailure, SslMode, …
   schema/      SchemaRepository (information_schema), SchemaExtras, SchemaCache(+Repository)
                (offline séma), SchemaGraph (térkép elrendezés), RowLinks/LinkTrail/LinkGuesser
                (FK-bejárás), ServerRepository + ServerMetrics (Pulzus)
   query/       QueryRepository (előzmény, kedvencek), QueryDrafts/QueryDraftStore
+  search/      DatabaseSearch(+Repository): érték keresése az egész adatbázisban
   export/      ResultSerializer (CSV/TSV/JSON/INSERT), ExportManager (share sheet)
   csv/         CsvParser, CsvImport, CsvImporter
   backup/      Jelszavas mentés/visszatöltés: BackupCodec, BackupCrypto, BackupMerge, …
-  snapshot/    ResultSnapshot, ResultDiff („időgép”)
+  snapshot/    ResultSnapshot, ResultDiff („időgép”), SnapshotVault (kapcsolatváltást túlélő felvétel)
   chart/       ResultChart
   grid/        ResultFilter
   diagnostics/ DiagnosticsReport (titokmentes hibajelentés)
@@ -71,12 +73,13 @@ ui/            Compose képernyők; navigáció: ui/SqlPulseApp.kt
   grid/        eredménytábla, szűrő, szerkesztő dialógusok, lapok
   schema/      sémaböngésző + tábla részletek   map/  séma-térkép
   server/      futó lekérdezések, KILL          pulse/ élő metrikák
+  schemadiff/  séma-összehasonlítás            search/ keresés az adatbázisban
   explain/     terv fa nézet   chart/  diagram   snapshot/  pillanatfelvétel
   backup/ settings/ diagnostics/ components/ theme/
 ```
 
 ### Navigációs útvonalak (`ui/SqlPulseApp.kt`)
-CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEMA → TABLE
+CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF, QUERY, SCHEMA → TABLE, SEARCH
 
 ### Helyi adatbázis táblák (Room, v9)
 `ssh_key`, `connection`, `db_credential`, `ssh_credential`, `ssh_jump_credential`, `known_host`,
@@ -104,6 +107,9 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   - `security.yml` — PR/push: biztonsági ellenőrzések
   - `instrumentation.yml` — kézi: emulátoros tesztek
 - Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
+- Párhuzamos subagentek (worktree): a worktree a `main`-ből indul → először
+  `git merge --ff-only claude/repo-mapping-bjwm40`; `--no-daemon`, és soha `./gradlew --stop`
+  (a többi agent buildjét is megöli); mindenki saját `strings_<funkció>.xml`-be ír.
 
 ## Fontos szabályok, konvenciók
 
@@ -165,16 +171,25 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, QUERY, SCHEM
   fejléc, rácsvonalak) és az időgép táblázata — mind képernyőképpel a terv mellett.
 - 2026-10-02: A t8y2/dbx (Rust/Tauri asztali kliens, Apache-2.0) átnézve: kód közvetlenül nem
   vehető át, az algoritmusok igen. Elemzés és rangsor: `docs/dbx-elemzes.md`.
+- 2026-10-02: A dbx-ötletek beépítése párhuzamos subagentekkel (külön git worktree-kben, a
+  feladat méretéhez választott modellel), majd összefésülés: séma-összehasonlítás, DML előnézet,
+  szerkeszthető lekérdezés-eredmény, keresés az egész adatbázisban, adat-összehasonlítás két
+  kapcsolat között, Markdown export. Közben talált és javított rés: a sorszerkesztés és a CSV
+  import nem nézte az éles írászárat → `data/sql/WriteGate.kt`. 775 unit teszt + lint zöld.
 
 ## Teendők / nyitott pontok
 
 A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
 
-- [ ] **Séma-összehasonlítás** — két kapcsolat szerkezete egymás mellett (dev vs. éles eltérések).
-      Mintának a dbx `schema_diff.rs`-e (ld. `docs/dbx-elemzes.md`).
-- [ ] dbx-ből átvehető ötletek (`docs/dbx-elemzes.md`): DML előnézet, lekérdezés-eredmény
-      szerkesztése, keresés az egész adatbázisban, adat-összehasonlítás két kapcsolat között,
-      Markdown export. Felhasználói döntésre vár, melyik és milyen sorrendben.
+- [x] **Séma-összehasonlítás** — `ui/schemadiff/`, a tárolt sémából (az app egyszerre csak egy
+      élő kapcsolatot tart). Nézet/trigger/CHECK/FK-szabály nincs a cache-ben → nem hasonlít.
+- [x] dbx-ötletek (`docs/dbx-elemzes.md`): DML előnézet, szerkeszthető lekérdezés-eredmény,
+      keresés az egész adatbázisban (`ui/search/`), adat-összehasonlítás (`SnapshotVault`), Markdown export.
+- [ ] Felhasználói döntésre vár: éles keresés alapértékei (20 sor/tábla, 50 tábla, 1M sor felett
+      kihagy); séma-összehasonlítás színei (A zöld, B piros — vagy semleges?).
+- [ ] Ismert korlátok az új funkciókban: DML előnézet a SET-be rejtett allekérdezésben lévő
+      mellékhatásos függvényt nem szűri; a keresési találatról a tábla szűretlenül nyílik; a
+      pillanatfelvétel-sor nem írja ki, melyik kapcsolatról való; az időbélyeg a JVM locale-t követi.
 - [ ] **Éles próba minden képernyőn** — eddig csak a kapcsolat, a legacy driver ág és az SSH ág
       van valódi szerveren kipróbálva.
 - [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.

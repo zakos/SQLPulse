@@ -110,6 +110,20 @@ megnézhető.
 | Kiadási build R8-cal, a driverek és a natív hívások megtartva | `app/proguard-rules.pro` |
 | Diagnosztikai jelentés hibabejelentéshez, amiben nincs gépnév, felhasználó, jelszó, kulcs, lekérdezés | `data/diagnostics/` |
 
+### A dbx-ből átvett ötletek (2026-10)
+
+A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-elemzes.md`).
+
+| Funkció | Hol |
+| --- | --- |
+| Séma-összehasonlítás két kapcsolat (vagy adatbázis) között, a tárolt sémából, az élő oldal frissíthető; táblák, oszlopok, indexek, idegen kulcsok; csak olvas | `data/schema/SchemaDiff*.kt`, `ui/schemadiff/` |
+| Írás előtti előnézet: az UPDATE/DELETE által érintett első 20 sor, régi és új érték egymás mellett | `data/sql/WriteImpact.kt`, `ui/query/WriteRowPreviewTable.kt` |
+| A lekérdezés eredménye szerkeszthető, ha egy táblára vezethető vissza és a kulcs benne van; ha nem, kiírja, miért | `data/sql/ResultEditability.kt`, `ui/query/ResultEdit*.kt` |
+| Keresés az egész adatbázisban: egy érték minden szöveges oszlopban, táblánként, megszakítható | `data/search/`, `ui/search/` |
+| Adat-összehasonlítás két kapcsolat között: a pillanatfelvétel túléli a kapcsolatváltást, kulcsválasztás, ismétlődő kulcs jelzése | `data/snapshot/SnapshotVault.kt`, `ui/snapshot/SnapshotSheet.kt` |
+| Export Markdown-táblázatként | `data/export/ResultSerializer.kt` |
+| Éles írászár a sorszerkesztésre és a CSV importra is (eddig csak a SQL szerkesztőben volt) | `data/sql/WriteGate.kt` |
+
 ## Ami hiányzik
 
 A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az
@@ -124,10 +138,11 @@ képernyő nincs minden kiszolgálóverzióval végigmérve.
 
 ## Ami ezután jön
 
-1. **Séma-összehasonlítás.** Két kapcsolat szerkezete egymás mellett: mi tér el a
-   fejlesztői és az éles adatbázis között.
-2. **Éles próba minden képernyőn.** A kapcsolat, a régi driver ága és az SSH ág van
+1. **Éles próba minden képernyőn.** A kapcsolat, a régi driver ága és az SSH ág van
    valódi kiszolgálón kimérve; a többi képernyő nincs minden verzióval végigpróbálva.
+   Különösen az új, dbx-ből átvett funkciók (fent) várnak valódi kiszolgálós próbára.
+2. **A séma-összehasonlítás mélyítése.** Nézetek, triggerek, CHECK-feltételek és FK-szabályok
+   nincsenek a tárolt sémában; ehhez Room-vándorlás kellene.
 
 ## Amit szándékosan nem tartalmaz
 
