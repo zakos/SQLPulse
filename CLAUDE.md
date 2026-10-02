@@ -177,6 +177,29 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF,
   kapcsolat között, Markdown export. Közben talált és javított rés: a sorszerkesztés és a CSV
   import nem nézte az éles írászárat → `data/sql/WriteGate.kt`. 775 unit teszt + lint zöld.
 
+- 2026-10-02: A felhasználó szerint a dbx-funkciós APK működik. Javasolt következő fejlesztések
+  listája lent („Javasolt következő fejlesztések”) — felhasználói döntésre vár.
+
+## Javasolt következő fejlesztések (2026-10-02, döntésre vár)
+
+A. Megbízhatóság (ajánlott első):
+- [ ] Integrációs tesztek az új funkciókra valódi MySQL 8.0/5.7/MariaDB ellen (`integration/`):
+      DML előnézet, szerkeszthető eredmény, keresés, séma élő frissítése, WriteGate.
+- [ ] Ismert korlátok javítása: keresési találat → tábla a sorra szűrve; időgép-sor kiírja a
+      kapcsolatot; DML előnézet allekérdezés-mellékhatás szűrése.
+B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
+- [ ] Replikáció állapota (`SHOW REPLICA/SLAVE STATUS`: késés, IO/SQL szál, utolsó hiba) a Szerver képernyőn.
+- [ ] Leglassabb lekérdezések (`performance_schema.events_statements_summary_by_digest`).
+- [ ] Tábla- és indexméretek, nem használt indexek (`information_schema.TABLES`, `sys.schema_unused_indexes`).
+- [ ] Riasztás a Pulzusból (pl. replikációs késés, futó lekérdezés > N mp) — csak amíg az alagút él.
+C. Biztonság, elszámolhatóság:
+- [ ] Helyi, titkosított írási napló: ki/mikor/melyik kapcsolaton/mit írt (főleg éles), exportálható.
+D. Kényelem:
+- [ ] Gyors összesítés a kijelölt oszlopra (összeg, átlag, min/max, darab).
+- [ ] Android parancsikonok (kedvenc kapcsolat/lekérdezés a launcherről, zárolás után).
+- [ ] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”.
+- [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v10) kell.
+
 ## Teendők / nyitott pontok
 
 A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
