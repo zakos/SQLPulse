@@ -26,7 +26,7 @@ kapcsolat lehet sima vagy TLS-es. Package / applicationId: `hu.laurel.sqlpulse`.
 | Build | AGP 8.7.3, Kotlin 2.0.21, KSP, compileSdk/targetSdk 35, minSdk 28, JDK 17 |
 | UI | Jetpack Compose (BOM 2024.12.01), Material3, Navigation Compose |
 | DI | Hilt 2.52 |
-| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **9** |
+| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **10** |
 | Beállítások | DataStore Preferences |
 | SSH | sshj 0.38.0 (+ BouncyCastle, EdDSA) |
 | MySQL | MariaDB Connector/J 3.4.1; régi (< MySQL 5.5.3) szerverre automatikusan MySQL Connector/J 5.1.49 |
@@ -45,7 +45,7 @@ ssh/           TunnelManager (állapotgép), SshTunnel (port forward, jump host)
                (kulcs/jelszó/keyboard-interactive), MysqlProbe (handshake-csomag ellenőrzés)
 data/
   crypto/      KeystoreCrypto, Sealed blobok, DatabaseKeyProvider (SQLCipher jelmondat)
-  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→9)
+  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→10)
   keys/        KeyParsing (OpenSSH v1, PKCS#8, PEM; .ppk/DSA elutasítva), SshKeyRepository
   connection/  ConnectionRepository, környezet (dev/test/éles), ProductionPolicy, időkorlátok,
                CertificateStore (CA), JumpHostCredentials, WriteUnlockStore, SessionHeader(s)
@@ -58,7 +58,9 @@ data/
                (offline séma), SchemaGraph (térkép elrendezés), RowLinks/LinkTrail/LinkGuesser
                (FK-bejárás), ServerRepository + ServerMetrics (Pulzus)
   query/       QueryRepository (előzmény, kedvencek), QueryDrafts/QueryDraftStore
-  search/      DatabaseSearch(+Repository): érték keresése az egész adatbázisban
+  search/      DatabaseSearch(+Repository), SearchHitFilter (találat → tábla a sorra szűrve)
+  writelog/    WriteLogger + retenció/export (írási napló; minden írási fojtópontból hívva)
+  shortcuts/   ShortcutPlan, LauncherShortcuts, ShortcutRequests (indítóikon-parancsikonok)
   export/      ResultSerializer (CSV/TSV/JSON/INSERT), ExportManager (share sheet)
   csv/         CsvParser, CsvImport, CsvImporter
   backup/      Jelszavas mentés/visszatöltés: BackupCodec, BackupCrypto, BackupMerge, …
@@ -74,17 +76,19 @@ ui/            Compose képernyők; navigáció: ui/SqlPulseApp.kt
   schema/      sémaböngésző + tábla részletek   map/  séma-térkép
   server/      futó lekérdezések, KILL          pulse/ élő metrikák
   schemadiff/  séma-összehasonlítás            search/ keresés az adatbázisban
+  storage/     Tárhely (méretek, indexek)      writelog/ írási napló
+  handoff/     EditorHandoff/TableFilterHandoff (SQL → szerkesztő új fül, szűrő → tábla; egyszer fogyasztva)
   explain/     terv fa nézet   chart/  diagram   snapshot/  pillanatfelvétel
   backup/ settings/ diagnostics/ components/ theme/
 ```
 
 ### Navigációs útvonalak (`ui/SqlPulseApp.kt`)
-CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF, QUERY, SCHEMA → TABLE, SEARCH
+CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG, SCHEMA_DIFF, QUERY, SCHEMA → TABLE, SEARCH, STORAGE
 
-### Helyi adatbázis táblák (Room, v9)
+### Helyi adatbázis táblák (Room, v10)
 `ssh_key`, `connection`, `db_credential`, `ssh_credential`, `ssh_jump_credential`, `known_host`,
 `query_history`, `saved_query`, `cached_database`, `cached_table`, `cached_column`,
-`cached_index`, `cached_foreign_key`
+`cached_index`, `cached_foreign_key`, `write_log` (írási napló, FK nélkül, 90 nap / 5000 bejegyzés)
 
 ## Fő adatfolyam
 
@@ -193,26 +197,38 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF,
   Tárhely képernyő (`ui/storage/`, sémaböngésző ⋮ menü). 879 unit teszt + lint zöld; a teljes
   integrációs csomag (82) zöld helyben MySQL 8.0.46-on és MariaDB 10.11-en, replikával is.
 
+- 2026-10-02: Újabb kör (4 subagent): írási napló (Room v10, `write_log`), oszlop-összesítés
+  (oszlopfejléc hosszan nyomva, minden rácsban), indítóikon-parancsikonok (alapból ki, éles soha;
+  az exportált Activity csak a tervben szereplő kapcsolatot nyitja), „megnyitás a szerkesztőben”
+  a Lassú panelről és a futó lekérdezésekből (`?` → `:p1`), keresési találat → szűrt tábla,
+  időgép-sor kapcsolatneve, magyar szám/időformátum, DML előnézet allekérdezés-szűrés.
+  911 unit teszt + lint zöld, integrációs csomag (82) zöld MySQL 8.0.46-on és MariaDB 10.11-en.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
 - [x] Integrációs tesztek az új funkciókra (`integration/`), helyben MySQL 8.0 + MariaDB 10.11 zöld;
       MySQL 5.7 csak a CI-ban fut.
-- [ ] Ismert korlátok javítása: keresési találat → tábla a sorra szűrve; időgép-sor kiírja a
-      kapcsolatot; DML előnézet allekérdezés-mellékhatás szűrése.
+- [x] Ismert korlátok javítása: keresési találat → szűrt tábla; időgép-sor kapcsolatneve; DML
+      előnézet allekérdezés-szűrés; magyar szám/időformátum (Lassú panel, időgép).
+- [ ] Maradék locale: `SchemaBrowserScreen`, `TableDetailScreen`, `BackupScreen`, előzmény-időbélyeg
+      még a JVM alap-locale-t használja.
 B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
 - [x] Replikáció állapota (csatornánként kártya, késés, szálak, hiba; „Nyers” kapcsoló).
 - [x] Leglassabb lekérdezések („Lassú” panel; koppintás → vágólap, sosem futtat).
 - [x] Tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt/redundáns indexek (Tárhely).
-- [ ] A „Lassú” lekérdezés megnyitása a szerkesztőben (a QUERY útvonal ma nem kap SQL-t).
+- [x] A „Lassú” lekérdezés és a futó lekérdezés megnyitása a szerkesztőben (`EditorHandoff`).
 - [ ] Döntésre vár: a keresés garantáljon-e ékezetfüggetlen egyezést („arviz” → „Árvíz”) a
       szerver collation-jétől függetlenül.
 - [ ] Riasztás a Pulzusból (pl. replikációs késés, futó lekérdezés > N mp) — csak amíg az alagút él.
 C. Biztonság, elszámolhatóság:
-- [ ] Helyi, titkosított írási napló: ki/mikor/melyik kapcsolaton/mit írt (főleg éles), exportálható.
+- [x] Írási napló (Beállítások → Írási napló): szűrés, keresés, CSV/JSON export, törlés.
+- [ ] Döntésre vár: az írási napló a beírt értékeket is tárolja (pl. jelszó-oszlop) — kell-e
+      oszlopnév szerinti kitakarás? A mentésbe nem kerül bele.
 D. Kényelem:
-- [ ] Gyors összesítés a kijelölt oszlopra (összeg, átlag, min/max, darab).
-- [ ] Android parancsikonok (kedvenc kapcsolat/lekérdezés a launcherről, zárolás után).
+- [x] Oszlop-összesítés (darab, nem NULL, különböző, összeg, átlag, min/max) — fejléc hosszan nyomva.
+- [x] Indítóikon-parancsikonok (Beállítások, alapból ki; a 3 legutóbbi nem éles kapcsolat).
+- [ ] Parancsikonok készüléken kipróbálva még nincsenek (hidegindítás, `onNewIntent`).
 - [ ] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”.
 - [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v10) kell.
 

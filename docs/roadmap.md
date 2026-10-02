@@ -133,6 +133,15 @@ A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-ele
 | Tárhely: tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt és redundáns indexek | `data/schema/Storage*.kt`, `ui/storage/` |
 | Integrációs tesztek mindezekre (helyben MySQL 8.0 és MariaDB 10.11 ellen is lefuttatva) | `app/src/test/.../integration/` |
 
+### Elszámolhatóság és kényelem (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| Írási napló: minden írás (szerkesztő, sorszerkesztés, eredmény-szerkesztés, CSV import, visszavonás) helyben, titkosítva; szűrés, export, törlés | `data/writelog/`, `ui/writelog/` |
+| Oszlop-összesítés a betöltött sorokból (fejléc hosszan nyomva) | `data/grid/ColumnStats.kt`, `ui/grid/Sheets.kt` |
+| Indítóikon-parancsikonok a legutóbbi nem éles kapcsolatokhoz (alapból ki) | `data/shortcuts/` |
+| SQL átadása a szerkesztőnek új fülön (Lassú panel, futó lekérdezések); keresési találat → szűrt tábla | `ui/handoff/Handoffs.kt` |
+
 ## Ami hiányzik
 
 A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az
