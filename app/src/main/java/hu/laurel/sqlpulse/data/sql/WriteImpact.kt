@@ -68,7 +68,7 @@ object WriteImpact {
 
         val start = skipSpace(masked, 0)
         val keyword = readWord(masked, start).lowercase()
-        val after = skipSpace(masked, start + keyword.length)
+        val after = skipSpace(clean, start + keyword.length)
         return when (keyword) {
             "update" -> parseUpdate(clean, masked, after)
             "delete" -> parseDelete(clean, masked, after)
@@ -78,7 +78,7 @@ object WriteImpact {
 
     /** `UPDATE [modifiers] table [alias] SET ... [WHERE ...]` and nothing more adventurous. */
     private fun parseUpdate(clean: String, masked: String, from: Int): Parsed? {
-        val start = skipModifiers(masked, from, UPDATE_MODIFIERS)
+        val start = skipModifiers(clean, from, UPDATE_MODIFIERS)
         val keywords = topLevelKeywords(masked, start)
         val setAt = keywords.firstOrNull { it.second == "set" }?.first ?: return null
         val table = clean.substring(start, setAt).trim()
@@ -91,11 +91,11 @@ object WriteImpact {
 
     /** `DELETE [modifiers] FROM table [alias] [WHERE ...]`, the single-table form only. */
     private fun parseDelete(clean: String, masked: String, from: Int): Parsed? {
-        val start = skipModifiers(masked, from, DELETE_MODIFIERS)
+        val start = skipModifiers(clean, from, DELETE_MODIFIERS)
         // `DELETE t1 FROM a JOIN b` and `DELETE FROM t USING ...` name more than one table, and the
         // rows they remove are not the rows a count over any one of them returns.
         if (!readWord(masked, start).equals("from", ignoreCase = true)) return null
-        val tableStart = skipSpace(masked, start + "from".length)
+        val tableStart = skipSpace(clean, start + "from".length)
         val keywords = topLevelKeywords(masked, tableStart)
         if (keywords.any { it.second == "using" }) return null
         val stop = keywords.firstOrNull { it.second in TAIL_STARTERS }?.first ?: clean.length
