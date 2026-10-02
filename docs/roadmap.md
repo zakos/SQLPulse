@@ -124,6 +124,15 @@ A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-ele
 | Export Markdown-táblázatként | `data/export/ResultSerializer.kt` |
 | Éles írászár a sorszerkesztésre és a CSV importra is (eddig csak a SQL szerkesztőben volt) | `data/sql/WriteGate.kt` |
 
+### Üzemeltetés telefonról (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| Replikáció állapota csatornánként: ítélet, késés, szálak, utolsó hiba, GTID/pozíciók | `data/schema/ReplicationStatus.kt`, `ui/server/ServerOpsPanels.kt` |
+| A leglassabb utasítások a `performance_schema` összesítőjéből | `data/schema/SlowStatements.kt`, `ui/server/ServerOpsPanels.kt` |
+| Tárhely: tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt és redundáns indexek | `data/schema/Storage*.kt`, `ui/storage/` |
+| Integrációs tesztek mindezekre (helyben MySQL 8.0 és MariaDB 10.11 ellen is lefuttatva) | `app/src/test/.../integration/` |
+
 ## Ami hiányzik
 
 A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az

@@ -107,6 +107,13 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF,
   - `security.yml` — PR/push: biztonsági ellenőrzések
   - `instrumentation.yml` — kézi: emulátoros tesztek
 - Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
+- **Integrációs tesztek helyben**: nincs Docker-démon, de root-ként megy az
+  `apt-get install mariadb-server`; `mariadbd --datadir=<scratchpad>/… --port=3399` indítás, root
+  jelszó `sqlpulse`. MySQL 8: a `mysql-server-core-8.0` .deb-et kicsomagolva (apt-tal ütközne a
+  MariaDB-vel). Futtatás: `SQLPULSE_TEST_MYSQL_URL=jdbc:mysql://127.0.0.1:<port>/sqlpulse_test`,
+  `_USER=root`, `_PASSWORD=sqlpulse`, `_LEGACY=true|false` (+ `SQLPULSE_TEST_MYSQL_REPLICA_URL`),
+  `./gradlew --no-build-cache cleanTestDebugUnitTest testDebugUnitTest --tests 'hu.laurel.sqlpulse.integration.*'`
+  (`--no-build-cache` kell, mert az env nem Gradle-bemenet → különben a cache-elt eredményt játssza vissza).
 - Párhuzamos subagentek (worktree): a worktree a `main`-ből indul → először
   `git merge --ff-only claude/repo-mapping-bjwm40`; `--no-daemon`, és soha `./gradlew --stop`
   (a többi agent buildjét is megöli); mindenki saját `strings_<funkció>.xml`-be ír.
@@ -180,17 +187,26 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS, SCHEMA_DIFF,
 - 2026-10-02: A felhasználó szerint a dbx-funkciós APK működik. Javasolt következő fejlesztések
   listája lent („Javasolt következő fejlesztések”) — felhasználói döntésre vár.
 
-## Javasolt következő fejlesztések (2026-10-02, döntésre vár)
+- 2026-10-02: A javasolt kör kész (párhuzamos subagentekkel): integrációs tesztek az új
+  funkciókra (+ talált hiba: backtickes táblanévnél nem volt darabszám/előnézet — javítva),
+  replikáció állapotkártya + „Lassú” panel a Szerver képernyőn (`ui/server/ServerOpsPanels.kt`),
+  Tárhely képernyő (`ui/storage/`, sémaböngésző ⋮ menü). 879 unit teszt + lint zöld; a teljes
+  integrációs csomag (82) zöld helyben MySQL 8.0.46-on és MariaDB 10.11-en, replikával is.
+
+## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
-- [ ] Integrációs tesztek az új funkciókra valódi MySQL 8.0/5.7/MariaDB ellen (`integration/`):
-      DML előnézet, szerkeszthető eredmény, keresés, séma élő frissítése, WriteGate.
+- [x] Integrációs tesztek az új funkciókra (`integration/`), helyben MySQL 8.0 + MariaDB 10.11 zöld;
+      MySQL 5.7 csak a CI-ban fut.
 - [ ] Ismert korlátok javítása: keresési találat → tábla a sorra szűrve; időgép-sor kiírja a
       kapcsolatot; DML előnézet allekérdezés-mellékhatás szűrése.
 B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
-- [ ] Replikáció állapota (`SHOW REPLICA/SLAVE STATUS`: késés, IO/SQL szál, utolsó hiba) a Szerver képernyőn.
-- [ ] Leglassabb lekérdezések (`performance_schema.events_statements_summary_by_digest`).
-- [ ] Tábla- és indexméretek, nem használt indexek (`information_schema.TABLES`, `sys.schema_unused_indexes`).
+- [x] Replikáció állapota (csatornánként kártya, késés, szálak, hiba; „Nyers” kapcsoló).
+- [x] Leglassabb lekérdezések („Lassú” panel; koppintás → vágólap, sosem futtat).
+- [x] Tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt/redundáns indexek (Tárhely).
+- [ ] A „Lassú” lekérdezés megnyitása a szerkesztőben (a QUERY útvonal ma nem kap SQL-t).
+- [ ] Döntésre vár: a keresés garantáljon-e ékezetfüggetlen egyezést („arviz” → „Árvíz”) a
+      szerver collation-jétől függetlenül.
 - [ ] Riasztás a Pulzusból (pl. replikációs késés, futó lekérdezés > N mp) — csak amíg az alagút él.
 C. Biztonság, elszámolhatóság:
 - [ ] Helyi, titkosított írási napló: ki/mikor/melyik kapcsolaton/mit írt (főleg éles), exportálható.
