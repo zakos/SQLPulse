@@ -46,6 +46,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -61,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.grid.ColumnStatsComputer
+import hu.laurel.sqlpulse.data.grid.OutlierOutcome
+import hu.laurel.sqlpulse.data.grid.Outliers
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
@@ -129,6 +132,13 @@ fun ResultGrid(
     }
 
     var statsColumn by remember(table) { mutableStateOf<Int?>(null) }
+    // Hoisted here, not in the sheet: the sheet closes, the marks in the grid have to stay.
+    var highlighted by remember(table) { mutableStateOf(emptySet<Int>()) }
+    val outlierRows = remember(table, highlighted) {
+        highlighted.associateWith { column ->
+            (Outliers.analyzeColumn(table, column) as? OutlierOutcome.Report)?.outlierRows.orEmpty()
+        }
+    }
     val clipboard = LocalClipboardManager.current
     statsColumn?.let { index ->
         val stats = remember(table, index) { ColumnStatsComputer.compute(table, index) }
@@ -140,6 +150,8 @@ fun ResultGrid(
                 stats = stats,
                 onCopy = { clipboard.setText(AnnotatedString(it)) },
                 onDismiss = { statsColumn = null },
+                highlightOutliers = index in highlighted,
+                onHighlightOutliersChange = { on -> highlighted = if (on) highlighted + index else highlighted - index },
             )
         }
     }
@@ -192,6 +204,7 @@ fun ResultGrid(
                             column = column,
                             value = row.firstOrNull() ?: CellValue.Null,
                             width = widthOf(0),
+                            outlier = rowIndex in outlierRows[0].orEmpty(),
                             onClick = {
                                 onCellClick(CellSelection(rowIndex, column, row.first()))
                             },
@@ -206,6 +219,7 @@ fun ResultGrid(
                                 value = cell,
                                 modifier = Modifier
                                     .width(widthOf(index))
+                                    .outlierMark(rowIndex in outlierRows[index].orEmpty())
                                     .clickable { onCellClick(CellSelection(rowIndex, column, cell)) }
                                     .padding(horizontal = Spacing.s, vertical = Spacing.xs),
                             )
@@ -373,7 +387,7 @@ private fun HeaderCell(
 }
 
 @Composable
-private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick: () -> Unit) {
+private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, outlier: Boolean = false, onClick: () -> Unit) {
     val semantic = LocalSemanticColors.current
     Box(
         modifier = Modifier
@@ -382,6 +396,7 @@ private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick:
             // The pinned column is the screen's own ground with a hairline and a soft shade on its
             // right edge (§8): it reads as the same table, only held still while the rest scrolls.
             .background(MaterialTheme.colorScheme.background)
+            .outlierMark(outlier)
             .drawWithContent {
                 drawContent()
                 val edge = 1.dp.toPx()
@@ -403,6 +418,30 @@ private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick:
         Cell(column = column, value = value)
     }
 }
+
+/**
+ * Marks a cell as an outlier: a faint warning wash and a small triangle in the top-right corner.
+ * Two cues because a tint alone is lost on a dim screen and a marker alone is easy to miss.
+ */
+@Composable
+internal fun Modifier.outlierMark(on: Boolean): Modifier {
+    if (!on) return this
+    val warning = LocalSemanticColors.current.warning
+    return this.drawBehind {
+        drawRect(warning.copy(alpha = OUTLIER_TINT))
+        val side = OUTLIER_MARKER_DP.dp.toPx()
+        val corner = Path().apply {
+            moveTo(size.width - side, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, side)
+            close()
+        }
+        drawPath(corner, warning)
+    }
+}
+
+private const val OUTLIER_TINT = 0.16f
+private const val OUTLIER_MARKER_DP = 8
 
 @Composable
 internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modifier) {

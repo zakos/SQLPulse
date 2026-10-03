@@ -28,7 +28,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -64,10 +67,14 @@ fun ResultChartPanel(
     spec: ChartSpec?,
     onSpecChange: (ChartSpec) -> Unit,
     modifier: Modifier = Modifier,
+    /** Whether the IQR band starts drawn; the screenshot test uses it. */
+    bandInitially: Boolean = false,
 ) {
     val semantic = LocalSemanticColors.current
     val chosen = spec ?: ResultCharts.suggest(table)
     val outcome = remember(table, chosen) { ResultCharts.build(table, chosen) }
+    // Off by default: the marked points already say what is odd, the band is for checking why.
+    var showBand by remember(table) { mutableStateOf(bandInitially) }
 
     Column(modifier = modifier.fillMaxWidth()) {
         when (outcome) {
@@ -79,7 +86,16 @@ fun ResultChartPanel(
             )
 
             is ChartOutcome.Drawable -> {
-                chosen?.let { ChartControls(table, it, onSpecChange) }
+                chosen?.let {
+                    ChartControls(
+                        table = table,
+                        spec = it,
+                        onChange = onSpecChange,
+                        // Offered only where a band exists: a chip that does nothing is noise.
+                        band = if (outcome.data.series.any { s -> s.band != null }) showBand else null,
+                        onBandChange = { on -> showBand = on },
+                    )
+                }
                 // The chart on a card of its own with what it says in words above it: the value
                 // it ends on and the highest one, which is what a glance at the bars is after.
                 HairlineCard(modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.m)) {
@@ -87,11 +103,12 @@ fun ResultChartPanel(
                         ChartHeadline(outcome.data)
                         ChartCanvas(
                             data = outcome.data,
+                            showBand = showBand,
                             modifier = Modifier.fillMaxWidth().height(CHART_HEIGHT.dp),
                         )
                     }
                 }
-                Legend(outcome.data)
+                Legend(outcome.data, showBand)
                 outcome.data.truncatedTo?.let { kept ->
                     Text(
                         text = stringResource(R.string.chart_truncated, kept, table.rowCount),
@@ -128,7 +145,13 @@ private fun ChartHeadline(data: ChartData) {
 
 /** Which column names the points, which one is drawn, and bars or a line. */
 @Composable
-private fun ChartControls(table: ResultTable, spec: ChartSpec, onChange: (ChartSpec) -> Unit) {
+private fun ChartControls(
+    table: ResultTable,
+    spec: ChartSpec,
+    onChange: (ChartSpec) -> Unit,
+    band: Boolean?,
+    onBandChange: (Boolean) -> Unit,
+) {
     val labels = ResultCharts.labelCandidates(table)
     val values = ResultCharts.valueCandidates(table)
 
@@ -164,6 +187,13 @@ private fun ChartControls(table: ResultTable, spec: ChartSpec, onChange: (ChartS
                 label = { Text(stringResource(kind.textRes())) },
             )
         }
+        if (band != null) {
+            FilterChip(
+                selected = band,
+                onClick = { onBandChange(!band) },
+                label = { Text(stringResource(R.string.chart_iqr_band)) },
+            )
+        }
     }
 }
 
@@ -194,9 +224,35 @@ private fun <T> Menu(
 }
 
 @Composable
-private fun Legend(data: ChartData) {
-    if (data.series.size < 2) return
+private fun Legend(data: ChartData, showBand: Boolean) {
+    val semantic = LocalSemanticColors.current
     val palette = seriesPalette()
+    if (data.outlierCount > 0) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = Spacing.l),
+        ) {
+            Canvas(modifier = Modifier.size(LEGEND_DOT.dp)) {
+                drawOutlierMarker(semantic.danger, Offset(size.width / 2, size.height / 2), size.width / 2)
+            }
+            Text(
+                text = pluralStringResource(R.plurals.chart_outliers, data.outlierCount, data.outlierCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+    }
+    val banded = data.series.firstOrNull()?.takeIf { showBand && it.band != null }
+    if (banded != null) {
+        Text(
+            text = stringResource(R.string.chart_iqr_band_note, banded.label),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+            modifier = Modifier.padding(horizontal = Spacing.l),
+        )
+    }
+    if (data.series.size < 2) return
     Row(
         horizontalArrangement = Arrangement.spacedBy(Spacing.m),
         verticalAlignment = Alignment.CenterVertically,
@@ -227,12 +283,14 @@ private fun Legend(data: ChartData) {
  * overlapping into a smear.
  */
 @Composable
-private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
+private fun ChartCanvas(data: ChartData, showBand: Boolean, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val palette = seriesPalette()
     val axis = LocalSemanticColors.current.hairline
     val text = LocalSemanticColors.current.textSecondary
     val style = TextStyle(fontSize = AXIS_TEXT_SP.sp, color = text)
+    val outlierColor = LocalSemanticColors.current.danger
+    val ground = MaterialTheme.colorScheme.surface
 
     Canvas(modifier = modifier) {
         if (data.isEmpty) return@Canvas
@@ -279,6 +337,28 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
 
         val points = data.series.maxOf { it.points.size }
         val slot = plot.width / points
+
+        // The band sits under the data so it never hides a bar. Only the first series gets one:
+        // four overlapping tints are a smear, and the legend names which series it belongs to.
+        data.series.firstOrNull()?.band?.takeIf { showBand }?.let { band ->
+            val bandTop = y(band.q3.coerceIn(bottom, top))
+            val bandBottom = y(band.q1.coerceIn(bottom, top))
+            drawRect(
+                color = palette[0].copy(alpha = BAND_ALPHA),
+                topLeft = Offset(gutter, minOf(bandTop, bandBottom)),
+                size = Size(plot.width, maxOf(1.dp.toPx(), kotlin.math.abs(bandBottom - bandTop))),
+            )
+            val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
+            listOf(band.lowFence, band.highFence).filter { it in bottom..top }.forEach { fence ->
+                drawLine(
+                    color = outlierColor.copy(alpha = 0.7f),
+                    start = Offset(gutter, y(fence)),
+                    end = Offset(size.width, y(fence)),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = dash,
+                )
+            }
+        }
         when (data.kind) {
             ChartKind.BARS -> {
                 val barWidth = (slot / data.series.size) * BAR_FILL
@@ -289,8 +369,11 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
                         // One series: the earlier bars step back and the last one, the value the
                         // headline quotes, is drawn in full.
                         val last = index == series.points.lastIndex
+                        val outlier = index in series.outliers
                         drawRoundRect(
-                            color = palette[seriesIndex % palette.size].copy(
+                            // An outlier takes the danger colour whatever the series colour is,
+                            // so "different from the rest" reads the same on every chart.
+                            color = if (outlier) outlierColor else palette[seriesIndex % palette.size].copy(
                                 alpha = if (data.series.size == 1 && !last) 0.72f else 1f,
                             ),
                             topLeft = Offset(left, minOf(valueY, zero)),
@@ -299,6 +382,18 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
                             size = Size(barWidth, maxOf(1.dp.toPx(), kotlin.math.abs(zero - valueY))),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx()),
                         )
+                        if (outlier) {
+                            // A marker past the bar's tip: the colour alone would not survive a
+                            // colour-blind reader or a chart whose bars are all warm-coloured.
+                            // Clamped into the plot: the tallest bar reaches the top edge, and a
+                            // ring of the card's colour keeps the diamond visible where it
+                            // overlaps the bar.
+                            val r = MARKER_R.dp.toPx()
+                            val beyond = if (point.value >= 0) valueY - r * 1.8f else valueY + r * 1.8f
+                            val centre = Offset(left + barWidth / 2, beyond.coerceIn(r, plot.height - r))
+                            drawOutlierMarker(ground, centre, r + 1.5.dp.toPx())
+                            drawOutlierMarker(outlierColor, centre, r)
+                        }
                     }
                 }
             }
@@ -316,6 +411,13 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
                         color = palette[seriesIndex % palette.size],
                         style = Stroke(width = LINE_WIDTH.dp.toPx()),
                     )
+                    series.points.forEachIndexed { index, point ->
+                        if (index !in series.outliers) return@forEachIndexed
+                        val centre = Offset(gutter + index * slot + slot / 2, y(point.value))
+                        // A ring of the card's colour keeps the dot legible on top of the line.
+                        drawCircle(ground, MARKER_R.dp.toPx() + 1.5.dp.toPx(), centre)
+                        drawOutlierMarker(outlierColor, centre, MARKER_R.dp.toPx())
+                    }
                 }
             }
         }
@@ -338,6 +440,18 @@ private fun ChartCanvas(data: ChartData, modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/** The outlier marker: a diamond, a shape no bar or line end can be mistaken for. */
+private fun DrawScope.drawOutlierMarker(color: Color, centre: Offset, radius: Float) {
+    val diamond = Path().apply {
+        moveTo(centre.x, centre.y - radius)
+        lineTo(centre.x + radius, centre.y)
+        lineTo(centre.x, centre.y + radius)
+        lineTo(centre.x - radius, centre.y)
+        close()
+    }
+    drawPath(diamond, color)
 }
 
 /**
@@ -375,6 +489,8 @@ private fun ChartRefusal.textRes(): Int = when (this) {
 }
 
 private const val CHART_HEIGHT = 240
+private const val MARKER_R = 4
+private const val BAND_ALPHA = 0.12f
 private const val LEGEND_DOT = 10
 private const val AXIS_TEXT_SP = 11
 private const val AXIS_GAP = 6f

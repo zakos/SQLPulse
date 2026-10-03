@@ -17,6 +17,8 @@ data class ColumnStats(
     val average: String?,
     val min: String?,
     val max: String?,
+    /** Median, quartiles and outliers; [OutlierOutcome.NotApplicable] for non-numeric columns. */
+    val distribution: OutlierOutcome = OutlierOutcome.NotApplicable,
 ) {
     val nonNullCount: Int get() = rowCount - nullCount
 }
@@ -137,6 +139,7 @@ object ColumnStatsComputer {
             average = avgStr,
             min = minText,
             max = maxText,
+            distribution = Outliers.analyzeColumn(table, columnIndex),
         )
     }
 }

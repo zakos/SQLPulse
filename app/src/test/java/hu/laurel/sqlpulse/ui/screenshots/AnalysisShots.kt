@@ -61,6 +61,37 @@ class AnalysisShots {
     }
 
     @Test
+    fun chartWithOutliers() = paparazzi.screen {
+        val values = listOf(412, 388, 455, 301, 520, 1480, 480, 395, 430, 575, 640, 598, 505, 90)
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("nap", CellType.TEXT, "VARCHAR", null), ColumnMeta("osszeg", CellType.NUMBER, "DECIMAL", null)),
+            rows = values.mapIndexed { i, v -> listOf(CellValue.Text("09-%02d".format(i + 8)), CellValue.Number(v.toString())) },
+        )
+        ResultChartPanel(
+            table = table,
+            spec = ChartSpec(labelColumn = 0, valueColumns = listOf(1), kind = ChartKind.BARS),
+            onSpecChange = {},
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+
+    @Test
+    fun lineChartWithOutliersAndBand() = paparazzi.screen {
+        val values = listOf(412, 388, 455, 301, 520, 1480, 480, 395, 430, 575, 640, 598, 505, 90)
+        val table = ResultTable(
+            columns = listOf(ColumnMeta("nap", CellType.DATE, "DATE", null), ColumnMeta("osszeg", CellType.NUMBER, "DECIMAL", null)),
+            rows = values.mapIndexed { i, v -> listOf(CellValue.Date("09-%02d".format(i + 8)), CellValue.Number(v.toString())) },
+        )
+        ResultChartPanel(
+            table = table,
+            spec = ChartSpec(labelColumn = 0, valueColumns = listOf(1), kind = ChartKind.LINE),
+            onSpecChange = {},
+            modifier = Modifier.padding(16.dp),
+            bandInitially = true,
+        )
+    }
+
+    @Test
     fun snapshot() = paparazzi.screen {
         fun num(v: String) = CellValue.Number(v)
         fun txt(v: String) = CellValue.Text(v)
