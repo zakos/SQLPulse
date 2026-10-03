@@ -51,7 +51,8 @@ object ProductionPolicy {
      */
     fun refusal(shape: ProductionShape): SaveRefusal? {
         if (!shape.environment.isProduction) return null
-        if (!isProtected(shape.tunnelled, shape.sslMode)) return SaveRefusal.Unprotected
+        // A database file on the phone crosses no network, so "clear text" has no meaning for it.
+        if (!shape.local && !isProtected(shape.tunnelled, shape.sslMode)) return SaveRefusal.Unprotected
         val requested = shape.queryTimeoutSeconds
         if (requested > MAX_QUERY_SECONDS) {
             return SaveRefusal.QueryTimeoutTooLong(requested, MAX_QUERY_SECONDS)
@@ -128,6 +129,8 @@ data class ProductionShape(
     val sslMode: SslMode,
     val readOnly: Boolean,
     val queryTimeoutSeconds: Int,
+    /** A SQLite file in app storage: there is no link to protect, so the protection rule is moot. */
+    val local: Boolean = false,
 )
 
 /**

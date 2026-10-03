@@ -16,6 +16,12 @@ interface ConnectionEditorController {
     fun acceptHostKey()
     fun acceptReadOnlyOffer()
     fun clearCertificate()
+
+    /** SQLite: a file picked in the system picker, to be copied into the app. */
+    fun chooseFile(uri: Uri) = Unit
+
+    /** SQLite: copy the original again, where Android still lets the app read it. */
+    fun refreshFile() = Unit
     fun dismissReadOnlyOffer()
     val error: StateFlow<String?>
     val form: StateFlow<ConnectionForm>

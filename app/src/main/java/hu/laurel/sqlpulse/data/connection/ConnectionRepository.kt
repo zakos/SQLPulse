@@ -16,6 +16,7 @@ import hu.laurel.sqlpulse.data.db.SshCredentialDao
 import hu.laurel.sqlpulse.data.db.SshCredentialEntity
 import hu.laurel.sqlpulse.data.db.SshJumpCredentialDao
 import hu.laurel.sqlpulse.data.db.SshJumpCredentialEntity
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.di.IoDispatcher
 import hu.laurel.sqlpulse.security.BiometricUnlock
@@ -40,6 +41,7 @@ class ConnectionRepository @Inject constructor(
     private val knownHosts: KnownHostDao,
     private val crypto: KeystoreCrypto,
     private val unlock: BiometricUnlock,
+    private val localFiles: LocalDatabaseFiles,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -93,6 +95,9 @@ class ConnectionRepository @Inject constructor(
         sshJumpCredentials.delete(connection.id)
         knownHosts.delete(connection.sshHost, connection.sshPort)
         connections.delete(connection)
+        // A SQLite connection owns a private copy of its file (and whatever SQLite keeps beside it);
+        // without this the database would stay in app storage with nothing left that points at it.
+        localFiles.delete(connection.id)
     }
 
     suspend fun duplicate(connection: ConnectionEntity): ConnectionEntity = withContext(io) {
@@ -102,7 +107,11 @@ class ConnectionRepository @Inject constructor(
             name = context.getString(R.string.connection_duplicate) + " — " + connection.name,
             lastUsedAt = null,
         )
-        copy.copy(id = connections.insert(copy))
+        val inserted = copy.copy(id = connections.insert(copy))
+        // The clone of a file connection works on a file of its own: sharing one copy would make a
+        // write through one connection appear in the other.
+        if (!DatabaseEngine.fromName(connection.engine).hasServer) localFiles.duplicate(connection.id, inserted.id)
+        inserted
     }
 
     suspend fun hasPassword(connectionId: Long): Boolean =

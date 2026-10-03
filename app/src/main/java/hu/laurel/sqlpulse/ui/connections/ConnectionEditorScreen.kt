@@ -1,6 +1,8 @@
 package hu.laurel.sqlpulse.ui.connections
 
 import android.net.Uri
+import java.text.DateFormat
+import java.util.Date
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -56,6 +60,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
@@ -65,6 +70,10 @@ import hu.laurel.sqlpulse.data.connection.SaveRefusal
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
+import hu.laurel.sqlpulse.data.schema.formatByteSize
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.LabeledField
 import hu.laurel.sqlpulse.ui.components.SectionCaption
@@ -138,14 +147,17 @@ fun ConnectionEditorScreenContent(
                     .padding(horizontal = Spacing.l, vertical = Spacing.m),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.m),
             ) {
-                OutlinedButton(
-                    onClick = { if (tunnel is TunnelState.Active) viewModel.stopTest() else viewModel.test() },
-                    enabled = form.canSave,
-                    shape = Shapes.button,
-                    modifier = Modifier.height(48.dp),
-                ) {
-                    Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(stringResource(R.string.connection_test), modifier = Modifier.padding(start = Spacing.s))
+                // Testing a file would only report that a file exists; there is no link to try.
+                if (form.engine.hasServer) {
+                    OutlinedButton(
+                        onClick = { if (tunnel is TunnelState.Active) viewModel.stopTest() else viewModel.test() },
+                        enabled = form.canSave,
+                        shape = Shapes.button,
+                        modifier = Modifier.height(48.dp),
+                    ) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(stringResource(R.string.connection_test), modifier = Modifier.padding(start = Spacing.s))
+                    }
                 }
                 Button(
                     onClick = { viewModel.save { onBack() } },
@@ -459,7 +471,12 @@ fun ConnectionEditorScreenContent(
             }
 
             if (!form.engine.hasServer) {
-                FileSection(fileName = form.fileName)
+                FileSection(
+                    form = form,
+                    onChoose = viewModel::chooseFile,
+                    onRefresh = viewModel::refreshFile,
+                    onReadOnly = { value -> viewModel.update { it.copy(readOnly = value) } },
+                )
             } else Section(
                 stringResource(
                     if (form.engine == DatabaseEngine.MYSQL) R.string.section_mysql else R.string.engine_section_server,
@@ -539,41 +556,44 @@ fun ConnectionEditorScreenContent(
                 )
             }
 
-            Section(stringResource(R.string.section_timeouts)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    LabeledField(
-                        value = form.connectTimeout,
-                        onValueChange = { value ->
-                            viewModel.update { it.copy(connectTimeout = value.filter(Char::isDigit)) }
-                        },
-                        label = { Text(stringResource(R.string.timeout_connect)) },
-                        isError = !ConnectionTimeouts.isValid(form.connectTimeout),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        mono = true,
-                    )
-                    LabeledField(
-                        value = form.queryTimeout,
-                        onValueChange = { value ->
-                            viewModel.update { it.copy(queryTimeout = value.filter(Char::isDigit)) }
-                        },
-                        label = { Text(stringResource(R.string.timeout_query)) },
-                        isError = !ConnectionTimeouts.isValid(form.queryTimeout),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        mono = true,
+            // A file has no connect step to time out; the query timeout is left at its default.
+            if (form.engine.hasServer) {
+                Section(stringResource(R.string.section_timeouts)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                        LabeledField(
+                            value = form.connectTimeout,
+                            onValueChange = { value ->
+                                viewModel.update { it.copy(connectTimeout = value.filter(Char::isDigit)) }
+                            },
+                            label = { Text(stringResource(R.string.timeout_connect)) },
+                            isError = !ConnectionTimeouts.isValid(form.connectTimeout),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            mono = true,
+                        )
+                        LabeledField(
+                            value = form.queryTimeout,
+                            onValueChange = { value ->
+                                viewModel.update { it.copy(queryTimeout = value.filter(Char::isDigit)) }
+                            },
+                            label = { Text(stringResource(R.string.timeout_query)) },
+                            isError = !ConnectionTimeouts.isValid(form.queryTimeout),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            mono = true,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.timeout_note, ConnectionTimeouts.MAX_SECONDS),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
                     )
                 }
-                Text(
-                    stringResource(R.string.timeout_note, ConnectionTimeouts.MAX_SECONDS),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
             }
 
-            TestResult(tunnel = tunnel, serverVersion = serverVersion)
+            if (form.engine.hasServer) TestResult(tunnel = tunnel, serverVersion = serverVersion)
 
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -646,28 +666,151 @@ private fun EngineSection(engine: DatabaseEngine, onSelect: (DatabaseEngine) -> 
 }
 
 /**
- * The database file of a SQLite connection. The picker itself arrives with the SQLite engine
- * (phase 2): it copies the chosen file into LocalDatabaseFiles and fills fileUri/fileName.
+ * The database file of a SQLite connection: what was picked, the app's copy of it, and whether the
+ * copy may be written to. The picker copies the file into app storage (LocalDatabaseFiles), so
+ * everything shown here is about that copy; the original is never touched.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FileSection(fileName: String?) {
+private fun FileSection(
+    form: ConnectionForm,
+    onChoose: (Uri) -> Unit,
+    onRefresh: () -> Unit,
+    onReadOnly: (Boolean) -> Unit,
+) {
     val semantic = LocalSemanticColors.current
+    var confirmRefresh by rememberSaveable { mutableStateOf(false) }
+    // The picker filters by MIME type, and databases have no reliable one, so `*/*` is the real
+    // filter and the specific types only put the likely files first on providers that know them.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onChoose)
+    }
+    val fileName = form.fileName
+    val hasCopy = form.fileSize != null || form.fileStaged != null
+
     Section(stringResource(R.string.engine_section_file)) {
         Text(
             fileName ?: stringResource(R.string.engine_file_none),
             style = MaterialTheme.typography.bodyLarge,
             color = if (fileName == null) semantic.textSecondary else MaterialTheme.colorScheme.onSurface,
         )
-        OutlinedButton(onClick = {}, enabled = false, shape = Shapes.button) {
-            Text(stringResource(R.string.engine_file_choose))
+        when {
+            form.fileBusy -> Text(
+                stringResource(R.string.sqlite_file_copying),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+
+            form.fileSize != null && form.fileCopiedAt != null -> Text(
+                stringResource(
+                    R.string.sqlite_file_details,
+                    formatByteSize(form.fileSize),
+                    DateFormat.getDateTimeInstance(
+                        DateFormat.MEDIUM, DateFormat.SHORT, LocalConfiguration.current.locales[0],
+                    ).format(Date(form.fileCopiedAt)),
+                ),
+                style = MonoStyles.cell.copy(fontSize = 12.sp),
+                color = semantic.textSecondary,
+            )
+
+            fileName != null && !hasCopy -> Text(
+                stringResource(R.string.sqlite_file_missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
         }
+        if (form.fileStaged != null) {
+            Text(
+                stringResource(R.string.sqlite_file_unsaved),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+        if (form.fileWal) {
+            Text(
+                stringResource(R.string.sqlite_file_wal),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            OutlinedButton(
+                onClick = { picker.launch(SQLITE_MIME_TYPES) },
+                enabled = !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.engine_file_choose)) }
+            OutlinedButton(
+                // A writable copy may hold changes of the user's own, which a refresh would throw
+                // away: that one asks first.
+                onClick = { if (form.readOnly || form.id == 0L) onRefresh() else confirmRefresh = true },
+                enabled = form.fileCanRefresh && !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.sqlite_file_refresh)) }
+        }
+        if (fileName != null && !form.fileCanRefresh) {
+            Text(
+                stringResource(R.string.sqlite_file_refresh_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.db_read_only),
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                modifier = Modifier.weight(1f).padding(end = Spacing.m),
+            )
+            Switch(checked = form.readOnly, onCheckedChange = onReadOnly)
+        }
+        Text(
+            stringResource(if (form.readOnly) R.string.sqlite_read_only_on else R.string.sqlite_read_only_off),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (form.readOnly) semantic.textSecondary else semantic.warning,
+        )
         Text(
             stringResource(R.string.engine_file_note),
             style = MaterialTheme.typography.bodySmall,
             color = semantic.textSecondary,
         )
     }
+
+    if (confirmRefresh) {
+        BasicAlertDialog(onDismissRequest = { confirmRefresh = false }) {
+            RefreshCopyCard(
+                onCancel = { confirmRefresh = false },
+                onConfirm = {
+                    confirmRefresh = false
+                    onRefresh()
+                },
+            )
+        }
+    }
 }
+
+/** The question before a refresh replaces a copy that may have been written to. */
+@Composable
+fun RefreshCopyCard(onCancel: () -> Unit, onConfirm: () -> Unit) {
+    DialogCard(danger = true) {
+        DialogHeading(title = stringResource(R.string.sqlite_refresh_title))
+        Text(stringResource(R.string.sqlite_refresh_body), style = MaterialTheme.typography.bodyMedium)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onCancel,
+            actionLabel = stringResource(R.string.sqlite_refresh_confirm),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
+}
+
+private val SQLITE_MIME_TYPES = arrayOf(
+    "application/vnd.sqlite3",
+    "application/x-sqlite3",
+    "application/x-sqlite",
+    "application/octet-stream",
+    "*/*",
+)
 
 /**
  * How the MySQL connection itself is protected (research summary, §1).

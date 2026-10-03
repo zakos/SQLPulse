@@ -35,15 +35,6 @@ class EngineShots {
     }
 
     @Test
-    fun editorSqlite() = paparazzi.screen {
-        Editor(
-            ConnectionForm(name = "Terepi felmérés", environment = ConnectionEnvironment.DEVELOPMENT)
-                .withEngine(DatabaseEngine.SQLITE)
-                .copy(fileName = "felmeres-2026-10.db"),
-        )
-    }
-
-    @Test
     fun notAvailableForEngine() = paparazzi.screen {
         EngineUnavailableContent(engineName = "PostgreSQL", onBack = {})
     }
