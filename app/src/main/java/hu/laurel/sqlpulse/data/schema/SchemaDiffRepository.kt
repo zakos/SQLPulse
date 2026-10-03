@@ -3,6 +3,8 @@ package hu.laurel.sqlpulse.data.schema
 import hu.laurel.sqlpulse.data.db.SchemaCacheDao
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -58,22 +60,27 @@ class SchemaDiffRepository @Inject constructor(
      *
      * Live for the open connection (and captured on the way), otherwise whatever was ever listed or
      * browsed. The server's own schemas are left out: comparing `mysql` between two servers says
-     * which version each one runs, which the connection card already does.
+     * which version each one runs, which the connection card already does. What counts as the
+     * server's own is the [engine]'s call (`pg_catalog`, `sys`, …).
      */
-    suspend fun databases(connectionId: Long): List<String> {
+    suspend fun databases(connectionId: Long, engine: DatabaseEngine = DatabaseEngine.MYSQL): List<String> {
+        val system = SqlDialects.forEngine(engine).systemNamespaces.map { it.lowercase() }.toSet()
         if (liveConnectionId() == connectionId) {
             val live = schemaCache.databases(connectionId).valueOrNull()
-            if (live != null) return live.filter { it.lowercase() !in SYSTEM_SCHEMAS }
+            if (live != null) return live.filter { it.lowercase() !in system }
         }
         val listed = cache.databases(connectionId).map { it.name }
         val browsed = cache.databasesWithTables(connectionId)
         return (listed + browsed).distinct()
-            .filter { it.lowercase() !in SYSTEM_SCHEMAS }
+            .filter { it.lowercase() !in system }
             .sortedBy { it.lowercase() }
     }
 
-    /** Everything the cache holds about one database, assembled into a comparable side. */
-    suspend fun load(connectionId: Long, database: String): SchemaCapture {
+    /**
+     * Everything the cache holds about one database, assembled into a comparable side.
+     * [engine] is the connection's; it is stamped on the side because the cache does not know it.
+     */
+    suspend fun load(connectionId: Long, database: String, engine: DatabaseEngine = DatabaseEngine.MYSQL): SchemaCapture {
         val tableRows = cache.tables(connectionId, database)
         val captured = tableRows.filter { it.structureCapturedAt != null }.map { it.name }.toSet()
         val columns = cache.columnsOfDatabase(connectionId, database).groupBy { it.tableName }
@@ -117,7 +124,7 @@ class SchemaDiffRepository @Inject constructor(
             )
         }
         return SchemaCapture(
-            side = SchemaDiffSide(database = database, tables = tables, structures = structures),
+            side = SchemaDiffSide(database = database, tables = tables, structures = structures, engine = engine),
             tablesCapturedAt = tableRows.maxOfOrNull { it.capturedAt },
             structuresCaptured = structures.size,
             oldestStructureAt = tableRows.mapNotNull { it.structureCapturedAt }.minOrNull(),
@@ -136,6 +143,7 @@ class SchemaDiffRepository @Inject constructor(
         database: String,
         wanted: (String) -> Boolean = { true },
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        engine: DatabaseEngine = DatabaseEngine.MYSQL,
     ): SchemaCapture {
         if (liveConnectionId() != connectionId) throw NotLiveException()
         val listed = schemaCache.tables(connectionId, database, userAsked = true)
@@ -148,13 +156,9 @@ class SchemaDiffRepository @Inject constructor(
             schemaCache.structure(connectionId, database, table.name, userAsked = true)
         }
         onProgress(targets.size, targets.size)
-        return load(connectionId, database)
+        return load(connectionId, database, engine)
     }
 
     /** The side asked to be refreshed is not the one with the open session. */
     class NotLiveException : Exception("no live session for this connection")
-
-    private companion object {
-        val SYSTEM_SCHEMAS = setOf("information_schema", "mysql", "performance_schema", "sys")
-    }
 }

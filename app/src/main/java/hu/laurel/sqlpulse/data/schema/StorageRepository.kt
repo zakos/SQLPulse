@@ -1,9 +1,8 @@
 package hu.laurel.sqlpulse.data.schema
 
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
-import java.sql.Connection
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import java.sql.ResultSet
-import java.sql.SQLException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +27,14 @@ class StorageRepository @Inject constructor(
 
     suspend fun load(database: String): StorageSnapshot = sessions.withConnection { connection ->
         val timeout = sessions.queryTimeoutSeconds()
-        val run = Runner(connection, timeout)
+        val run = StorageRunner(connection, timeout)
+        val dialect = sessions.dialect()
+        when (dialect.engine) {
+            DatabaseEngine.POSTGRESQL -> return@withConnection PostgresStorage.load(run, database)
+            DatabaseEngine.SQLSERVER -> return@withConnection SqlServerStorage.load(run, database)
+            DatabaseEngine.SQLITE -> return@withConnection SqliteStorage.load(run, dialect::quoteIdentifier, database)
+            DatabaseEngine.MYSQL -> Unit
+        }
 
         // The one source the screen cannot do without; its failure is the screen's failure.
         val types = runCatching { run.query(AUTO_INCREMENT_TYPES, database) { it.getString(1) to it.getString(2) }.toMap() }
@@ -48,11 +54,11 @@ class StorageRepository @Inject constructor(
             database = database,
             tables = if (indexSizes != null) mergeIndexSizes(tables, indexSizes) else tables,
             indexSizesAvailable = indexSizes != null,
-            unused = source { if (mariaDb) unusedOnMariaDb(run, database) else unusedOnMySql(run, database) },
+            unused = storageSource { if (mariaDb) unusedOnMariaDb(run, database) else unusedOnMySql(run, database) },
             redundant = if (mariaDb) {
                 StorageSource.Unavailable(UnavailableKind.NOT_ON_SERVER)
             } else {
-                source { redundant(run, database) }
+                storageSource { redundant(run, database) }
             },
             uptimeSeconds = runCatching {
                 run.query("SHOW GLOBAL STATUS LIKE 'Uptime'") { it.getString(2)?.toLongOrNull() }.firstOrNull()
@@ -78,15 +84,13 @@ class StorageRepository @Inject constructor(
         )
     }
 
-    private fun ResultSet.longOrNull(column: Int): Long? = getLong(column).takeUnless { wasNull() }
-
     /**
      * MySQL: the `sys` view when the schema exists, otherwise the performance schema it reads.
      *
      * Unique indexes are never reported — they enforce a constraint whether or not a query ever
      * reads them, so "unused" would be the wrong word.
      */
-    private fun unusedOnMySql(run: Runner, database: String): StorageSource<UnusedIndexes> {
+    private fun unusedOnMySql(run: StorageRunner, database: String): StorageSource<UnusedIndexes> {
         // With the instrument or the whole schema off, every counter is zero and every index would
         // be named unused; better to say the answer is not there.
         val enabled = runCatching { run.query("SELECT @@performance_schema") { it.getInt(1) }.firstOrNull() }.getOrNull()
@@ -108,7 +112,7 @@ class StorageRepository @Inject constructor(
     }
 
     /** MariaDB counts index reads only with `userstat` on; without it there is nothing to ask. */
-    private fun unusedOnMariaDb(run: Runner, database: String): StorageSource<UnusedIndexes> {
+    private fun unusedOnMariaDb(run: StorageRunner, database: String): StorageSource<UnusedIndexes> {
         val userstat = runCatching { run.query("SELECT @@userstat") { it.getInt(1) }.firstOrNull() }
             .getOrElse { return StorageSource.Unavailable(UnavailableKind.FAILED, firstLine(it)) }
         if (userstat != 1) return StorageSource.Unavailable(UnavailableKind.USERSTAT_OFF)
@@ -116,7 +120,7 @@ class StorageRepository @Inject constructor(
         return StorageSource.Loaded(UnusedIndexes(found, fromUserstat = true))
     }
 
-    private fun redundant(run: Runner, database: String): StorageSource<List<RedundantIndex>> {
+    private fun redundant(run: StorageRunner, database: String): StorageSource<List<RedundantIndex>> {
         val rows = run.query(REDUNDANT, database) {
             RedundantIndex(
                 table = it.getString(1),
@@ -127,26 +131,6 @@ class StorageRepository @Inject constructor(
             )
         }
         return StorageSource.Loaded(rows)
-    }
-
-    private inline fun <T> source(block: () -> StorageSource<T>): StorageSource<T> = try {
-        block()
-    } catch (e: SQLException) {
-        StorageSource.Unavailable(UnavailableKind.FAILED, firstLine(e))
-    }
-
-    private fun firstLine(e: Throwable): String = e.message.orEmpty().lineSequence().firstOrNull().orEmpty()
-
-    /** One statement at a time with the session's own timeout; parameters are bound, never pasted in. */
-    private class Runner(private val connection: Connection, private val timeoutSeconds: Int) {
-        fun <T> query(sql: String, vararg params: String, read: (ResultSet) -> T): List<T> =
-            connection.prepareStatement(sql).use { statement ->
-                statement.queryTimeout = timeoutSeconds
-                params.forEachIndexed { index, value -> statement.setString(index + 1, value) }
-                statement.executeQuery().use { rows ->
-                    buildList { while (rows.next()) read(rows)?.let(::add) }
-                }
-            }
     }
 
     private companion object {

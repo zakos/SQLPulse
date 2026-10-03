@@ -11,6 +11,7 @@ import hu.laurel.sqlpulse.data.schema.SchemaRoutine
 import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.schema.SchemaTrigger
 import hu.laurel.sqlpulse.data.schema.TableColumns
+import hu.laurel.sqlpulse.data.schema.TableKind
 import hu.laurel.sqlpulse.data.schema.TablePartition
 import java.sql.Connection
 
@@ -55,6 +56,17 @@ interface SchemaCatalog {
 
     /** The table's CREATE statement for the DDL tab, or "" when the engine cannot produce one. */
     fun ddl(connection: Connection, namespace: String, table: String): String
+
+    /**
+     * Every base table's columns (name, type, primary key flag) in [namespace], for the search
+     * across a database: the type is read to decide which columns are worth looking in. The
+     * default asks table by table; an engine that can say it in one statement overrides it,
+     * because over a tunnel the round trips are the cost.
+     */
+    fun searchColumns(connection: Connection, namespace: String): Map<String, List<SchemaColumn>> =
+        tables(connection, namespace)
+            .filter { it.kind == TableKind.TABLE }
+            .associate { it.name to columns(connection, namespace, it.name) }
 
     fun checkConstraints(connection: Connection, namespace: String, table: String): List<CheckConstraint> =
         emptyList()

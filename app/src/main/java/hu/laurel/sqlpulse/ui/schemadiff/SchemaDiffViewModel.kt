@@ -9,6 +9,7 @@ import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.schema.SchemaDiff
 import hu.laurel.sqlpulse.data.schema.SchemaDiffOptions
 import hu.laurel.sqlpulse.data.schema.SchemaDiffRepository
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +60,8 @@ class SchemaDiffViewModel @Inject constructor(
     private fun chooseDefaults(list: List<ConnectionEntity>, live: Long?) {
         val a = list.firstOrNull { it.id == live } ?: list.first()
         val aProduction = ConnectionEnvironment.fromName(a.environment).isProduction
-        val others = list.filter { it.id != a.id }
+        // Only another connection of the same engine can be compared with A.
+        val others = list.filter { it.id != a.id && it.engine == a.engine }
         val b = others.firstOrNull { ConnectionEnvironment.fromName(it.environment).isProduction != aProduction }
             ?: others.firstOrNull()
         selectConnection(DiffSide.A, a.id)
@@ -71,7 +73,8 @@ class SchemaDiffViewModel @Inject constructor(
         setSide(side) { SchemaDiffSideState(connectionId = connectionId, loading = true) }
         _uiState.update { it.copy(result = null) }
         jobs[side] = viewModelScope.launch {
-            val databases = runCatching { repository.databases(connectionId) }.getOrDefault(emptyList())
+            val engine = engineOf(connectionId)
+            val databases = runCatching { repository.databases(connectionId, engine) }.getOrDefault(emptyList())
             setSide(side) { it.copy(databases = databases, loading = false) }
             val other = _uiState.value.side(side.other()).database
             val configured = _uiState.value.connection(connectionId)?.database
@@ -90,7 +93,7 @@ class SchemaDiffViewModel @Inject constructor(
     private suspend fun load(side: DiffSide, database: String) {
         val connectionId = _uiState.value.side(side).connectionId ?: return
         setSide(side) { it.copy(database = database, capture = null, loading = true, refreshFailed = false) }
-        val capture = runCatching { repository.load(connectionId, database) }.getOrNull()
+        val capture = runCatching { repository.load(connectionId, database, engineOf(connectionId)) }.getOrNull()
         setSide(side) { it.copy(capture = capture, loading = false) }
         _uiState.update { it.copy(now = System.currentTimeMillis()) }
         recompute()
@@ -116,6 +119,7 @@ class SchemaDiffViewModel @Inject constructor(
                     database = database,
                     wanted = { name -> otherNames == null || name.lowercase() in otherNames },
                     onProgress = { done, total -> setSide(side) { it.copy(progress = done to total) } },
+                    engine = engineOf(connectionId),
                 )
                 setSide(side) { it.copy(capture = capture, progress = null) }
             } catch (cancelled: CancellationException) {
@@ -148,7 +152,8 @@ class SchemaDiffViewModel @Inject constructor(
         // every table of the other side as missing.
         val a = state.a.capture?.takeIf { it.tablesCapturedAt != null }
         val b = state.b.capture?.takeIf { it.tablesCapturedAt != null }
-        if (a == null || b == null) {
+        // Two engines have nothing to compare; the screen explains why instead of showing a result.
+        if (a == null || b == null || state.enginesDiffer) {
             _uiState.update { it.copy(result = null) }
             return
         }
@@ -158,6 +163,9 @@ class SchemaDiffViewModel @Inject constructor(
             _uiState.update { it.copy(result = result) }
         }
     }
+
+    private fun engineOf(connectionId: Long): DatabaseEngine =
+        _uiState.value.connection(connectionId)?.let { DatabaseEngine.fromName(it.engine) } ?: DatabaseEngine.MYSQL
 
     private fun setSide(side: DiffSide, change: (SchemaDiffSideState) -> SchemaDiffSideState) {
         _uiState.update {

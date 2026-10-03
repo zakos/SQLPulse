@@ -58,6 +58,9 @@ object SqliteDialect : SqlDialect {
 
     override val features: Set<EngineFeature> = setOf(
         EngineFeature.ROW_EDITING,
+        EngineFeature.DATABASE_SEARCH,
+        EngineFeature.SCHEMA_DIFF,
+        EngineFeature.STORAGE,
         EngineFeature.CSV_IMPORT,
         EngineFeature.TABLE_DDL,
         EngineFeature.ROW_LINKS,

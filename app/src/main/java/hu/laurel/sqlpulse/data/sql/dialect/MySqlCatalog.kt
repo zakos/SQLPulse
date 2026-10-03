@@ -512,6 +512,36 @@ object MySqlCatalog : SchemaCatalog {
             }
         }
 
+    /** One round trip instead of the five per table that the table page spends. */
+    override fun searchColumns(connection: Connection, namespace: String): Map<String, List<SchemaColumn>> =
+        connection.prepareStatement(
+            """
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, EXTRA
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = ?
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().use { rows ->
+                val byTable = linkedMapOf<String, MutableList<SchemaColumn>>()
+                while (rows.next()) {
+                    byTable.getOrPut(rows.getString("TABLE_NAME")) { mutableListOf() }.add(
+                        SchemaColumn(
+                            name = rows.getString("COLUMN_NAME"),
+                            typeName = rows.getString("COLUMN_TYPE").orEmpty(),
+                            nullable = true,
+                            defaultValue = null,
+                            isPrimaryKey = rows.getString("COLUMN_KEY") == "PRI",
+                            extra = rows.getString("EXTRA"),
+                            comment = null,
+                        ),
+                    )
+                }
+                byTable
+            }
+        }
+
     private inline fun <T> ResultSet.collect(mapper: (ResultSet) -> T): List<T> = use { rows ->
         buildList {
             while (rows.next()) add(mapper(rows))

@@ -172,13 +172,14 @@ class DatabaseSearchViewModel @Inject constructor(
     private suspend fun run(database: String, term: String, mode: SearchMode) {
         val state = _uiState.value
         val columns = repository.columns(database)
+        val dialect = sessions.dialect()
         val all = schema.tables(database)
             .filter { it.kind == TableKind.TABLE }
             .sortedWith(compareBy({ it.approximateRows ?: Long.MAX_VALUE }, { it.name }))
 
         // Decide what is left out before starting, so that the progress total is honest.
         val searchable = all.filter { table ->
-            DatabaseSearch.plan(database, table.name, columns[table.name].orEmpty(), term, mode, 1) != null
+            DatabaseSearch.plan(database, table.name, columns[table.name].orEmpty(), term, mode, 1, dialect) != null
         }
         val sizeOk = if (state.skipLargeTables) {
             searchable.filter { (it.approximateRows ?: 0L) <= LARGE_TABLE_ROWS }
@@ -194,7 +195,7 @@ class DatabaseSearchViewModel @Inject constructor(
             currentCoroutineContext().ensureActive()
             _uiState.update { it.copy(currentTable = table.name) }
             val plan = DatabaseSearch.plan(
-                database, table.name, columns[table.name].orEmpty(), term, mode, state.rowsPerTable,
+                database, table.name, columns[table.name].orEmpty(), term, mode, state.rowsPerTable, dialect,
             ) ?: continue
             try {
                 val rows = repository.search(plan)

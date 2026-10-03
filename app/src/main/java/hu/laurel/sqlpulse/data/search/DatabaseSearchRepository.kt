@@ -24,41 +24,13 @@ class DatabaseSearchRepository @Inject constructor(
     private var running: Statement? = null
 
     /**
-     * Every column of every table in [database], in one statement.
-     *
-     * One round trip instead of the five per table that the table page spends: a search touches
-     * every table, and over a tunnel on a phone the round trips are the cost worth counting.
+     * Every column of every table in [database] (a schema, outside MySQL), in one statement where
+     * the engine's catalog can: a search touches every table, and over a tunnel on a phone the
+     * round trips are the cost worth counting.
      */
     suspend fun columns(database: String): Map<String, List<SchemaColumn>> =
         sessions.withConnection { connection ->
-            connection.prepareStatement(
-                """
-                SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY, EXTRA
-                FROM information_schema.COLUMNS
-                WHERE TABLE_SCHEMA = ?
-                ORDER BY TABLE_NAME, ORDINAL_POSITION
-                """.trimIndent(),
-            ).use { statement ->
-                statement.queryTimeout = sessions.queryTimeoutSeconds()
-                statement.setString(1, database)
-                statement.executeQuery().use { rows ->
-                    val byTable = linkedMapOf<String, MutableList<SchemaColumn>>()
-                    while (rows.next()) {
-                        byTable.getOrPut(rows.getString("TABLE_NAME")) { mutableListOf() }.add(
-                            SchemaColumn(
-                                name = rows.getString("COLUMN_NAME"),
-                                typeName = rows.getString("COLUMN_TYPE").orEmpty(),
-                                nullable = true,
-                                defaultValue = null,
-                                isPrimaryKey = rows.getString("COLUMN_KEY") == "PRI",
-                                extra = rows.getString("EXTRA"),
-                                comment = null,
-                            ),
-                        )
-                    }
-                    byTable
-                }
-            }
+            sessions.dialect().catalog.searchColumns(connection, database)
         }
 
     /** Runs one table's search with the connection's own query timeout. */

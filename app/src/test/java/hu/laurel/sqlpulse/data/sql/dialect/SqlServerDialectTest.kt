@@ -537,7 +537,8 @@ class SqlServerDialectTest {
             setOf(
                 EngineFeature.ROW_EDITING, EngineFeature.EDITABLE_RESULTS, EngineFeature.WRITE_PREVIEW,
                 EngineFeature.CSV_IMPORT, EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP,
-                EngineFeature.ROUTINES, EngineFeature.TRIGGERS,
+                EngineFeature.ROUTINES, EngineFeature.TRIGGERS, EngineFeature.DATABASE_SEARCH,
+                EngineFeature.SCHEMA_DIFF, EngineFeature.STORAGE,
             ),
             dialect.features,
         )

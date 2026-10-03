@@ -106,6 +106,47 @@ object SqlServerCatalog : SchemaCatalog {
         }
 
     /**
+     * Every user table's columns in one statement, typed by the underlying system type, so a
+     * column of an alias type (`sysname`, a user-defined `nvarchar` alias) is still seen as text.
+     */
+    override fun searchColumns(connection: Connection, namespace: String): Map<String, List<SchemaColumn>> =
+        connection.prepareStatement(
+            """
+            SELECT o.name AS table_name, c.name AS name, t.name AS type_name,
+                   CASE WHEN EXISTS (
+                        SELECT 1 FROM sys.indexes i
+                        JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                        WHERE i.object_id = c.object_id AND i.is_primary_key = 1 AND ic.column_id = c.column_id
+                   ) THEN 1 ELSE 0 END AS is_pk
+            FROM sys.columns c
+            JOIN sys.objects o ON o.object_id = c.object_id
+            JOIN sys.schemas s ON s.schema_id = o.schema_id
+            JOIN sys.types t ON t.system_type_id = c.system_type_id AND t.user_type_id = t.system_type_id
+            WHERE s.name = ? AND o.type = 'U'
+            ORDER BY o.name, c.column_id
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().use { rows ->
+                val byTable = linkedMapOf<String, MutableList<SchemaColumn>>()
+                while (rows.next()) {
+                    byTable.getOrPut(rows.getString("table_name")) { mutableListOf() }.add(
+                        SchemaColumn(
+                            name = rows.getString("name"),
+                            typeName = rows.getString("type_name"),
+                            nullable = true,
+                            defaultValue = null,
+                            isPrimaryKey = rows.getInt("is_pk") == 1,
+                            extra = null,
+                            comment = null,
+                        ),
+                    )
+                }
+                byTable
+            }
+        }
+
+    /**
      * Columns with their type spelled the way T-SQL declares it (`nvarchar(50)`, `decimal(10,2)`),
      * identity and computed columns marked in `extra` in the words the shared code already reads:
      * an identity column says `auto_increment` (CSV import leaves such columns out), a computed or

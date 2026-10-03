@@ -50,6 +50,9 @@ import hu.laurel.sqlpulse.data.schema.StorageSource
 import hu.laurel.sqlpulse.data.schema.StorageTable
 import hu.laurel.sqlpulse.data.schema.StorageTotals
 import hu.laurel.sqlpulse.data.schema.UnavailableKind
+import hu.laurel.sqlpulse.data.schema.UnusedBasis
+import hu.laurel.sqlpulse.data.schema.CounterKind
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.schema.UnusedIndexes
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
@@ -202,10 +205,32 @@ private fun StorageList(
             }
         }
 
-        if (!snapshot.indexSizesAvailable) {
+        snapshot.fileBytes?.let { file ->
             item {
                 Text(
-                    stringResource(R.string.storage_index_sizes_unavailable),
+                    buildString {
+                        append(stringResource(R.string.storage_file_size, StorageFormat.bytes(file, locale)))
+                        snapshot.fileFreeBytes?.takeIf { it > 0 }?.let {
+                            append(" · ").append(stringResource(R.string.storage_free_space, StorageFormat.bytes(it, locale)))
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                    modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s),
+                )
+            }
+        }
+
+        if (!snapshot.sizesAvailable || !snapshot.indexSizesAvailable) {
+            item {
+                Text(
+                    stringResource(
+                        when {
+                            !snapshot.sizesAvailable -> R.string.storage_sizes_unavailable
+                            snapshot.engine == DatabaseEngine.MYSQL -> R.string.storage_index_sizes_unavailable
+                            else -> R.string.storage_index_sizes_unavailable_generic
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = semantic.textSecondary,
                     modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s),
@@ -357,7 +382,11 @@ private fun TableRow(table: StorageTable, largest: Long, locale: Locale, onClick
             if (table.autoIncrementWarning) {
                 InfoBadge(
                     stringResource(
-                        R.string.storage_ai_warning,
+                        when (table.counter) {
+                            CounterKind.AUTO_INCREMENT -> R.string.storage_ai_warning
+                            CounterKind.SEQUENCE -> R.string.storage_sequence_warning
+                            CounterKind.IDENTITY -> R.string.storage_identity_warning
+                        },
                         StorageFormat.percent(table.autoIncrementUsage ?: 0.0, locale),
                     ),
                     semantic.warning,
@@ -410,6 +439,8 @@ private fun UnusedSection(source: StorageSource<UnusedIndexes>, uptimeSeconds: L
                 Text(
                     when {
                         source.value.fromUserstat -> stringResource(R.string.storage_unused_note_userstat)
+                        source.value.basis == UnusedBasis.STATS_RESET && uptimeSeconds != null ->
+                            stringResource(R.string.storage_unused_note_reset, uptimeText(uptimeSeconds))
                         uptimeSeconds != null ->
                             stringResource(R.string.storage_unused_note, uptimeText(uptimeSeconds))
                         else -> stringResource(R.string.storage_unused_note_unknown)
@@ -468,6 +499,7 @@ private fun Unavailable(source: StorageSource.Unavailable) {
     Text(
         when (source.kind) {
             UnavailableKind.NOT_ON_SERVER -> stringResource(R.string.storage_unavailable_not_on_server)
+            UnavailableKind.NOT_FOR_ENGINE -> stringResource(R.string.storage_unavailable_not_for_engine)
             UnavailableKind.USERSTAT_OFF -> stringResource(R.string.storage_unavailable_userstat)
             UnavailableKind.PERFORMANCE_SCHEMA_OFF -> stringResource(R.string.storage_unavailable_perfschema)
             UnavailableKind.FAILED -> stringResource(R.string.storage_unavailable_failed, source.detail.orEmpty())

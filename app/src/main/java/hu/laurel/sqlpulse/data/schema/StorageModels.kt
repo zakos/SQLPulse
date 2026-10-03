@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.schema
 
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import java.math.BigInteger
 
 /** Why a part of the storage screen has nothing to show — each source can fail on its own. */
@@ -12,6 +13,9 @@ enum class UnavailableKind {
 
     /** With the performance schema off every index looks unused, which would be a false report. */
     PERFORMANCE_SCHEMA_OFF,
+
+    /** The engine has no such statistics at all (SQLite keeps no index usage, no engine has MySQL's `sys`). */
+    NOT_FOR_ENGINE,
 
     /** The statement failed; [StorageSource.Unavailable.detail] carries the server's words. */
     FAILED,
@@ -26,6 +30,9 @@ sealed interface StorageSource<out T> {
 data class IndexSize(val index: String, val bytes: Long)
 
 /** One base table (never a view) with what `information_schema.TABLES` says about it. */
+/** What the "next value" counter of a [StorageTable] is called on its engine. */
+enum class CounterKind { AUTO_INCREMENT, SEQUENCE, IDENTITY }
+
 data class StorageTable(
     val name: String,
     val engine: String?,
@@ -44,6 +51,8 @@ data class StorageTable(
     val collation: String?,
     /** Secondary indexes, biggest first; empty when the server would not say. */
     val indexes: List<IndexSize> = emptyList(),
+    /** Where [autoIncrement] comes from: MySQL's counter, a PostgreSQL sequence, a SQL Server identity. */
+    val counter: CounterKind = CounterKind.AUTO_INCREMENT,
 ) {
     val totalBytes: Long get() = dataBytes + indexBytes
 
@@ -57,10 +66,15 @@ data class StorageTable(
 
 data class IndexRef(val table: String, val index: String)
 
+/** The moment the "not read since" of an unused-index list counts from. */
+enum class UnusedBasis { SERVER_START, USERSTAT, STATS_RESET }
+
 data class UnusedIndexes(
     val indexes: List<IndexRef>,
     /** True when the numbers come from MariaDB's `userstat`, which counts from when it was enabled. */
     val fromUserstat: Boolean,
+    /** [STATS_RESET] is PostgreSQL's `pg_stat_reset`; the age is then [StorageSnapshot.uptimeSeconds]. */
+    val basis: UnusedBasis = if (fromUserstat) UnusedBasis.USERSTAT else UnusedBasis.SERVER_START,
 )
 
 /** One index the server judges covered by another (`sys.schema_redundant_indexes`). */
@@ -79,7 +93,14 @@ data class StorageSnapshot(
     val indexSizesAvailable: Boolean,
     val unused: StorageSource<UnusedIndexes>,
     val redundant: StorageSource<List<RedundantIndex>>,
+    /** How long the usage counters behind [unused] have been counting (server uptime, or since a stats reset). */
     val uptimeSeconds: Long?,
+    /** False where the engine could not size the tables (SQLite without the dbstat table). */
+    val sizesAvailable: Boolean = true,
+    /** SQLite: the whole file, and the part of it the free list holds. */
+    val fileBytes: Long? = null,
+    val fileFreeBytes: Long? = null,
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
 )
 
 data class StorageTotals(val dataBytes: Long, val indexBytes: Long, val freeBytes: Long, val tableCount: Int) {
@@ -132,7 +153,7 @@ object AutoIncrementHeadroom {
     fun maxOf(columnType: String?): BigInteger? {
         val match = TYPE.find(columnType.orEmpty()) ?: return null
         val name = match.groupValues[1].lowercase().let { if (it == "integer") "int" else it }
-        val signed = SIGNED_MAX.getValue(name)
+        val signed = SIGNED_MAX[name] ?: return null
         // Unsigned doubles the range plus one: 127 -> 255, 2^31-1 -> 2^32-1.
         return if (match.groupValues[2].isNotEmpty()) signed.shiftLeft(1).add(BigInteger.ONE) else signed
     }

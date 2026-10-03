@@ -4,6 +4,7 @@ import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.schema.SchemaCapture
 import hu.laurel.sqlpulse.data.schema.SchemaDiffOptions
 import hu.laurel.sqlpulse.data.schema.SchemaDiffResult
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import kotlinx.coroutines.flow.StateFlow
 
 enum class DiffSide { A, B }
@@ -34,6 +35,21 @@ data class SchemaDiffUiState(
     fun side(side: DiffSide): SchemaDiffSideState = if (side == DiffSide.A) a else b
 
     fun connection(id: Long?): ConnectionEntity? = connections.firstOrNull { it.id == id }
+
+    /** The engine the connection of [side] runs, or null while none is chosen. */
+    fun engine(side: DiffSide): DatabaseEngine? =
+        connection(side(side).connectionId)?.let { DatabaseEngine.fromName(it.engine) }
+
+    /**
+     * Both sides chosen, on different engines: nothing to compare. `PostgreSQL` against `MySQL`
+     * would differ in how every type, default and index is spelled, which is not news.
+     */
+    val enginesDiffer: Boolean
+        get() {
+            val a = engine(DiffSide.A)
+            val b = engine(DiffSide.B)
+            return a != null && b != null && a != b
+        }
 
     fun isLive(side: DiffSide): Boolean =
         liveConnectionId != null && side(side).connectionId == liveConnectionId

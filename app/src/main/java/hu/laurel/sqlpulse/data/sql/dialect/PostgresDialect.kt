@@ -29,8 +29,8 @@ import java.util.WeakHashMap
  *  - **EXPLAIN ANALYZE executes the statement.** [classify] therefore counts `EXPLAIN ANALYZE
  *    DELETE …` as a write, which is what keeps it behind the read-only flag and the write gate.
  *  - **Not offered yet:** the plan tree (the JSON plan has a different shape from MySQL's, and
- *    ExplainJson only reads MySQL's), search across the database, schema comparison, the
- *    server-activity and storage screens — none of them is in [features], so the UI never gets there.
+ *    ExplainJson only reads MySQL's) and the
+ *    server-activity screens — neither is in [features], so the UI never gets there.
  */
 object PostgresDialect : SqlDialect {
 
@@ -49,6 +49,9 @@ object PostgresDialect : SqlDialect {
 
     override val features = setOf(
         EngineFeature.ROW_EDITING,
+        EngineFeature.DATABASE_SEARCH,
+        EngineFeature.SCHEMA_DIFF,
+        EngineFeature.STORAGE,
         EngineFeature.EDITABLE_RESULTS,
         EngineFeature.WRITE_PREVIEW,
         EngineFeature.CSV_IMPORT,

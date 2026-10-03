@@ -31,16 +31,15 @@ class SqliteDialectTest {
         // that still read MySQL's catalog or analysis directly.
         for (missing in listOf(
             EngineFeature.SERVER_ACTIVITY, EngineFeature.REPLICATION, EngineFeature.SLOW_QUERIES,
-            EngineFeature.PULSE, EngineFeature.STORAGE, EngineFeature.EVENTS, EngineFeature.ROUTINES,
-            EngineFeature.EXPLAIN, EngineFeature.EDITABLE_RESULTS, EngineFeature.DATABASE_SEARCH,
-            EngineFeature.SCHEMA_DIFF,
+            EngineFeature.PULSE, EngineFeature.EVENTS, EngineFeature.ROUTINES,
+            EngineFeature.EXPLAIN, EngineFeature.EDITABLE_RESULTS,
         )) {
             assertFalse("$missing must not be offered", dialect.supports(missing))
         }
         for (present in listOf(
             EngineFeature.ROW_EDITING, EngineFeature.CSV_IMPORT, EngineFeature.TABLE_DDL,
             EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP, EngineFeature.TRIGGERS,
-            EngineFeature.WRITE_PREVIEW,
+            EngineFeature.WRITE_PREVIEW, EngineFeature.DATABASE_SEARCH, EngineFeature.SCHEMA_DIFF, EngineFeature.STORAGE,
         )) {
             assertTrue("$present should be offered", dialect.supports(present))
         }

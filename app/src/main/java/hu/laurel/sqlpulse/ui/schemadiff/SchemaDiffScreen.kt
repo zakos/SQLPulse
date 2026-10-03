@@ -73,6 +73,7 @@ import hu.laurel.sqlpulse.data.schema.SchemaDiffResult
 import hu.laurel.sqlpulse.data.schema.StructureGap
 import hu.laurel.sqlpulse.data.schema.TableDiff
 import hu.laurel.sqlpulse.data.schema.UncheckedTable
+import hu.laurel.sqlpulse.ui.engine.labelRes
 import hu.laurel.sqlpulse.ui.components.ColorRail
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
@@ -146,6 +147,18 @@ fun SchemaDiffScreenContent(
             item(key = "side-b") { SideCard(DiffSide.B, state, viewModel) }
             item(key = "options") {
                 Options(state, viewModel)
+            }
+            if (state.enginesDiffer) {
+                item(key = "engines-differ") {
+                    Note(
+                        stringResource(
+                            R.string.schemadiff_engines_differ,
+                            state.engine(DiffSide.A)?.let { stringResource(it.labelRes()) }.orEmpty(),
+                            state.engine(DiffSide.B)?.let { stringResource(it.labelRes()) }.orEmpty(),
+                        ),
+                    )
+                }
+                return@LazyColumn
             }
             if (result == null) {
                 item(key = "waiting") { Note(stringResource(R.string.schemadiff_waiting)) }

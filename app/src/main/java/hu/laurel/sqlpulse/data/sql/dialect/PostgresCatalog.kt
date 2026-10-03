@@ -139,6 +139,47 @@ object PostgresCatalog : SchemaCatalog {
         pgColumns(connection, namespace, table).map { it.column }
 
     /**
+     * Every ordinary and partitioned table's columns in one statement. An enum column's type is
+     * reported as `enum` (its own name would say nothing to the search); everything else is
+     * `format_type`, as in [columns].
+     */
+    override fun searchColumns(connection: Connection, namespace: String): Map<String, List<SchemaColumn>> =
+        connection.prepareStatement(
+            """
+            SELECT c.relname, a.attname,
+                   CASE WHEN t.typtype = 'e' THEN 'enum' ELSE format_type(a.atttypid, a.atttypmod) END AS type_name,
+                   EXISTS (SELECT 1 FROM pg_index i
+                           WHERE i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY (i.indkey)) AS is_pk
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_type t ON t.oid = a.atttypid
+            WHERE n.nspname = ? AND c.relkind IN ('r', 'p') AND $VISIBLE
+              AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY c.relname, a.attnum
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().use { rows ->
+                val byTable = linkedMapOf<String, MutableList<SchemaColumn>>()
+                while (rows.next()) {
+                    byTable.getOrPut(rows.getString(1)) { mutableListOf() }.add(
+                        SchemaColumn(
+                            name = rows.getString(2),
+                            typeName = rows.getString(3),
+                            nullable = true,
+                            defaultValue = null,
+                            isPrimaryKey = rows.getBoolean(4),
+                            extra = null,
+                            comment = null,
+                        ),
+                    )
+                }
+                byTable
+            }
+        }
+
+    /**
      * The key columns of every index of the table, in key order. An expression index has no column
      * to name, so the server's own text for that position stands in; INCLUDE columns are not part
      * of the key and are left out.

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Storage screen on PostgreSQL, SQL Server and SQLite -->
+    <string name="storage_sequence_warning">Sequence %1$s used</string>
+    <string name="storage_identity_warning">Identity %1$s used</string>
+    <string name="storage_file_size">File: %1$s</string>
+    <string name="storage_sizes_unavailable">Table sizes are not available: this SQLite build has no dbstat table. Row counts are still shown.</string>
+    <string name="storage_index_sizes_unavailable_generic">Per-index sizes could not be read; tables show data and index totals only.</string>
+    <string name="storage_unused_note_reset">Unused means not read since the usage statistics were last reset (%1$s ago). An index needed only by a monthly report can show up here.</string>
+    <!-- Schema comparison -->
+    <string name="schemadiff_engines_differ">These two connections run different database engines (%1$s and %2$s). Types, defaults and index kinds are spelled differently in each, so there is no meaningful list of differences. Pick two connections of the same engine.</string>
+    <string name="storage_unavailable_not_for_engine">Not available for this database engine.</string>
+</resources>

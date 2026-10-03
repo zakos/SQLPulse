@@ -91,4 +91,30 @@ class DatabaseSearchShots {
             viewModel = controller(base.copy(production = true, tableLimit = 50, skipLargeTables = true, rowsPerTable = 20, term = "KB-20417")),
         )
     }
+
+    @Test
+    fun postgresResults() = paparazzi.screen {
+        DatabaseSearchScreenContent(
+            onBack = {},
+            onOpenTable = { _, _ -> },
+            viewModel = controller(
+                base.copy(
+                    database = "public",
+                    term = "e89b", searched = true, tablesDone = 12, tablesTotal = 12,
+                    results = listOf(
+                        TableHits(
+                            table = "devices",
+                            rows = listOf(SearchRow(listOf("id" to "17"), listOf("token" to "123e4567-e89b-12d3-a456-426614174000"))),
+                            capped = false,
+                        ),
+                        TableHits(
+                            table = "events",
+                            rows = listOf(SearchRow(listOf("id" to "9001"), listOf("payload" to "{\"ref\": \"e89b-77\", \"city\": \"Győr\"}"))),
+                            capped = false,
+                        ),
+                    ),
+                ),
+            ),
+        )
+    }
 }

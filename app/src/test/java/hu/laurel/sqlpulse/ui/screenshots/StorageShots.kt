@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.screenshots
 
+import hu.laurel.sqlpulse.data.schema.CounterKind
 import hu.laurel.sqlpulse.data.schema.IndexRef
 import hu.laurel.sqlpulse.data.schema.IndexSize
 import hu.laurel.sqlpulse.data.schema.RedundantIndex
@@ -8,7 +9,9 @@ import hu.laurel.sqlpulse.data.schema.StorageSort
 import hu.laurel.sqlpulse.data.schema.StorageSource
 import hu.laurel.sqlpulse.data.schema.StorageTable
 import hu.laurel.sqlpulse.data.schema.UnavailableKind
+import hu.laurel.sqlpulse.data.schema.UnusedBasis
 import hu.laurel.sqlpulse.data.schema.UnusedIndexes
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.ui.storage.StorageController
 import hu.laurel.sqlpulse.ui.storage.StorageScreenContent
 import hu.laurel.sqlpulse.ui.storage.StorageUiState
@@ -111,6 +114,79 @@ class StorageShots {
                             "SELECT command denied to user 'ro'@'%' for table 'schema_redundant_indexes'",
                         ),
                         uptimeSeconds = null,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun engineTable(
+        name: String, dataMb: Long, indexMb: Long, rows: Long?, next: BigInteger? = null, type: String? = null,
+        counter: CounterKind = CounterKind.SEQUENCE, indexes: List<IndexSize> = emptyList(),
+    ) = StorageTable(
+        name = name, engine = null, rowFormat = null, rowsEstimate = rows,
+        dataBytes = mb(dataMb), indexBytes = mb(indexMb), freeBytes = 0,
+        autoIncrement = next, autoIncrementType = type, createTime = null, updateTime = null,
+        collation = null, indexes = indexes, counter = counter,
+    )
+
+    @Test
+    fun postgres() = paparazzi.screen {
+        val pgTables = listOf(
+            engineTable(
+                "order_items", 1240, 610, 8_412_000, BigInteger.valueOf(8_412_551), "integer",
+                indexes = listOf(IndexSize("order_items_order_id_idx", mb(300)), IndexSize("order_items_product_id_idx", mb(240))),
+            ),
+            engineTable("orders", 420, 150, 2_100_300, BigInteger.valueOf(2_100_811), "integer"),
+            engineTable("sessions", 300, 20, 4_000_000, BigInteger.valueOf(30_001), "smallint"),
+            engineTable("settings", 0, 0, 42),
+        )
+        StorageScreenContent(
+            onBack = {},
+            onOpenTable = { _, _ -> },
+            viewModel = controller(
+                base.copy(
+                    database = "public",
+                    snapshot = snapshot.copy(
+                        database = "public",
+                        engine = DatabaseEngine.POSTGRESQL,
+                        tables = pgTables,
+                        unused = StorageSource.Loaded(
+                            UnusedIndexes(
+                                listOf(IndexRef("orders", "orders_legacy_ref_idx")),
+                                fromUserstat = false,
+                                basis = UnusedBasis.STATS_RESET,
+                            ),
+                        ),
+                        redundant = StorageSource.Unavailable(UnavailableKind.NOT_FOR_ENGINE),
+                        uptimeSeconds = 12 * 86_400L + 3 * 3_600,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun sqliteFile() = paparazzi.screen {
+        val liteTables = listOf(
+            engineTable("messages", 18, 4, 120_400),
+            engineTable("contacts", 1, 0, 812),
+        )
+        StorageScreenContent(
+            onBack = {},
+            onOpenTable = { _, _ -> },
+            viewModel = controller(
+                base.copy(
+                    database = "main",
+                    snapshot = snapshot.copy(
+                        database = "main",
+                        engine = DatabaseEngine.SQLITE,
+                        tables = liteTables,
+                        unused = StorageSource.Unavailable(UnavailableKind.NOT_FOR_ENGINE),
+                        redundant = StorageSource.Unavailable(UnavailableKind.NOT_FOR_ENGINE),
+                        uptimeSeconds = null,
+                        fileBytes = mb(26),
+                        fileFreeBytes = mb(3),
                     ),
                 ),
             ),

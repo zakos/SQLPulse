@@ -37,11 +37,14 @@ object SqlServerDialect : SqlDialect {
     /**
      * What is built and tested against a real server. Missing on purpose: EXPLAIN (SHOWPLAN needs
      * `SET SHOWPLAN_XML ON` on the same connection), TABLE_DDL (no `SHOW CREATE TABLE`; views
-     * and routines do show their definition), DATABASE_SEARCH and SCHEMA_DIFF (written against
-     * MySQL's catalog), and the server screens (they read MySQL status variables).
+     * and routines do show their definition), and
+     * the server screens (they read MySQL status variables).
      */
     override val features: Set<EngineFeature> = setOf(
         EngineFeature.ROW_EDITING,
+        EngineFeature.DATABASE_SEARCH,
+        EngineFeature.SCHEMA_DIFF,
+        EngineFeature.STORAGE,
         EngineFeature.EDITABLE_RESULTS,
         EngineFeature.WRITE_PREVIEW,
         EngineFeature.CSV_IMPORT,

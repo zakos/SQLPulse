@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.data.schema
 
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+
 /**
  * Schema comparison between two databases — typically the development copy and production — as
  * pure logic.
@@ -21,6 +23,10 @@ package hu.laurel.sqlpulse.data.schema
  * — no column collation, no foreign key rules, no CHECK constraints, no triggers — so those are
  * simply not compared, rather than reported as differences that are really only gaps.
  *
+ * Both sides must be the same engine ([compare] refuses otherwise; the screen says so before it
+ * gets that far). The spelling of types, defaults and generated constraint names is then
+ * normalised by that engine's rules: MySQL's below, the others' in [EngineSchemaText].
+ *
  * Nothing here knows about Android, Room or JDBC, so every rule below is unit-tested.
  */
 
@@ -37,6 +43,8 @@ data class SchemaDiffOptions(
     val ignoreComments: Boolean = true,
     /** Report a column that sits in a different place. */
     val compareColumnOrder: Boolean = true,
+    /** Whose spelling rules apply. [SchemaDiff.compare] sets it from the two sides; callers need not. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
 )
 
 /** One side as it was captured: the database name, its tables, and whatever structures are known. */
@@ -50,7 +58,13 @@ data class SchemaDiffSide(
     val structures: Map<String, CachedStructure>,
     /** `SHOW CREATE VIEW` text per view name, where known. The cache does not keep it today. */
     val viewDefinitions: Map<String, String> = emptyMap(),
+    /** The engine the connection runs; only two sides of the same engine can be compared. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
 )
+
+/** The two sides run different engines, so there is no meaningful list of differences. */
+class EngineMismatchException(val a: DatabaseEngine, val b: DatabaseEngine) :
+    IllegalArgumentException("cannot compare a ${a.name} schema with a ${b.name} schema")
 
 /** Where something was found. A and B rather than added and removed: neither side is "right". */
 enum class DiffStatus { ONLY_A, ONLY_B, CHANGED }
@@ -115,7 +129,9 @@ data class SchemaDiffResult(
 
 object SchemaDiff {
 
-    fun compare(a: SchemaDiffSide, b: SchemaDiffSide, options: SchemaDiffOptions = SchemaDiffOptions()): SchemaDiffResult {
+    fun compare(a: SchemaDiffSide, b: SchemaDiffSide, requested: SchemaDiffOptions = SchemaDiffOptions()): SchemaDiffResult {
+        if (a.engine != b.engine) throw EngineMismatchException(a.engine, b.engine)
+        val options = requested.copy(engine = a.engine)
         val ignoreCase = options.ignoreIdentifierCase
         val pairs = matchByName(a.tables, b.tables, ignoreCase) { it.name }
         val tables = mutableListOf<TableDiff>()
@@ -220,13 +236,13 @@ object SchemaDiff {
                 l == null -> diffs += ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeColumn(r))
                 else -> {
                     val changes = mutableListOf<FieldChange>()
-                    if (normalizeType(l.typeName) != normalizeType(r.typeName)) {
+                    if (normalizeType(l.typeName, options.engine) != normalizeType(r.typeName, options.engine)) {
                         changes += FieldChange(DiffField.TYPE, l.typeName, r.typeName)
                     }
                     if (l.nullable != r.nullable) {
                         changes += FieldChange(DiffField.NULLABLE, nullability(l.nullable), nullability(r.nullable))
                     }
-                    if (normalizeDefault(l.defaultValue) != normalizeDefault(r.defaultValue)) {
+                    if (normalizeDefault(l.defaultValue, options.engine) != normalizeDefault(r.defaultValue, options.engine)) {
                         changes += FieldChange(DiffField.DEFAULT, l.defaultValue, r.defaultValue)
                     }
                     if (normalizeExtra(l.extra) != normalizeExtra(r.extra)) {
@@ -266,7 +282,14 @@ object SchemaDiff {
      * column stores, so it is dropped; except for `tinyint(1)`, which 8.0 keeps because it is how
      * a boolean is spelled, and `zerofill`, where the width does change what is shown.
      */
-    fun normalizeType(type: String): String {
+    fun normalizeType(type: String, engine: DatabaseEngine = DatabaseEngine.MYSQL): String = when (engine) {
+        DatabaseEngine.MYSQL -> normalizeMySqlType(type)
+        DatabaseEngine.POSTGRESQL -> EngineSchemaText.normalizePostgresType(type)
+        DatabaseEngine.SQLSERVER -> EngineSchemaText.normalizeSqlServerType(type)
+        DatabaseEngine.SQLITE -> EngineSchemaText.normalizeSqliteType(type)
+    }
+
+    private fun normalizeMySqlType(type: String): String {
         val lower = type.trim().lowercase().replace(WHITESPACE, " ")
         if ("zerofill" in lower) return lower
         return INTEGER_WIDTH.replace(lower) { match ->
@@ -282,8 +305,14 @@ object SchemaDiff {
      * word `NULL`, where MySQL says `abc` and SQL NULL; and the two disagree on whether
      * `current_timestamp` takes brackets. None of that is a difference in the schema.
      */
-    fun normalizeDefault(value: String?): String? {
-        val trimmed = value?.trim() ?: return null
+    fun normalizeDefault(value: String?, engine: DatabaseEngine = DatabaseEngine.MYSQL): String? {
+        val engineText = when (engine) {
+            DatabaseEngine.MYSQL -> value
+            DatabaseEngine.POSTGRESQL -> EngineSchemaText.normalizePostgresDefault(value)
+            DatabaseEngine.SQLSERVER -> EngineSchemaText.normalizeSqlServerDefault(value)
+            DatabaseEngine.SQLITE -> EngineSchemaText.normalizeSqliteDefault(value)
+        }
+        val trimmed = engineText?.trim() ?: return null
         if (trimmed.equals("NULL", ignoreCase = true)) return null
         if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
             return trimmed.substring(1, trimmed.length - 1).replace("''", "'")
@@ -327,13 +356,15 @@ object SchemaDiff {
         val pairs = pairLeftovers(
             matchByName(a, b, ignoreCase) { it.name },
         ) { l, r -> l.unique == r.unique && listsEqual(l.columns, r.columns, ignoreCase) }
+        fun renamed(l: String, r: String) = !identifiersEqual(l, r, ignoreCase) &&
+            !(EngineSchemaText.isGeneratedName(options.engine, l) && EngineSchemaText.isGeneratedName(options.engine, r))
         return pairs.mapNotNull { (l, r) ->
             when {
-                r == null -> ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeIndex(l))
-                l == null -> ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeIndex(r))
+                r == null -> ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeIndex(l, options.engine))
+                l == null -> ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeIndex(r, options.engine))
                 else -> {
                     val changes = mutableListOf<FieldChange>()
-                    if (!identifiersEqual(l.name, r.name, ignoreCase)) changes += FieldChange(DiffField.NAME, l.name, r.name)
+                    if (renamed(l.name, r.name)) changes += FieldChange(DiffField.NAME, l.name, r.name)
                     if (l.unique != r.unique) changes += FieldChange(DiffField.UNIQUE, uniqueness(l.unique), uniqueness(r.unique))
                     if (!listsEqual(l.columns, r.columns, ignoreCase)) {
                         changes += FieldChange(DiffField.COLUMNS, l.columns.joinToString(", "), r.columns.joinToString(", "))
@@ -346,9 +377,12 @@ object SchemaDiff {
 
     private fun uniqueness(unique: Boolean) = if (unique) "UNIQUE" else "INDEX"
 
-    private fun describeIndex(index: CachedIndex): String {
+    private fun describeIndex(index: CachedIndex, engine: DatabaseEngine): String {
         val kind = when {
             index.name == "PRIMARY" -> "PRIMARY KEY"
+            // PostgreSQL names a primary key's index `<table>_pkey`; SQL Server's is `PK__…`.
+            engine == DatabaseEngine.POSTGRESQL && index.name.endsWith("_pkey") -> "PRIMARY KEY"
+            engine == DatabaseEngine.SQLSERVER && index.name.startsWith("PK_") -> "PRIMARY KEY"
             index.unique -> "UNIQUE"
             else -> "INDEX"
         }
@@ -410,13 +444,15 @@ object SchemaDiff {
         val pairs = pairLeftovers(matchByName(a, b, ignoreCase) { it.name }) { l, r ->
             listsEqual(l.columns, r.columns, ignoreCase) && sameTarget(l, r)
         }
+        fun renamed(l: String, r: String) = !identifiersEqual(l, r, ignoreCase) &&
+            !(EngineSchemaText.isGeneratedName(options.engine, l) && EngineSchemaText.isGeneratedName(options.engine, r))
         return pairs.mapNotNull { (l, r) ->
             when {
                 r == null -> ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeForeignKey(l))
                 l == null -> ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeForeignKey(r))
                 else -> {
                     val changes = mutableListOf<FieldChange>()
-                    if (!identifiersEqual(l.name, r.name, ignoreCase)) changes += FieldChange(DiffField.NAME, l.name, r.name)
+                    if (renamed(l.name, r.name)) changes += FieldChange(DiffField.NAME, l.name, r.name)
                     if (!listsEqual(l.columns, r.columns, ignoreCase)) {
                         changes += FieldChange(DiffField.COLUMNS, l.columns.joinToString(", "), r.columns.joinToString(", "))
                     }
