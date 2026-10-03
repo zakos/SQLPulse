@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.integration.postgres
 
 import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
+import hu.laurel.sqlpulse.data.csv.CsvImport
 import hu.laurel.sqlpulse.data.schema.SchemaRepository
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.NotEditableReason
@@ -191,6 +192,40 @@ class PostgresWriteIntegrationTest {
             fixture.session.giveBack(connection)
         }
         assertEquals("6", fixture.scalar("SELECT count(*) FROM ${fixture.t("items")}"))
+    }
+
+    @Test
+    fun `a CSV import fills the columns it names and leaves identity and serial columns to the server`() {
+        fixture.execute(
+            "CREATE TABLE ${fixture.t("imported")} (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " +
+                "n serial, name text NOT NULL, born date, score numeric(5,1), ok boolean)",
+        )
+        val columns = runBlocking { schema.structure(fixture.schema, "imported").columns }
+        val header = listOf("Name", "born", "SCORE", "ok", "extra")
+        val match = CsvImport.match(header, columns)
+        // The server fills id and n by itself, so neither blocks the import.
+        assertTrue(match.canImport)
+        assertEquals(listOf("extra"), match.unmatched)
+        val statements = CsvImport.statements(
+            fixture.schema, "imported", match, header,
+            listOf(listOf("Ádám", "2001-02-03", "9.5", "true", "x"), listOf("Béla", null, null, "f", "y")),
+            d,
+        )
+        fixture.use { connection ->
+            connection.autoCommit = false
+            statements.forEach { statement ->
+                connection.prepareStatement(statement.sql).use { prepared ->
+                    statement.parameters.forEachIndexed { index, value -> prepared.setString(index + 1, value) }
+                    assertEquals(1, prepared.executeUpdate())
+                }
+            }
+            connection.commit()
+            connection.autoCommit = true
+        }
+        assertEquals("2", fixture.scalar("SELECT count(*) FROM ${fixture.t("imported")}"))
+        assertEquals("2001-02-03", fixture.scalar("SELECT born::text FROM ${fixture.t("imported")} WHERE name = 'Ádám'"))
+        assertEquals("false", fixture.scalar("SELECT ok::text FROM ${fixture.t("imported")} WHERE name = 'Béla'"))
+        assertEquals("2", fixture.scalar("SELECT max(id) FROM ${fixture.t("imported")}"))
     }
 
     // ------------------------------------------------------------------ the editor's guards
