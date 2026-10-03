@@ -1,0 +1,1 @@
+{"sql": "SELECT * FROM orders WHERE customer_id = 5", "rows": [[3, 0, 0, "SEARCH orders USING INDEX orders_customer (customer_id=?)"]]}

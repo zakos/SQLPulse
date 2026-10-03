@@ -10,6 +10,7 @@ import hu.laurel.sqlpulse.data.writelog.WriteLogEntries
 import hu.laurel.sqlpulse.data.writelog.WriteLogger
 import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.di.IoDispatcher
+import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.Statement
 import java.sql.Types
@@ -106,7 +107,10 @@ class QueryExecutor @Inject constructor(
             throw UnguardedWriteException()
         }
 
-        val limited = dialect.applyDefaultLimit(sql, rowLimit)
+        // A plan request is sent as it is: a row limit added to it would change the plan being
+        // asked for (SQL Server's TOP is an operator of its own).
+        val explaining = dialect.isExplain(sql)
+        val limited = if (explaining) SqlGuards.LimitResult(sql.trim(), false) else dialect.applyDefaultLimit(sql, rowLimit)
         val bound = dialect.bindParameters(limited.sql)
 
         val started = System.currentTimeMillis()
@@ -114,31 +118,51 @@ class QueryExecutor @Inject constructor(
         // log says about this statement.
         val inTransaction = sessions.inTransaction.value
         val outcome = try {
-            sessions.withConnection { connection ->
-                connection.prepareStatement(bound.sql).use { statement ->
-                    bind(statement, bound.parameterOrder, parameters)
-                    statement.queryTimeout = sessions.queryTimeoutSeconds()
-                    running = statement
-                    try {
-                        if (statement.execute()) {
-                            statement.resultSet.use { rows ->
+            sessions.withConnection { borrowed ->
+                val runOn: (Connection) -> QueryOutcome = { connection ->
+                    // SQL Server returns a plan only for a plain batch: a prepared statement is
+                    // prepared, not planned, and the answer is empty (measured). The values then
+                    // go in as literals, which is safe because nothing is executed.
+                    val plain = if (explaining && dialect.plansAsPlainBatch) {
+                        SqlGuards.bindParameters(limited.sql, dialect.grammar) { name ->
+                            dialect.planLiteral(QueryParameters.binding(parameters[name] ?: ParameterValue()))
+                        }.sql
+                    } else {
+                        null
+                    }
+                    val opened: Statement = if (plain != null) {
+                        connection.createStatement()
+                    } else {
+                        connection.prepareStatement(bound.sql).also { bind(it, bound.parameterOrder, parameters) }
+                    }
+                    opened.use { statement ->
+                        statement.queryTimeout = sessions.queryTimeoutSeconds()
+                        running = statement
+                        try {
+                            val hasRows = if (plain != null) statement.execute(plain) else (statement as PreparedStatement).execute()
+                            if (hasRows) {
+                                statement.resultSet.use { rows ->
+                                    QueryOutcome(
+                                        table = ResultTable.from(rows, rowLimit)
+                                            .copy(limitAdded = limited.limitAdded),
+                                        sqlRun = bound.sql,
+                                    )
+                                }
+                            } else {
                                 QueryOutcome(
-                                    table = ResultTable.from(rows, rowLimit)
-                                        .copy(limitAdded = limited.limitAdded),
+                                    table = ResultTable.EMPTY,
+                                    updateCount = statement.updateCount,
                                     sqlRun = bound.sql,
                                 )
                             }
-                        } else {
-                            QueryOutcome(
-                                table = ResultTable.EMPTY,
-                                updateCount = statement.updateCount,
-                                sqlRun = bound.sql,
-                            )
+                        } finally {
+                            running = null
                         }
-                    } finally {
-                        running = null
                     }
                 }
+                // Only SQL Server's plan request needs the connection put into a mode and back out
+                // of it; for every other statement this is a plain call.
+                if (explaining) dialect.inPlanMode(borrowed) { runOn(borrowed) } else runOn(borrowed)
             }
         } catch (e: Exception) {
             // Every guard above throws before this point, so a failure here means the statement

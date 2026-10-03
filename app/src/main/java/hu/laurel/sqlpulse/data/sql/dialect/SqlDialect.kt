@@ -1,12 +1,14 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
 import hu.laurel.sqlpulse.data.sql.JdbcConfig
+import hu.laurel.sqlpulse.data.sql.ParameterBinding
 import hu.laurel.sqlpulse.data.sql.ResultEditability
 import hu.laurel.sqlpulse.data.sql.SqlFailure
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
 import hu.laurel.sqlpulse.data.sql.dialect.keywords.SqlKeywords
+import hu.laurel.sqlpulse.data.sql.plan.PlanReader
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.sql.Connection
@@ -131,6 +133,35 @@ interface SqlDialect : SqlSyntax {
 
     /** The statement that explains [sql] in a machine-readable form, or null when unsupported. */
     fun explain(sql: String): String? = null
+
+    /** Reads the answer to [explain] into the plan tree; null where the engine has none. */
+    val planReader: PlanReader? get() = null
+
+    /**
+     * Whether [sql] is something [explain] produced and needs [inPlanMode]. False for every engine
+     * whose EXPLAIN is an ordinary statement, which is all of them except SQL Server.
+     */
+    fun isExplain(sql: String): Boolean = false
+
+    /**
+     * Runs [block] on [connection] the way the engine needs a plan to be asked for.
+     *
+     * SQL Server has no EXPLAIN statement: a plan is what a statement returns instead of running
+     * while `SET SHOWPLAN_XML ON` holds on that one connection, and a connection left in that mode
+     * would answer every later query of the pool with a plan. Everything else just calls [block].
+     */
+    fun <T> inPlanMode(connection: Connection, block: () -> T): T = block()
+
+    /**
+     * True when a plan request must be sent as a plain batch rather than a prepared statement
+     * (SQL Server: a prepared statement is prepared under SHOWPLAN, not planned). Its `:name`
+     * values then go in as [planLiteral]s.
+     */
+    val plansAsPlainBatch: Boolean get() = false
+
+    /** [binding] as SQL text, for a plan request that cannot bind; only [plansAsPlainBatch] engines use it. */
+    fun planLiteral(binding: ParameterBinding): String =
+        throw UnsupportedOperationException("$engine plans prepared statements")
 
     // ---------------------------------------------------------------- writes
 

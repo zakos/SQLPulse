@@ -32,7 +32,7 @@ class SqliteDialectTest {
         for (missing in listOf(
             EngineFeature.SERVER_ACTIVITY, EngineFeature.REPLICATION, EngineFeature.SLOW_QUERIES,
             EngineFeature.PULSE, EngineFeature.STORAGE, EngineFeature.EVENTS, EngineFeature.ROUTINES,
-            EngineFeature.EXPLAIN, EngineFeature.EDITABLE_RESULTS, EngineFeature.DATABASE_SEARCH,
+            EngineFeature.DATABASE_SEARCH,
             EngineFeature.SCHEMA_DIFF,
         )) {
             assertFalse("$missing must not be offered", dialect.supports(missing))
@@ -40,7 +40,7 @@ class SqliteDialectTest {
         for (present in listOf(
             EngineFeature.ROW_EDITING, EngineFeature.CSV_IMPORT, EngineFeature.TABLE_DDL,
             EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP, EngineFeature.TRIGGERS,
-            EngineFeature.WRITE_PREVIEW,
+            EngineFeature.WRITE_PREVIEW, EngineFeature.EXPLAIN, EngineFeature.EDITABLE_RESULTS,
         )) {
             assertTrue("$present should be offered", dialect.supports(present))
         }
@@ -199,8 +199,16 @@ class SqliteDialectTest {
     }
 
     @Test
-    fun `editable results are not offered`() {
-        assertTrue(dialect.resultEditability("SELECT * FROM t") is hu.laurel.sqlpulse.data.sql.ResultEditability.NotEditable)
+    fun `a plain select maps onto its table and the other quote styles are names too`() {
+        val editable = dialect.resultEditability("SELECT id, [name] AS who FROM main.`customer`")
+        assertTrue(editable.toString(), editable is hu.laurel.sqlpulse.data.sql.ResultEditability.Editable)
+        editable as hu.laurel.sqlpulse.data.sql.ResultEditability.Editable
+        assertEquals("main", editable.database)
+        assertEquals("customer", editable.table)
+        assertEquals(
+            hu.laurel.sqlpulse.data.sql.ResultEditability.NotEditable(hu.laurel.sqlpulse.data.sql.NotEditableReason.EXPRESSION),
+            dialect.resultEditability("SELECT id, upper(name) FROM t"),
+        )
     }
 
     // ------------------------------------------------------------ errors

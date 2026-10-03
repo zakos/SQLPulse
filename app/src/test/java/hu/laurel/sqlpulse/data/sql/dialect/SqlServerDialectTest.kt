@@ -57,7 +57,7 @@ class SqlServerDialectTest {
         assertEquals("EXISTS (SELECT [c] INTERSECT SELECT ?)", dialect.nullSafeEquals("[c]"))
         assertEquals(" ESCAPE '\\'", dialect.likeEscape)
         assertEquals("DATALENGTH([b]), SUBSTRING([b], 1, 4096)", dialect.blobLengthAndHead("[b]", 4096))
-        assertNull("EXPLAIN is not offered", dialect.explain("SELECT 1"))
+        assertEquals("a plan request is the query behind a marker comment", "/* sqlpulse:showplan */\nSELECT 1", dialect.explain("SELECT 1"))
         assertEquals("a placeholder is exactly one question mark", 1, dialect.nullSafeEquals("[c]").count { it == '?' })
     }
 
@@ -535,13 +535,13 @@ class SqlServerDialectTest {
         assertEquals(DatabaseEngine.SQLSERVER, dialect.engine)
         assertEquals(
             setOf(
-                EngineFeature.ROW_EDITING, EngineFeature.EDITABLE_RESULTS, EngineFeature.WRITE_PREVIEW,
+                EngineFeature.EXPLAIN, EngineFeature.ROW_EDITING, EngineFeature.EDITABLE_RESULTS, EngineFeature.WRITE_PREVIEW,
                 EngineFeature.CSV_IMPORT, EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP,
                 EngineFeature.ROUTINES, EngineFeature.TRIGGERS,
             ),
             dialect.features,
         )
-        assertFalse(dialect.supports(EngineFeature.EXPLAIN))
+        assertTrue(dialect.supports(EngineFeature.EXPLAIN))
         assertFalse(dialect.supports(EngineFeature.SERVER_ACTIVITY))
         assertEquals(setOf("sys", "INFORMATION_SCHEMA", "guest"), dialect.systemNamespaces)
         // USE moves one pooled connection and not the others: it is not intercepted, and not a query.

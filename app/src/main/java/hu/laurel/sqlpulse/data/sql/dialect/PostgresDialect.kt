@@ -10,6 +10,8 @@ import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WriteImpact
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
+import hu.laurel.sqlpulse.data.sql.plan.PlanReader
+import hu.laurel.sqlpulse.data.sql.plan.PostgresPlanReader
 import java.sql.Connection
 import java.sql.SQLException
 import java.util.Collections
@@ -28,8 +30,8 @@ import java.util.WeakHashMap
  *    key-based (RowSqlBuilder never adds one) and the one-row check stays in the editor.
  *  - **EXPLAIN ANALYZE executes the statement.** [classify] therefore counts `EXPLAIN ANALYZE
  *    DELETE …` as a write, which is what keeps it behind the read-only flag and the write gate.
- *  - **Not offered yet:** the plan tree (the JSON plan has a different shape from MySQL's, and
- *    ExplainJson only reads MySQL's), search across the database, schema comparison, the
+ *  - **The plan tree** reads `EXPLAIN (FORMAT JSON)` through [PostgresPlanReader].
+ *  - **Not offered yet:** search across the database, schema comparison, the
  *    server-activity and storage screens — none of them is in [features], so the UI never gets there.
  */
 object PostgresDialect : SqlDialect {
@@ -48,6 +50,7 @@ object PostgresDialect : SqlDialect {
     override val connectable = true
 
     override val features = setOf(
+        EngineFeature.EXPLAIN,
         EngineFeature.ROW_EDITING,
         EngineFeature.EDITABLE_RESULTS,
         EngineFeature.WRITE_PREVIEW,
@@ -177,7 +180,13 @@ object PostgresDialect : SqlDialect {
      */
     override fun parameters(sql: String): List<String> = bindParameters(sql).parameterOrder.distinct()
 
+    /**
+     * The estimated plan as JSON. Never `ANALYZE`: that runs the statement, and the editor's
+     * EXPLAIN button must not be a way to execute a `DELETE` behind the write gate.
+     */
     override fun explain(sql: String): String = "EXPLAIN (FORMAT JSON) $sql"
+
+    override val planReader: PlanReader get() = PostgresPlanReader
 
     // ---------------------------------------------------------------- writes
 
