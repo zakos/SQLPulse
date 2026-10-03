@@ -158,7 +158,8 @@ data class ResultTable(
 
             // Android's java.sql.Types stops at JDBC 4.1, so the two zoned constants are
             // spelled out: 2013 is TIME_WITH_TIMEZONE and 2014 is TIMESTAMP_WITH_TIMEZONE.
-            Types.DATE, Types.TIME, Types.TIMESTAMP, 2013, 2014 -> CellType.DATE
+            // -155 is SQL Server's DATETIMEOFFSET (microsoft.sql.Types), which JDBC has no type for.
+            Types.DATE, Types.TIME, Types.TIMESTAMP, 2013, 2014, -155 -> CellType.DATE
 
             Types.BIT, Types.BOOLEAN -> CellType.BOOLEAN
 

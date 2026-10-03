@@ -21,7 +21,9 @@ data class ScriptStatement(
  * is the default, so a caller that does not know about engines splits as it always did.
  *
  * `DELIMITER` is not supported: it is a client command, and the app refuses the DDL that needs it
- * anyway (§2), so a routine body with internal semicolons cannot be created from here.
+ * anyway (§2), so a routine body with internal semicolons cannot be created from here. Nor is
+ * SQL Server's `GO`, another client command: a script with a `GO` line is not split on it (see
+ * SqlServerDialect for what the editor says instead).
  */
 object SqlScript {
 
@@ -43,6 +45,8 @@ object SqlScript {
         }
 
         while (index < text.length) {
+            // The grammar says what quotes a name or a string here and what starts a comment:
+            // MySQL's by default, T-SQL's `[a;b]` and `#temp` for SQL Server.
             when {
                 grammar.opensQuote(text, index) -> index = grammar.endOfQuoted(text, index)
 

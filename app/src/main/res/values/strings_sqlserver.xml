@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SQL Server and Azure SQL (docs/tobb-motor-terv.md). -->
+    <string name="sqlserver_auth_note">Sign in with an SQL Server user and password. Azure AD (Entra) sign-in and Windows authentication are not supported.</string>
+    <string name="sqlserver_database_note">The database is the one the connection opens; the app lists its schemas. To work in another database, add another connection.</string>
+    <string name="sqlserver_script_note">Separate statements with a semicolon. The GO batch separator is a client command and is not supported.</string>
+    <string name="sqlserver_read_only_warning">The SQL Server driver ignores the read-only setting. The app still refuses the writes it can recognise, but the real protection is the server: sign in with a user that only has SELECT permission.</string>
+    <string name="sqlserver_db_user">SQL Server login</string>
+    <string name="sqlserver_db_password">SQL Server password</string>
+    <string name="sqlserver_tls_title">SQL Server connection encryption</string>
+    <string name="sqlserver_ssh_direct_note">Without SSH, this phone connects to SQL Server directly. That only works where the server\'s port (1433 by default) is reachable from the phone\'s current network; Azure SQL also needs the phone\'s address allowed in its firewall.</string>
+    <string name="sqlserver_tls_public_note">Without a CA certificate the connection is verified against the certificate authorities your phone trusts, which is what Azure SQL needs.</string>
+</resources>

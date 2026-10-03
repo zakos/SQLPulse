@@ -126,7 +126,9 @@ data class ConnectionForm(
         get() = dbHost.isNotBlank() &&
             dbPort.toIntOrNull() != null &&
             // A verifying TLS mode without a CA file would fail at connect time, not at save.
-            !SslProperties.missingCertificate(sslMode, caCertificate) &&
+            // SQL Server verifies against the phone's own CAs without a file, which is what Azure
+            // SQL (a public CA) needs.
+            (engine == DatabaseEngine.SQLSERVER || !SslProperties.missingCertificate(sslMode, caCertificate)) &&
             ConnectionTimeouts.isValid(connectTimeout) &&
             ConnectionTimeouts.isValid(queryTimeout) &&
             (

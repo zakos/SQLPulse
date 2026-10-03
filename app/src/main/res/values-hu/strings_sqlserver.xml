@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SQL Server és Azure SQL (docs/tobb-motor-terv.md). -->
+    <string name="sqlserver_auth_note">Belépés SQL Server felhasználóval és jelszóval. Az Azure AD (Entra) és a Windows-hitelesítés nem támogatott.</string>
+    <string name="sqlserver_database_note">Az adatbázis az, amelyet a kapcsolat megnyit; az alkalmazás a sémáit listázza. Másik adatbázishoz vegyél fel másik kapcsolatot.</string>
+    <string name="sqlserver_script_note">Az utasításokat pontosvessző választja el. A GO kötegelválasztó kliensparancs, ezért nem támogatott.</string>
+    <string name="sqlserver_read_only_warning">Az SQL Server illesztőprogram figyelmen kívül hagyja a csak olvasható beállítást. Az alkalmazás a felismerhető írásokat így is elutasítja, de az igazi védelem a szerveren van: olyan felhasználóval lépj be, akinek csak SELECT joga van.</string>
+    <string name="sqlserver_db_user">SQL Server bejelentkezés</string>
+    <string name="sqlserver_db_password">SQL Server jelszó</string>
+    <string name="sqlserver_tls_title">Az SQL Server kapcsolat titkosítása</string>
+    <string name="sqlserver_ssh_direct_note">SSH nélkül a telefon közvetlenül az SQL Serverhez kapcsolódik. Ez csak ott működik, ahol a szerver portja (alapból 1433) elérhető a telefon aktuális hálózatáról; az Azure SQL tűzfalában a telefon címét is engedélyezni kell.</string>
+    <string name="sqlserver_tls_public_note">CA-tanúsítvány nélkül a kapcsolat a telefon által megbízhatónak tartott hitelesítésszolgáltatók ellen ellenőrződik, és erre van szüksége az Azure SQL-nek.</string>
+</resources>
