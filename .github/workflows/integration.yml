@@ -135,3 +135,58 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
+
+  postgres:
+    # The PostgreSQL dialect against a real server (data/sql/dialect/PostgresDialect.kt). Its own
+    # job, because the MySQL matrix above is one service container per run and none of it applies
+    # here. The MySQL tests skip themselves with no SQLPULSE_TEST_MYSQL_URL, and these skip
+    # themselves in the MySQL jobs for the same reason.
+    name: PostgreSQL 16
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: sqlpulse
+          POSTGRES_DB: sqlpulse_test
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U postgres" --health-interval=10s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Integration tests
+        env:
+          SQLPULSE_TEST_POSTGRES_URL: jdbc:postgresql://127.0.0.1:5432/sqlpulse_test
+          SQLPULSE_TEST_POSTGRES_USER: postgres
+          SQLPULSE_TEST_POSTGRES_PASSWORD: sqlpulse
+        run: ./gradlew --no-daemon testDebugUnitTest --tests 'hu.laurel.sqlpulse.integration.postgres.*'
+
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-postgres
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -251,7 +251,9 @@ fun ConnectionEditorScreenContent(
                 if (!form.useSsh) {
                     // Stated plainly once: the port has to be reachable from the phone's network.
                     Text(
-                        stringResource(R.string.ssh_direct_note),
+                        stringResource(
+                            if (form.engine == DatabaseEngine.MYSQL) R.string.ssh_direct_note else R.string.ssh_direct_note_generic,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = semantic.warning,
                     )
@@ -503,7 +505,9 @@ fun ConnectionEditorScreenContent(
                 LabeledField(
                     value = form.dbUser,
                     onValueChange = { value -> viewModel.update { it.copy(dbUser = value) } },
-                    label = { Text(stringResource(R.string.db_user)) },
+                    label = {
+                        Text(stringResource(if (form.engine == DatabaseEngine.MYSQL) R.string.db_user else R.string.db_user_generic))
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     mono = true,
@@ -513,7 +517,13 @@ fun ConnectionEditorScreenContent(
                     onValueChange = { value ->
                         viewModel.update { it.copy(password = value, passwordTouched = true) }
                     },
-                    label = { Text(stringResource(R.string.db_password)) },
+                    label = {
+                        Text(
+                            stringResource(
+                                if (form.engine == DatabaseEngine.MYSQL) R.string.db_password else R.string.db_password_generic,
+                            ),
+                        )
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -531,6 +541,7 @@ fun ConnectionEditorScreenContent(
                 }
 
                 TlsSection(
+                    title = if (form.engine == DatabaseEngine.MYSQL) R.string.tls_mode else R.string.tls_mode_generic,
                     mode = form.sslMode,
                     certificate = form.caCertificate,
                     onMode = { value -> viewModel.update { it.copy(sslMode = value) } },
@@ -677,6 +688,7 @@ private fun FileSection(fileName: String?) {
  */
 @Composable
 private fun TlsSection(
+    @androidx.annotation.StringRes title: Int,
     mode: SslMode,
     certificate: String?,
     onMode: (SslMode) -> Unit,
@@ -689,7 +701,7 @@ private fun TlsSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(stringResource(R.string.tls_mode), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(title), style = MaterialTheme.typography.bodyMedium)
         // Four short names on one track, and the chosen one explained under it: the explanation is
         // what matters, but only for the mode that is on.
         SegmentedChoice(

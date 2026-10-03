@@ -432,6 +432,8 @@ class PostgresDialectTest {
         assertEquals("jdbc:postgresql://[::1]:5432/shop", url(host = "::1"))
         assertEquals("jdbc:postgresql://[::1]:5432/shop", url(host = "[::1]"))
         assertEquals("jdbc:postgresql://db.example.com:5432/my%20db%2Fx", url(database = "my db/x"))
+        // No database named: the server falls back to the user's own, as psql does.
+        assertEquals("jdbc:postgresql://db.example.com:5432/", url(database = ""))
     }
 
     @Test
