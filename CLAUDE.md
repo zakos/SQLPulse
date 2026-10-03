@@ -118,7 +118,8 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - **Integrációs tesztek helyben** (PostgreSQL: `apt-get install postgresql`, saját klaszter pl. 5433;
   SQL Server: `dockerd` háttérben, `mcr.microsoft.com/mssql/server:2022-latest`; env:
   `SQLPULSE_TEST_POSTGRES_URL/_USER/_PASSWORD`, `SQLPULSE_TEST_MSSQL_URL/_USER/_PASSWORD`;
-  SQLite-hoz nem kell szerver). MySQL/MariaDB: nincs mindig Docker-démon, de root-ként megy az
+  SQLite-hoz nem kell szerver; `pg_stat_statements`-hez külön előtöltött klaszter: `/var/tmp/pg-preload`,
+  5434, `SQLPULSE_TEST_POSTGRES_PRELOAD_URL`). MySQL/MariaDB: nincs mindig Docker-démon, de root-ként megy az
   `apt-get install mariadb-server`; `mariadbd --datadir=<scratchpad>/… --port=3399` indítás, root
   jelszó `sqlpulse`. MySQL 8: a `mysql-server-core-8.0` .deb-et kicsomagolva (apt-tal ütközne a
   MariaDB-vel). Futtatás: `SQLPULSE_TEST_MYSQL_URL=jdbc:mysql://127.0.0.1:<port>/sqlpulse_test`,
@@ -225,6 +226,15 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   1324 unit teszt + lint zöld; integrációs tesztek helyben zöldek: MySQL 8.0.46, MariaDB 10.11,
   PostgreSQL 16, SQL Server 2022, SQLite. A felhasználó kérésére csak a `build.yml` CI maradt.
 
+- 2026-10-03: CI: csak a `build.yml`, és csak `main`-re nyitott PR összefésülésekor (release APK/AAB).
+- 2026-10-03: Motorok kiterjesztése (3 subagent): EXPLAIN-fa PostgreSQL (`EXPLAIN (FORMAT JSON)`),
+  SQL Server (`SET SHOWPLAN_XML`, becsült terv; ha a visszaállítás hibázik, a kapcsolat bezárul) és
+  SQLite (`EXPLAIN QUERY PLAN`) — `data/sql/plan/`; SQLite szerkeszthető eredmény; keresés,
+  séma-összehasonlítás (`EngineSchemaText`, különböző motor → nem hasonlít), Tárhely
+  (`StorageEngines.kt`) mindhárom motorra; Szerver + Pulzus PG-re és SQL Serverre
+  (`SqlDialect.server: ServerCatalog`, `PulseProfile`). 1546 unit/integrációs teszt zöld (MySQL 8,
+  MariaDB, PG 16 + pg_stat_statements-es PG a 5434-en, SQL Server 2022, SQLite) + lint.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
@@ -257,8 +267,12 @@ E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a 
 - [x] Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · bővebb gombsor.
 - [x] Kiugró értékek (oszlop-összesítés + rács + diagram).
 - [x] Több motor 1–2. szakasz: PostgreSQL · SQL Server/Azure SQL · SQLite fájl.
-- [ ] Más motorokon még ki van kapcsolva (MySQL-only kód): EXPLAIN-fa (`ExplainJson` csak MySQL
-      JSON), keresés, séma-összehasonlítás, Tárhely, Szerver/Pulzus; SQLite-on eredmény-szerkesztés.
+- [x] EXPLAIN-fa, keresés, séma-összehasonlítás, Tárhely mindhárom motoron; Szerver/Pulzus PG-n és
+      SQL Serveren; SQLite-on eredmény-szerkesztés. (SQLite-on Szerver/Pulzus értelemszerűen nincs.)
+- [ ] Döntésre vár: éles kapcsolaton a munkamenet leállítása (KILL / pg_terminate_backend) kérjen-e
+      erősebb megerősítést (ma ugyanaz a sima megerősítés, mint MySQL-en).
+- [ ] Nincs élőben kipróbálva: PG standby (replika), SQL Server availability group; redundáns
+      index csak MySQL-en; SQLite keresés kis/nagybetű-független csak ASCII-re.
 - [ ] Készüléken kipróbálni: pgjdbc/mssql-jdbc TLS Androidon, SQLite fájlválasztó, SSH-alagút PG/MSSQL-lel.
 - [ ] SQL Server: `GO` elválasztó nem támogatott; varbinary/text/ntext/xml cellaszerkesztés hibázhat;
       Azure AD nincs. PostgreSQL: a jsonb `?` operátort a driver paraméternek veszi.

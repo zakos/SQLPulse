@@ -142,6 +142,16 @@ A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-ele
 | Indítóikon-parancsikonok a legutóbbi nem éles kapcsolatokhoz (alapból ki) | `data/shortcuts/` |
 | SQL átadása a szerkesztőnek új fülön (Lassú panel, futó lekérdezések); keresési találat → szűrt tábla | `ui/handoff/Handoffs.kt` |
 
+### Több adatbázismotor (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| PostgreSQL, SQL Server / Azure SQL, SQLite-fájl a MySQL/MariaDB mellett (motorválasztó a kapcsolatszerkesztőben) | `data/sql/dialect/`, `docs/tobb-motor-terv.md` |
+| EXPLAIN-fa minden motoron (PG JSON, SQL Server becsült XML-terv, SQLite query plan) | `data/sql/plan/` |
+| Keresés, séma-összehasonlítás, Tárhely minden motoron; Szerver és Pulzus PG-n és SQL Serveren | `data/search/`, `data/schema/`, `data/sql/dialect/*ServerCatalog.kt` |
+| Szerkesztő: undo/redo, kódminták, testreszabható gombsor, megosztás; motorfüggő kulcsszavak | `ui/query/`, `data/query/` |
+| Kiugró értékek (IQR + robusztus z) az oszlop-összesítőben, a rácsban és a diagramon | `data/grid/Outliers.kt` |
+
 ## Ami hiányzik
 
 A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az
