@@ -1,27 +1,35 @@
 name: Build
 
-# The installable build. It runs when work lands on main — which is what merging a pull request
-# does — and on request from the Actions tab. Ordinary commits are covered by check.yml.
+# The installable build, and the only CI the project keeps: it runs when a pull request into main
+# is merged, and at no other time. A pull request that is closed without merging, a push to a
+# branch and a direct push to main build nothing.
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
+# One build per merge, in order: a second merge queues behind the first rather than cancelling it,
+# so every merged change gets its own numbered APK.
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-main
+  cancel-in-progress: false
 
 jobs:
   build:
     name: Assemble, test and lint
+    # "closed" also fires for a pull request that was abandoned; only a merge builds.
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
+      # The merge commit on main, not the pull request's own head: that is what was released.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -71,6 +79,7 @@ jobs:
       # The run number becomes the version code, so this APK installs over the previous one.
       - name: Assemble debug
         env:
+          BUILD_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           SIGNING_KEYSTORE_PATH: ${{ env.KEYSTORE_FILE }}
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           # Both optional: without an alias the keystore's only one is used, and without a key
@@ -84,6 +93,7 @@ jobs:
       # AAB is what a store would take, and building both here keeps them from drifting apart.
       - name: Assemble release (APK and AAB)
         env:
+          BUILD_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           SIGNING_KEYSTORE_PATH: ${{ env.KEYSTORE_FILE }}
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
@@ -151,9 +161,15 @@ jobs:
 
       - name: Summarise the install
         if: success()
+        # The title is the PR author's text: it reaches the shell as data, never as script.
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           {
             echo "### SQLPulse build ${{ github.run_number }}"
+            echo
+            printf 'Merged pull request #%s: %s\n' "$PR_NUMBER" "$PR_TITLE"
             echo
             echo "Version code ${{ github.run_number }}. Three artifacts:"
             echo

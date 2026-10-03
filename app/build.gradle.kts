@@ -19,7 +19,9 @@ plugins {
  */
 val buildNumber = (System.getenv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER"))
     ?.toIntOrNull() ?: 1
-val commitSha = System.getenv("GITHUB_SHA")?.take(7)
+// CI passes the merge commit explicitly: on a pull_request event GITHUB_SHA is GitHub's own
+// test-merge ref, not the commit that landed on main.
+val commitSha = (System.getenv("BUILD_COMMIT_SHA") ?: System.getenv("GITHUB_SHA"))?.take(7)
 
 /**
  * Signing material, taken from the environment.

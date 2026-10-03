@@ -109,8 +109,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - Integrációs tesztek: `integration/` csomag (MySQL/MariaDB, `postgres/`, `sqlserver/`, `sqlite/`) —
   **csak helyben** futnak (env nélkül kihagyják magukat), CI-ban nem.
 - Instrumentált UI tesztek: `app/src/androidTest/` (CI nincs hozzá, csak kézzel/emulátoron)
-- Workflow: **csak `.github/workflows/build.yml`** (push a `main`-re / kézi: unit teszt + lint +
-  aláírt APK artifact). 2026-10-03: a felhasználó kérésére a check/integration/security/instrumentation
+- Workflow: **csak `.github/workflows/build.yml`**, és az is **csak akkor fut, ha egy `main`-re
+  nyitott PR-t összefésülnek** (`pull_request: closed` + `merged == true`; a merge commitot
+  buildeli): unit teszt + lint + aláírt release APK/AAB + debug APK artifact. A verziószám a
+  `BUILD_COMMIT_SHA`-ból jön (a `GITHUB_SHA` PR-eseménynél nem a main commitja). 2026-10-03: a felhasználó kérésére a check/integration/security/instrumentation
   workflow-k törölve — más CI ne kerüljön vissza.
 - Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
 - **Integrációs tesztek helyben** (PostgreSQL: `apt-get install postgresql`, saját klaszter pl. 5433;

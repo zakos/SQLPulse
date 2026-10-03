@@ -85,9 +85,10 @@ handling and the JDBC layer are compiled and unit-tested but not yet exercised e
 
 ## CI and installing the app
 
-One workflow: `.github/workflows/build.yml` — pushes to `main`, which is what merging a pull
-request does, plus manual runs from the Actions tab. It runs the unit tests and Android Lint and
-uploads the installable debug APK as the artifact `sqlpulse-debug-<run number>`.
+One workflow: `.github/workflows/build.yml` — it runs only when a pull request into `main` is
+merged (not on branch pushes, not on direct pushes to `main`, not on closed-unmerged pull
+requests). It checks out the merge commit, runs the unit tests and Android Lint, and uploads the
+signed release APK (`sqlpulse-release-<run number>`), the release AAB and the debug APK.
 
 Integration tests (`app/src/test/.../integration/`, against real MySQL/MariaDB, PostgreSQL and
 SQL Server servers) are not run in CI; they skip themselves without their environment variables
