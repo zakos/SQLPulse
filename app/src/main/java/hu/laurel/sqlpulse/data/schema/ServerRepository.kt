@@ -2,6 +2,10 @@ package hu.laurel.sqlpulse.data.schema
 
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.KillAction
+import hu.laurel.sqlpulse.data.sql.dialect.ServerCapabilities
+import hu.laurel.sqlpulse.data.sql.dialect.ServerCatalog
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -10,349 +14,99 @@ data class ServerFact(val label: String, val value: String)
 
 /**
  * What the DBA role of §3 asks for: the running queries, and enough server state to see what is
- * going on. Both need only SELECT and PROCESS.
+ * going on.
+ *
+ * Engine-neutral: each method runs the live engine's [ServerCatalog] (reached through the
+ * session's dialect) on a pooled connection. For MySQL that is the code that always lived here;
+ * PostgreSQL and SQL Server have their own catalogs. The screens read [capabilities] to learn
+ * what this engine can do (which kill actions, an idle filter) and the engine's features to learn
+ * which panels exist.
  */
 @Singleton
 class ServerRepository @Inject constructor(
     private val sessions: SqlSessionManager,
 ) {
 
-    /** `SHOW FULL PROCESSLIST` — the whole query text, not the truncated form. */
-    suspend fun processList(): ResultTable = sessions.withConnection { connection ->
-        connection.createStatement().use { statement ->
-            statement.executeQuery("SHOW FULL PROCESSLIST").use { rows ->
-                ResultTable.from(rows, MAX_PROCESSES)
-            }
-        }
+    private val catalog: ServerCatalog get() = sessions.dialect().server
+
+    /** What the live engine's Server screen can offer beyond the panels themselves. */
+    val capabilities: ServerCapabilities get() = catalog.capabilities
+
+    /** How Pulse turns two samples into tiles, for the live engine. */
+    val pulse: PulseProfile get() = catalog.pulse
+
+    /** The running statements; [includeIdle] is honoured only by engines that can filter them. */
+    suspend fun processList(includeIdle: Boolean = false): ResultTable {
+        val catalog = catalog
+        return sessions.withConnection { catalog.processList(it, includeIdle, MAX_PROCESSES) }
     }
 
     /**
-     * Ends one connection's current statement.
-     *
-     * `KILL QUERY` rather than `KILL`: it stops the statement and leaves the connection alive,
-     * which is the less destructive of the two and enough to free a stuck query (§11).
+     * Ends one session's statement ([KillAction.CANCEL]) or the whole session ([KillAction.TERMINATE]);
+     * returns false when the server did not find it (it may have finished a moment ago).
      */
-    suspend fun killQuery(processId: Long) = sessions.withConnection { connection ->
-        connection.createStatement().use { statement ->
-            // KILL takes no parameters; interpolating a Long cannot carry anything but digits.
-            statement.execute("KILL QUERY $processId")
-        }
-        Unit
+    suspend fun stop(processId: Long, action: KillAction): Boolean {
+        val catalog = catalog
+        return sessions.withConnection { catalog.stop(it, processId, action) }
     }
 
-    /**
-     * Open transactions, oldest first (research summary, §2.0).
-     *
-     * A transaction that has been open for minutes is usually somebody's forgotten session, and it
-     * is what other queries are waiting behind. The thread id is the same one `KILL QUERY` takes,
-     * so what is found here can be acted on from the same screen.
-     */
-    suspend fun transactions(): ResultTable = sessions.withConnection { connection ->
-        connection.createStatement().use { statement ->
-            statement.executeQuery(
-                """
-                SELECT trx_mysql_thread_id AS Id,
-                       trx_state AS State,
-                       TIMESTAMPDIFF(SECOND, trx_started, NOW()) AS Seconds,
-                       trx_rows_locked AS RowsLocked,
-                       trx_rows_modified AS RowsModified,
-                       trx_query AS Query
-                FROM information_schema.INNODB_TRX
-                ORDER BY trx_started
-                """.trimIndent(),
-            ).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
-        }
+    /** Open transactions, oldest first (research summary, §2.0). */
+    suspend fun transactions(): ResultTable {
+        val catalog = catalog
+        return sessions.withConnection { catalog.transactions(it, MAX_PROCESSES) }
     }
 
-    /**
-     * Who is waiting for whom.
-     *
-     * The tables moved in MySQL 8.0: the old `INNODB_LOCK_WAITS` became
-     * `performance_schema.data_lock_waits`, and asking for the wrong one is an error rather than
-     * an empty answer. The modern one is tried first, the old one second, and a server that has
-     * neither — or a user without the grant — gets an empty table rather than a failure, because
-     * "no lock waits" is also what an idle server looks like.
-     */
-    suspend fun lockWaits(): ResultTable = sessions.withConnection { connection ->
-        val queries = listOf(
-            """
-            SELECT r.trx_mysql_thread_id AS WaitingId,
-                   r.trx_query AS WaitingQuery,
-                   b.trx_mysql_thread_id AS BlockingId,
-                   b.trx_query AS BlockingQuery
-            FROM performance_schema.data_lock_waits w
-            JOIN information_schema.INNODB_TRX r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
-            JOIN information_schema.INNODB_TRX b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
-            """.trimIndent(),
-            """
-            SELECT r.trx_mysql_thread_id AS WaitingId,
-                   r.trx_query AS WaitingQuery,
-                   b.trx_mysql_thread_id AS BlockingId,
-                   b.trx_query AS BlockingQuery
-            FROM information_schema.INNODB_LOCK_WAITS w
-            JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id
-            JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id
-            """.trimIndent(),
-        )
-        queries.firstNotNullOfOrNull { sql ->
-            runCatching {
-                connection.createStatement().use { statement ->
-                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
-                }
-            }.getOrNull()
-        } ?: ResultTable.EMPTY
+    /** Who is waiting for whom. */
+    suspend fun lockWaits(): ResultTable {
+        val catalog = catalog
+        return sessions.withConnection { catalog.lockWaits(it, MAX_PROCESSES) }
     }
 
-    /**
-     * Replication, as this server sees it.
-     *
-     * `SHOW REPLICA STATUS` is the 8.0.22 name and `SHOW SLAVE STATUS` the older one (MariaDB adds
-     * `SHOW ALL SLAVES STATUS` for several connections); both need a grant that plenty of
-     * read-only users do not have. The outcomes are kept apart on purpose: a statement that ran
-     * and returned no rows means "not a replica", while refusals on every spelling mean "not
-     * allowed to ask" — blaming a missing grant on a server that simply is not a replica, or the
-     * reverse, would send somebody looking in the wrong place.
-     */
-    suspend fun replication(): ReplicationReport = sessions.withConnection { connection ->
-        val version = serverVersion(connection)
-        var denied = false
-        for (sql in ReplicationStatus.statements(version)) {
-            try {
-                val table = connection.createStatement().use { statement ->
-                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_CHANNELS) }
-                }
-                return@withConnection if (table.rows.isEmpty()) {
-                    ReplicationReport.NotReplica
-                } else {
-                    ReplicationReport.Channels(
-                        ReplicationStatus.sortedBySeverity(ReplicationStatus.parse(table)),
-                        table,
-                    )
-                }
-            } catch (e: java.sql.SQLException) {
-                // A syntax error is just the wrong generation of the statement; try the next.
-                if (ReplicationStatus.isAccessDenied(e.errorCode)) denied = true
-            }
-        }
-        if (denied) ReplicationReport.NoPrivilege else ReplicationReport.NotReplica
+    /** Replication, as this server sees it; see [ReplicationReport] for the distinct non-answers. */
+    suspend fun replication(): ReplicationReport {
+        val catalog = catalog
+        return sessions.withConnection { catalog.replication(it) }
     }
 
-    /**
-     * The statements that cost the most time, from the server's own digest table.
-     *
-     * Read-only and cheap (the table is a fixed-size summary in memory). Three states a plain
-     * error would blur are told apart: the server is too old, performance_schema is switched off
-     * (the table exists but stays empty, so asking would mislead), and the user lacks SELECT on it.
-     */
-    suspend fun slowStatements(sort: SlowSort): SlowStatementsReport = sessions.withConnection { connection ->
-        if (!SlowStatements.supported(serverVersion(connection))) {
-            return@withConnection SlowStatementsReport.Unsupported
-        }
-        val enabled = runCatching {
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT @@performance_schema").use { rows ->
-                    rows.next() && rows.getInt(1) == 1
-                }
-            }
-        }.getOrDefault(true)
-        if (!enabled) return@withConnection SlowStatementsReport.PerformanceSchemaOff
-        try {
-            val statements = connection.createStatement().use { statement ->
-                statement.executeQuery(SlowStatements.query(sort)).use { rows ->
-                    buildList {
-                        while (rows.next()) {
-                            add(
-                                SlowStatement(
-                                    digestText = rows.getString(1).orEmpty(),
-                                    schema = rows.getString(2)?.takeIf { it.isNotBlank() },
-                                    count = SlowStatements.parseCounter(rows.getString(3)),
-                                    totalPicos = SlowStatements.parseCounter(rows.getString(4)),
-                                    avgPicos = SlowStatements.parseCounter(rows.getString(5)),
-                                    rowsExamined = SlowStatements.parseCounter(rows.getString(6)),
-                                    rowsSent = SlowStatements.parseCounter(rows.getString(7)),
-                                    noIndexUsed = SlowStatements.parseCounter(rows.getString(8)),
-                                    noGoodIndexUsed = SlowStatements.parseCounter(rows.getString(9)),
-                                    firstSeen = rows.getString(10),
-                                    lastSeen = rows.getString(11),
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
-            SlowStatementsReport.Rows(statements, sort)
-        } catch (e: java.sql.SQLException) {
-            when {
-                SlowStatements.isAccessDenied(e.errorCode) -> SlowStatementsReport.NoPrivilege
-                SlowStatements.isMissingTable(e.errorCode) -> SlowStatementsReport.Unsupported
-                else -> throw e
-            }
-        }
+    /** The statements that cost the most time, from the engine's own statistics. */
+    suspend fun slowStatements(sort: SlowSort): SlowStatementsReport {
+        val catalog = catalog
+        return sessions.withConnection { catalog.slowStatements(it, sort) }
     }
 
-    private fun serverVersion(connection: java.sql.Connection): ServerVersion =
-        runCatching {
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT VERSION()").use { rows ->
-                    ServerVersion.parse(if (rows.next()) rows.getString(1) else null)
-                }
-            }
-        }.getOrDefault(ServerVersion.UNKNOWN)
-
-    /**
-     * The server's accounts (research summary, §2.0).
-     *
-     * `mysql.user` is the full answer and needs a grant on that table; without it,
-     * `information_schema.user_privileges` still lists who exists, which is what the screen is
-     * for. Neither shows a password, and nothing here can change an account.
-     */
-    suspend fun users(): ResultTable = sessions.withConnection { connection ->
-        val queries = listOf(
-            """
-            SELECT CONCAT(user, '@', host) AS Account,
-                   plugin AS Plugin,
-                   account_locked AS Locked,
-                   password_expired AS Expired
-            FROM mysql.user
-            ORDER BY user, host
-            """.trimIndent(),
-            """
-            SELECT DISTINCT grantee AS Account
-            FROM information_schema.user_privileges
-            ORDER BY grantee
-            """.trimIndent(),
-        )
-        queries.firstNotNullOfOrNull { sql ->
-            runCatching {
-                connection.createStatement().use { statement ->
-                    statement.executeQuery(sql).use { rows -> ResultTable.from(rows, MAX_PROCESSES) }
-                }
-            }.getOrNull()
-        } ?: ResultTable.EMPTY
+    /** The server's accounts, read-only; nothing here can change one. */
+    suspend fun users(): ResultTable {
+        val catalog = catalog
+        return sessions.withConnection { catalog.users(it, MAX_PROCESSES) }
     }
 
-    /**
-     * What one account may do, as the server itself words it.
-     *
-     * `SHOW GRANTS` takes no parameters, so the account is quoted into the statement; it comes
-     * from the server's own answer above rather than from anything typed, and it is quoted anyway.
-     * The output is left exactly as MySQL writes it — a GRANT line is what would be pasted
-     * somewhere else, and rewording it would make that useless.
-     */
-    suspend fun grants(account: String): List<String> = sessions.withConnection { connection ->
-        val (user, host) = account.substringBeforeLast('@') to account.substringAfterLast('@', "%")
-        val sql = "SHOW GRANTS FOR ${quoteStringLiteral(user.trim('\''))}@" +
-            quoteStringLiteral(host.trim('\''))
-        connection.createStatement().use { statement ->
-            statement.executeQuery(sql).use { rows ->
-                buildList {
-                    while (rows.next()) add(rows.getString(1).orEmpty())
-                }
-            }
-        }
+    /** What one account may do, as the server words it. */
+    suspend fun grants(account: String): List<String> {
+        val catalog = catalog
+        return sessions.withConnection { catalog.grants(it, account) }
     }
 
-    /**
-     * One reading for the live screen: the watched status variables, and the replica's lag.
-     *
-     * Two statements rather than one `SHOW GLOBAL STATUS` of several hundred rows — this runs
-     * every few seconds, over a tunnel, on a phone's battery. The replica question is allowed to
-     * fail: plenty of read-only users may not ask it, and a server that is not a replica answers
-     * with no rows, which is the same "nothing to report".
-     */
-    suspend fun sample(): ServerSample = sessions.withConnection { connection ->
-        val values = mutableMapOf<String, Long>()
-        val names = ServerMetrics.WATCHED.joinToString(", ") { quoteStringLiteral(it) }
-        connection.createStatement().use { statement ->
-            statement.executeQuery(
-                "SHOW GLOBAL STATUS WHERE Variable_name IN ($names)",
-            ).use { rows ->
-                while (rows.next()) {
-                    // Anything that is not a whole number is left out rather than rounded: the
-                    // screen would rather show a dash than a number it made up.
-                    rows.getString(2)?.toLongOrNull()?.let { values[rows.getString(1)] = it }
-                }
-            }
-        }
-        ServerSample(
-            takenAtMs = System.currentTimeMillis(),
-            uptimeSeconds = values["Uptime"] ?: 0L,
-            values = values,
-            replicationLagSeconds = replicationLag(connection),
-        )
+    /** One reading for the live screen. */
+    suspend fun sample(): ServerSample {
+        val catalog = catalog
+        return sessions.withConnection { catalog.sample(it) }
     }
 
-    /** `Seconds_Behind_Source` on 8.0.22 and later, `Seconds_Behind_Master` before it. */
-    private fun replicationLag(connection: java.sql.Connection): Long? =
-        listOf("SHOW REPLICA STATUS", "SHOW SLAVE STATUS").firstNotNullOfOrNull { sql ->
-            runCatching {
-                connection.createStatement().use { statement ->
-                    statement.executeQuery(sql).use { rows ->
-                        if (!rows.next()) return@use null
-                        listOf("Seconds_Behind_Source", "Seconds_Behind_Master")
-                            .firstNotNullOfOrNull { column ->
-                                runCatching { rows.getString(column) }.getOrNull()
-                            }
-                            ?.toLongOrNull()
-                    }
-                }
-            }.getOrNull()
-        }
-
-    /** A handful of variables worth seeing at a glance. */
-    suspend fun overview(): List<ServerFact> = sessions.withConnection { connection ->
-        val facts = mutableListOf<ServerFact>()
-        connection.createStatement().use { statement ->
-            statement.executeQuery(
-                """
-                SELECT VERSION() AS version,
-                       @@hostname AS hostname,
-                       @@version_comment AS build,
-                       CURRENT_USER() AS current_user_name,
-                       @@max_connections AS max_connections,
-                       @@read_only AS read_only,
-                       @@time_zone AS time_zone,
-                       @@character_set_server AS charset
-                """.trimIndent(),
-            ).use { rows ->
-                if (rows.next()) {
-                    val meta = rows.metaData
-                    for (index in 1..meta.columnCount) {
-                        facts += ServerFact(meta.getColumnLabel(index), rows.getString(index) ?: "")
-                    }
-                }
-            }
-            // Uptime and the current thread count come from the status variables.
-            statement.executeQuery(
-                "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected', 'Threads_running')",
-            ).use { rows ->
-                while (rows.next()) {
-                    facts += ServerFact(rows.getString(1), rows.getString(2) ?: "")
-                }
-            }
-            // Session status, not global: this is what *this* connection negotiated. An empty
-            // Ssl_version means the connection is not encrypted at all (research summary, §1).
-            statement.executeQuery(
-                "SHOW SESSION STATUS WHERE Variable_name IN ('Ssl_version', 'Ssl_cipher')",
-            ).use { rows ->
-                while (rows.next()) {
-                    val value = rows.getString(2).orEmpty()
-                    facts += ServerFact(rows.getString(1), value.ifBlank { "—" })
-                }
-            }
-        }
+    /** A handful of facts worth seeing at a glance. */
+    suspend fun overview(): List<ServerFact> {
+        val catalog = catalog
+        val facts = sessions.withConnection { catalog.overview(it) }.toMutableList()
         // Which driver this session settled on. Worth showing: on an old server it explains why
         // TLS verification is unavailable, and it is the first thing to check if something the
-        // modern driver does is missing.
-        sessions.driverInUse()?.let { facts += ServerFact("JDBC driver", it.name.lowercase()) }
-        facts
+        // modern driver does is missing. Only the MySQL family has more than one to choose from.
+        if (sessions.dialect().engine == DatabaseEngine.MYSQL) {
+            sessions.driverInUse()?.let { facts += ServerFact("JDBC driver", it.name.lowercase()) }
+        }
+        return facts
     }
 
     private companion object {
         /** A busy server can have thousands of connections; the screen shows the first page. */
         const val MAX_PROCESSES = 500
-
-        /** Multi-source replicas have a handful of channels, not hundreds. */
-        const val MAX_CHANNELS = 64
     }
 }

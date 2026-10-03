@@ -9,7 +9,14 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface ServerController {
     fun dismissGrants()
+    /** The gentle stop: cancels the statement where the engine can, otherwise ends the session. */
     fun kill(processId: Long)
+
+    /** Ends the whole session and rolls its transaction back (offered only where the engine has it). */
+    fun terminate(processId: Long) {}
+
+    /** Whether the process list also shows sessions that are doing nothing (where the engine filters). */
+    fun setShowIdle(show: Boolean) {}
     fun refresh()
     fun selectPanel(panel: ServerPanel)
     fun setReplicationRaw(raw: Boolean)

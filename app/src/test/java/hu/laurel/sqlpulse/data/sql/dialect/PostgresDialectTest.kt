@@ -490,8 +490,7 @@ class PostgresDialectTest {
         assertTrue(d.connector(JdbcConfig("h", 1, "d", "u", null, true, engine = DatabaseEngine.POSTGRESQL)) is PostgresConnector)
         // Not offered: screens that read MySQL-only things (docs/tobb-motor-terv.md, 5).
         for (feature in listOf(
-            EngineFeature.SERVER_ACTIVITY, EngineFeature.PULSE, EngineFeature.SLOW_QUERIES,
-            EngineFeature.REPLICATION, EngineFeature.EVENTS,
+            EngineFeature.EVENTS,
         )) {
             assertFalse("$feature is not implemented for PostgreSQL", d.supports(feature))
         }
@@ -499,6 +498,7 @@ class PostgresDialectTest {
             EngineFeature.ROW_EDITING, EngineFeature.CSV_IMPORT, EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP,
             EngineFeature.TABLE_DDL, EngineFeature.WRITE_PREVIEW, EngineFeature.EDITABLE_RESULTS, EngineFeature.EXPLAIN,
             EngineFeature.ROUTINES, EngineFeature.TRIGGERS, EngineFeature.DATABASE_SEARCH, EngineFeature.SCHEMA_DIFF, EngineFeature.STORAGE,
+            EngineFeature.SERVER_ACTIVITY, EngineFeature.PULSE, EngineFeature.SLOW_QUERIES, EngineFeature.REPLICATION,
         )) {
             assertTrue("$feature works", d.supports(feature))
         }

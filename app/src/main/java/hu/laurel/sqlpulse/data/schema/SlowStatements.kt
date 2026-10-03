@@ -15,12 +15,17 @@ data class SlowStatement(
     val count: Long,
     val totalPicos: Long,
     val avgPicos: Long,
-    val rowsExamined: Long,
+    /** Null where the engine does not count rows examined (PostgreSQL, SQL Server). */
+    val rowsExamined: Long?,
     val rowsSent: Long,
     val noIndexUsed: Long,
     val noGoodIndexUsed: Long,
     val firstSeen: String?,
     val lastSeen: String?,
+    /** Buffer/page reads of the statement (SQL Server logical reads, PostgreSQL shared blocks), or null. */
+    val blocksRead: Long? = null,
+    /** The text carries `$1`, `$2` … for its values (PostgreSQL) instead of `?`. */
+    val dollarPlaceholders: Boolean = false,
 )
 
 sealed interface SlowStatementsReport {
@@ -28,6 +33,12 @@ sealed interface SlowStatementsReport {
     data object PerformanceSchemaOff : SlowStatementsReport
     data object NoPrivilege : SlowStatementsReport
     data object Unsupported : SlowStatementsReport
+
+    /** PostgreSQL: the pg_stat_statements extension is not created in this database. */
+    data object ExtensionMissing : SlowStatementsReport
+
+    /** PostgreSQL: the extension exists but the library is not in shared_preload_libraries. */
+    data object ExtensionNotLoaded : SlowStatementsReport
 }
 
 /** Pure helpers for the "slowest statements" panel. */

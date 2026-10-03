@@ -20,7 +20,7 @@ object DigestPlaceholders {
      * A name that the text already uses (`:p1` written by hand) is skipped over, so a converted
      * statement never ends up with one name meaning two different values.
      */
-    fun toNamed(sql: String): Converted {
+    fun toNamed(sql: String, dollarNumbered: Boolean = false): Converted {
         val taken = SqlGuards.parameters(sql).toSet()
         val out = StringBuilder(sql.length + 8)
         var count = 0
@@ -42,7 +42,14 @@ object DigestPlaceholders {
             if (end != null) {
                 out.append(sql, index, end)
                 index = end
-            } else if (c == '?') {
+            } else if (dollarNumbered && c == '$' && sql.getOrNull(index + 1)?.isDigit() == true) {
+                // PostgreSQL's pg_stat_statements writes `$1`; the same number is the same value.
+                var digits = index + 1
+                while (digits < sql.length && sql[digits].isDigit()) digits++
+                out.append(":p").append(sql, index + 1, digits)
+                count++
+                index = digits
+            } else if (c == '?' && !dollarNumbered) {
                 out.append(':').append(nextName())
                 count++
                 index++

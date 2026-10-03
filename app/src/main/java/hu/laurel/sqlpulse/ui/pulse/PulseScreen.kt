@@ -37,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.schema.Health
+import hu.laurel.sqlpulse.data.schema.MetricId
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.SegmentedChoice
 import hu.laurel.sqlpulse.ui.components.Sparkline
@@ -122,6 +123,11 @@ fun PulseScreenContent(
 
             when {
                 !state.connected -> Placeholder(R.string.pulse_no_session)
+                // Not an error to retry: the account cannot read these counters at all.
+                state.missingPrivilege != null -> Placeholder(
+                    R.string.pulse_no_privilege,
+                    state.missingPrivilege,
+                )
                 // The first reading has nothing to compare against: a counter on its own says
                 // how much has happened since the server started, not what is happening now.
                 !state.live -> Placeholder(R.string.pulse_waiting)
@@ -212,10 +218,10 @@ private fun MetricTile(metric: Metric) {
 }
 
 @Composable
-private fun Placeholder(@StringRes textId: Int) {
+private fun Placeholder(@StringRes textId: Int, argument: String? = null) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            stringResource(textId),
+            if (argument == null) stringResource(textId) else stringResource(textId, argument),
             style = MaterialTheme.typography.bodyMedium,
             color = LocalSemanticColors.current.textSecondary,
             modifier = Modifier.padding(Spacing.xl),
@@ -240,16 +246,39 @@ private fun MetricId.labelRes(): Int = when (this) {
     MetricId.SLOW_QUERIES -> R.string.pulse_slow_queries
     MetricId.TRAFFIC_OUT -> R.string.pulse_traffic_out
     MetricId.REPLICATION_LAG -> R.string.pulse_replication_lag
+    MetricId.PG_CONNECTIONS, MetricId.MS_USER_CONNECTIONS -> R.string.pulse_threads_connected
+    MetricId.PG_ACTIVE -> R.string.pulse_pg_active
+    MetricId.PG_IDLE_IN_XACT -> R.string.pulse_pg_idle_in_xact
+    MetricId.PG_COMMITS -> R.string.pulse_pg_commits
+    MetricId.PG_ROLLBACKS -> R.string.pulse_pg_rollbacks
+    MetricId.PG_CACHE_HIT, MetricId.MS_CACHE_HIT -> R.string.pulse_cache_hit
+    MetricId.PG_TUPLES_READ -> R.string.pulse_pg_tuples_read
+    MetricId.PG_TUPLES_WRITTEN -> R.string.pulse_pg_tuples_written
+    MetricId.PG_DEADLOCKS -> R.string.pulse_pg_deadlocks
+    MetricId.MS_BATCH_REQUESTS -> R.string.pulse_ms_batch_requests
+    MetricId.MS_TRANSACTIONS -> R.string.pulse_ms_transactions
+    MetricId.MS_BLOCKED -> R.string.pulse_ms_blocked
+    MetricId.MS_LOCK_WAITS -> R.string.pulse_ms_lock_waits
+    MetricId.MS_PAGE_LIFE -> R.string.pulse_ms_page_life
 }
 
 /** What the number is counted in — the tile is unreadable without it. */
 @StringRes
 private fun MetricId.unitRes(): Int = when (this) {
-    MetricId.QUERIES, MetricId.SLOW_QUERIES -> R.string.pulse_unit_per_second
-    MetricId.THREADS_RUNNING, MetricId.THREADS_CONNECTED, MetricId.LOCK_WAITS ->
-        R.string.pulse_unit_now
+    MetricId.QUERIES, MetricId.SLOW_QUERIES, MetricId.PG_COMMITS, MetricId.PG_ROLLBACKS,
+    MetricId.PG_TUPLES_READ, MetricId.PG_TUPLES_WRITTEN, MetricId.MS_BATCH_REQUESTS,
+    MetricId.MS_TRANSACTIONS, MetricId.MS_LOCK_WAITS,
+    -> R.string.pulse_unit_per_second
 
-    MetricId.BUFFER_HIT -> R.string.pulse_unit_window
+    MetricId.THREADS_RUNNING, MetricId.THREADS_CONNECTED, MetricId.LOCK_WAITS,
+    MetricId.PG_CONNECTIONS, MetricId.PG_ACTIVE, MetricId.PG_IDLE_IN_XACT,
+    MetricId.MS_USER_CONNECTIONS, MetricId.MS_BLOCKED,
+    -> R.string.pulse_unit_now
+
+    MetricId.PG_DEADLOCKS -> R.string.pulse_unit_window
+    MetricId.MS_PAGE_LIFE -> R.string.pulse_unit_seconds_now
+    MetricId.MS_CACHE_HIT -> R.string.pulse_unit_now
+    MetricId.PG_CACHE_HIT, MetricId.BUFFER_HIT -> R.string.pulse_unit_window
     MetricId.TRAFFIC_OUT -> R.string.pulse_unit_out
     MetricId.REPLICATION_LAG -> R.string.pulse_unit_behind
 }

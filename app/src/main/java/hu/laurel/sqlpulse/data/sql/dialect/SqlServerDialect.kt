@@ -39,9 +39,9 @@ object SqlServerDialect : SqlDialect {
 
     /**
      * What is built and tested against a real server. EXPLAIN is the estimated plan
-     * (`SET SHOWPLAN_XML ON` on the one connection, see [inPlanMode]). Missing on purpose: TABLE_DDL
-     * (no `SHOW CREATE TABLE`; views and routines do show their definition), and the server
-     * screens (they read MySQL status variables).
+     * (`SET SHOWPLAN_XML ON` on the one connection, see [inPlanMode]); the server screens read
+     * the DMVs through [SqlServerServerCatalog]. Missing on purpose: TABLE_DDL (no
+     * `SHOW CREATE TABLE`; views and routines do show their definition).
      */
     override val features: Set<EngineFeature> = setOf(
         EngineFeature.EXPLAIN,
@@ -56,7 +56,14 @@ object SqlServerDialect : SqlDialect {
         EngineFeature.SCHEMA_MAP,
         EngineFeature.ROUTINES,
         EngineFeature.TRIGGERS,
+        // The Server and Pulse screens, through [SqlServerServerCatalog].
+        EngineFeature.SERVER_ACTIVITY,
+        EngineFeature.REPLICATION,
+        EngineFeature.SLOW_QUERIES,
+        EngineFeature.PULSE,
     )
+
+    override val server: ServerCatalog = SqlServerServerCatalog
 
     // ---------------------------------------------------------------- names and text
 

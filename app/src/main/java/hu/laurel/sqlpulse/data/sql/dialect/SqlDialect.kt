@@ -212,6 +212,13 @@ interface SqlDialect : SqlSyntax {
 
     val catalog: SchemaCatalog
 
+    /**
+     * The Server and Pulse screens' questions for this engine (§3, DBA role). Only read when
+     * [EngineFeature.SERVER_ACTIVITY] or [EngineFeature.PULSE] is in [features]; SQLite, which
+     * has no server, leaves the default that refuses.
+     */
+    val server: ServerCatalog get() = NoServerCatalog
+
     /** The engine's own namespaces, listed after the user's in the picker. */
     val systemNamespaces: Set<String>
 
