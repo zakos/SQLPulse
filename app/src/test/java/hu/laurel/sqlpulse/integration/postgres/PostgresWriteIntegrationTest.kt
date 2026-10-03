@@ -103,7 +103,7 @@ class PostgresWriteIntegrationTest {
         }
         assertEquals("Äpfel \"quoted\" 😀", column("name", 1))
         assertEquals("3.14", column("price", 1))
-        assertEquals("f", column("active", 1))
+        assertEquals("false", column("active", 1))
         assertEquals("{\"k\": [1, 2]}", column("doc", 1))
         // Nothing else moved.
         assertEquals("avocado", column("name", 2))
@@ -164,7 +164,7 @@ class PostgresWriteIntegrationTest {
         )
         assertEquals(1, runBlocking { editor.execute(insert) })
         assertEquals("fig", column("name", 9))
-        assertEquals("f", column("active", 9))
+        assertEquals("false", column("active", 9))
     }
 
     @Test
@@ -240,7 +240,14 @@ class PostgresWriteIntegrationTest {
     private fun realCount(sql: String): Int = fixture.session.take().let { connection ->
         try {
             connection.autoCommit = false
-            connection.createStatement().use { it.executeUpdate(sql) }.also { connection.rollback() }
+            // `execute`, not `executeUpdate`: a DELETE … RETURNING hands back its rows as a result set.
+            connection.createStatement().use { statement ->
+                if (statement.execute(sql)) {
+                    statement.resultSet.use { rows -> generateSequence { if (rows.next()) 1 else null }.count() }
+                } else {
+                    statement.updateCount
+                }
+            }.also { connection.rollback() }
         } finally {
             connection.autoCommit = true
             fixture.session.giveBack(connection)

@@ -167,7 +167,7 @@ class PostgresSessionIntegrationTest {
             }
         }
         assertEquals("ő 😀", fixture.scalar("SELECT note FROM ${fixture.t("typed")}"))
-        assertEquals("t", fixture.scalar("SELECT flag::text FROM ${fixture.t("typed")}"))
+        assertEquals("true", fixture.scalar("SELECT flag::text FROM ${fixture.t("typed")}"))
         assertEquals("{x,y}", fixture.scalar("SELECT tags::text FROM ${fixture.t("typed")}"))
         assertEquals(null, fixture.scalar("SELECT at::text FROM ${fixture.t("typed")}"))
     }

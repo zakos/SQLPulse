@@ -222,6 +222,12 @@ object PostgresDialect : SqlDialect {
             statement.executeQuery("SELECT current_schema()").use { rows -> if (rows.next()) rows.getString(1) else null }
         }
 
+    /**
+     * The connection's "database" is the database the server hands the session to, not a schema:
+     * the session starts in whichever schema the search_path puts first (`public` normally).
+     */
+    override fun initialNamespace(connection: Connection, configured: String): String? = currentNamespace(connection)
+
     override val catalog: SchemaCatalog = PostgresCatalog
 
     override val systemNamespaces: Set<String> = PostgresCatalog.SYSTEM_SCHEMAS

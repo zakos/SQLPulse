@@ -94,7 +94,7 @@ data class ResultTable(
             val columns = (1..meta.columnCount).map { index ->
                 ColumnMeta(
                     label = meta.getColumnLabel(index),
-                    type = cellTypeOf(meta.getColumnType(index)),
+                    type = columnTypeOf(meta.getColumnType(index), meta.getColumnTypeName(index) ?: ""),
                     typeName = meta.getColumnTypeName(index) ?: "",
                     table = meta.getTableName(index)?.takeIf { it.isNotBlank() },
                 )
@@ -140,6 +140,16 @@ data class ResultTable(
                     }
                 }
             }
+
+        /**
+         * PostgreSQL reports `bit(n)` and `bit varying` as JDBC BIT like it does boolean, but their
+         * value is a string of 0s and 1s ("101"), which getBoolean refuses. The driver spells those
+         * type names in lower case; MySQL's BIT is upper case and stays a flag.
+         */
+        private fun columnTypeOf(jdbcType: Int, typeName: String): CellType {
+            val type = cellTypeOf(jdbcType)
+            return if (type == CellType.BOOLEAN && (typeName == "bit" || typeName == "varbit")) CellType.TEXT else type
+        }
 
         fun cellTypeOf(jdbcType: Int): CellType = when (jdbcType) {
             Types.TINYINT, Types.SMALLINT, Types.INTEGER, Types.BIGINT,
