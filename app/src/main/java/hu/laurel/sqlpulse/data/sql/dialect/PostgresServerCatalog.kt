@@ -54,7 +54,7 @@ object PostgresServerCatalog : ServerCatalog {
                    host(client_addr) AS "Host",
                    datname AS "db",
                    COALESCE(EXTRACT(EPOCH FROM (now() - CASE WHEN state = 'active' THEN query_start ELSE state_change END))::bigint, 0) AS "Time",
-                   concat_ws(' · ', state, NULLIF(concat_ws(':', wait_event_type, wait_event), '')) AS "State",
+                   concat_ws(' · ', state, CASE WHEN state = 'active' THEN NULLIF(concat_ws(':', wait_event_type, wait_event), '') END) AS "State",
                    query AS "Info"
             FROM pg_stat_activity
             WHERE backend_type = 'client backend'

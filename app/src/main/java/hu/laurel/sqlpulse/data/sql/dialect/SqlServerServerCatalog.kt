@@ -138,7 +138,7 @@ object SqlServerServerCatalog : ServerCatalog {
          * with the text of one of them. Elapsed times are microseconds. The app's own query against
          * this view is left out.
          */
-        fun slow(sort: SlowSort): String {
+        fun slow(sort: SlowSort, limit: Int = SLOW_LIMIT): String {
             val order = when (sort) {
                 SlowSort.TOTAL -> "total_elapsed"
                 SlowSort.AVERAGE -> "avg_elapsed"
@@ -161,7 +161,7 @@ object SqlServerServerCatalog : ServerCatalog {
                     WHERE st.text NOT LIKE '%dm_exec_query_stats%'
                     GROUP BY COALESCE(qs.query_hash, qs.sql_handle)
                 )
-                SELECT TOP (25) statement_text, db, executions, total_elapsed,
+                SELECT TOP (${limit.coerceIn(1, 1_000)}) statement_text, db, executions, total_elapsed,
                        total_elapsed / NULLIF(executions, 0) AS avg_elapsed,
                        total_rows, logical_reads,
                        CONVERT(varchar(19), first_seen, 120) AS first_seen,
@@ -324,9 +324,13 @@ object SqlServerServerCatalog : ServerCatalog {
         if (isPermissionDenied(e)) ReplicationReport.NoPrivilege else throw e
     }
 
-    override fun slowStatements(connection: Connection, sort: SlowSort): SlowStatementsReport = try {
+    override fun slowStatements(connection: Connection, sort: SlowSort): SlowStatementsReport =
+        slowStatements(connection, sort, SLOW_LIMIT)
+
+    /** [limit] is the page size; the screen asks for the default, a test for more than a busy server's top. */
+    internal fun slowStatements(connection: Connection, sort: SlowSort, limit: Int): SlowStatementsReport = try {
         val statements = connection.createStatement().use { statement ->
-            statement.executeQuery(SqlText.slow(sort)).use { rows ->
+            statement.executeQuery(SqlText.slow(sort, limit)).use { rows ->
                 buildList {
                     while (rows.next()) {
                         add(
@@ -508,6 +512,7 @@ object SqlServerServerCatalog : ServerCatalog {
             statement.executeQuery().use { rows -> ResultTable.from(rows, MAX_ROWS) }
         }
 
+    const val SLOW_LIMIT = 25
     private const val MICROS_TO_PICOS = 1_000_000L
     private const val MAX_ROWS = 500
 }
