@@ -26,7 +26,7 @@
     <string name="pulse_no_privilege">A Pulzus a szerver számlálóit olvassa, amihez %1$s jogosultság kell. Ennek a fióknak nincs meg.</string>
     <string name="pulse_cache_hit">Olvasás a gyorsítótárból</string>
     <string name="pulse_pg_active">Aktív lekérdezések</string>
-    <string name="pulse_pg_idle_in_xact">Tranzakcióban tétlen</string>
+    <string name="pulse_pg_idle_in_xact">Tétlen tranzakció</string>
     <string name="pulse_pg_commits">Véglegesítések</string>
     <string name="pulse_pg_rollbacks">Visszagörgetések</string>
     <string name="pulse_pg_tuples_read">Olvasott sorok</string>
@@ -34,8 +34,8 @@
     <string name="pulse_pg_deadlocks">Holtpontok</string>
     <string name="pulse_ms_batch_requests">Kötegkérések</string>
     <string name="pulse_ms_transactions">Tranzakciók</string>
-    <string name="pulse_ms_blocked">Blokkolt kérések</string>
-    <string name="pulse_ms_lock_waits">Zárra várakozások</string>
-    <string name="pulse_ms_page_life">Oldal élettartam</string>
+    <string name="pulse_ms_blocked">Blokkolt kérés</string>
+    <string name="pulse_ms_lock_waits">Zár-várakozás</string>
+    <string name="pulse_ms_page_life">Oldal-élet</string>
     <string name="pulse_unit_seconds_now">másodperc, éppen most</string>
 </resources>

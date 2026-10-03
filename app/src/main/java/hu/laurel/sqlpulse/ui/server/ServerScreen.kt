@@ -216,6 +216,18 @@ fun ServerScreenContent(
                 }
             }
 
+            // Sessions that are doing nothing are hidden by default where the engine can tell (a
+            // busy server has hundreds of pooled idle connections); this brings them back.
+            if (state.panel == ServerPanel.QUERIES && state.capabilities.idleFilter) {
+                Row(modifier = Modifier.padding(start = Spacing.l, end = Spacing.l, top = Spacing.s)) {
+                    FilterChip(
+                        selected = state.showIdle,
+                        onClick = { viewModel.setShowIdle(!state.showIdle) },
+                        label = { Text(stringResource(R.string.server_show_idle)) },
+                    )
+                }
+            }
+
             state.missingPrivilege?.let { privilege ->
                 // Its own state, not an error: the panel cannot be read by this account, and the
                 // text names what to ask for.
@@ -242,18 +254,6 @@ fun ServerScreenContent(
                         color = semantic.textSecondary,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = Spacing.l),
-                    )
-                }
-            }
-
-            // Sessions that are doing nothing are hidden by default where the engine can tell (a
-            // busy server has hundreds of pooled idle connections); this brings them back.
-            if (state.panel == ServerPanel.QUERIES && state.capabilities.idleFilter) {
-                Row(modifier = Modifier.padding(start = Spacing.l, end = Spacing.l, top = Spacing.s)) {
-                    FilterChip(
-                        selected = state.showIdle,
-                        onClick = { viewModel.setShowIdle(!state.showIdle) },
-                        label = { Text(stringResource(R.string.server_show_idle)) },
                     )
                 }
             }

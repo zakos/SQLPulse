@@ -36,6 +36,6 @@
     <string name="pulse_ms_transactions">Transactions</string>
     <string name="pulse_ms_blocked">Blocked requests</string>
     <string name="pulse_ms_lock_waits">Lock waits</string>
-    <string name="pulse_ms_page_life">Page life expectancy</string>
+    <string name="pulse_ms_page_life">Page life</string>
     <string name="pulse_unit_seconds_now">seconds, right now</string>
 </resources>
