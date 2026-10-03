@@ -98,6 +98,19 @@ class SqlScriptTest {
     }
 
     @Test
+    fun `T-SQL scripts split by T-SQL's own quoting`() {
+        val tsql = hu.laurel.sqlpulse.data.sql.dialect.TSql.GRAMMAR
+        fun split(text: String) = SqlScript.split(text, tsql).map { it.sql }
+        // A semicolon inside a bracketed name, a temp table's #, and a backslash before a quote.
+        assertEquals(listOf("SELECT [a;b] FROM t", "SELECT 2"), split("SELECT [a;b] FROM t; SELECT 2"))
+        assertEquals(listOf("SELECT * FROM #t", "DELETE FROM x"), split("SELECT * FROM #t; DELETE FROM x"))
+        assertEquals(listOf("SELECT 'a\\'", "SELECT 2"), split("SELECT 'a\\'; SELECT 2"))
+        assertEquals(listOf("SELECT [we]];x]", "SELECT 2"), split("SELECT [we]];x]; SELECT 2"))
+        // MySQL's reading of the same text is unchanged.
+        assertEquals(listOf("SELECT * FROM #t; DELETE FROM x"), parts("SELECT * FROM #t; DELETE FROM x"))
+    }
+
+    @Test
     fun `positions point back into the original text`() {
         val text = "SELECT 1;\nSELECT 2"
         val second = SqlScript.split(text)[1]

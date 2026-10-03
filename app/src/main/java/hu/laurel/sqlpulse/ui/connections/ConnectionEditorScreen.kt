@@ -251,7 +251,9 @@ fun ConnectionEditorScreenContent(
                 if (!form.useSsh) {
                     // Stated plainly once: the port has to be reachable from the phone's network.
                     Text(
-                        stringResource(R.string.ssh_direct_note),
+                        stringResource(
+                            if (form.engine == DatabaseEngine.SQLSERVER) R.string.sqlserver_ssh_direct_note else R.string.ssh_direct_note,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = semantic.warning,
                     )
@@ -503,7 +505,7 @@ fun ConnectionEditorScreenContent(
                 LabeledField(
                     value = form.dbUser,
                     onValueChange = { value -> viewModel.update { it.copy(dbUser = value) } },
-                    label = { Text(stringResource(R.string.db_user)) },
+                    label = { Text(stringResource(if (form.engine == DatabaseEngine.SQLSERVER) R.string.sqlserver_db_user else R.string.db_user)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     mono = true,
@@ -513,7 +515,7 @@ fun ConnectionEditorScreenContent(
                     onValueChange = { value ->
                         viewModel.update { it.copy(password = value, passwordTouched = true) }
                     },
-                    label = { Text(stringResource(R.string.db_password)) },
+                    label = { Text(stringResource(if (form.engine == DatabaseEngine.SQLSERVER) R.string.sqlserver_db_password else R.string.db_password)) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -529,6 +531,14 @@ fun ConnectionEditorScreenContent(
                         onCheckedChange = { value -> viewModel.update { it.copy(readOnly = value) } },
                     )
                 }
+                if (form.engine == DatabaseEngine.SQLSERVER) {
+                    // The driver does not enforce the flag: say what does, in the place it is set.
+                    Text(
+                        stringResource(R.string.sqlserver_read_only_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
+                    )
+                }
 
                 TlsSection(
                     mode = form.sslMode,
@@ -536,6 +546,7 @@ fun ConnectionEditorScreenContent(
                     onMode = { value -> viewModel.update { it.copy(sslMode = value) } },
                     onImport = viewModel::importCertificate,
                     onClear = viewModel::clearCertificate,
+                    caOptional = form.engine == DatabaseEngine.SQLSERVER,
                 )
             }
 
@@ -635,6 +646,12 @@ private fun EngineSection(engine: DatabaseEngine, onSelect: (DatabaseEngine) -> 
         note?.let {
             Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
         }
+        if (engine == DatabaseEngine.SQLSERVER) {
+            // What is different about SQL Server, said once where the engine is chosen.
+            for (line in listOf(R.string.sqlserver_auth_note, R.string.sqlserver_database_note, R.string.sqlserver_script_note)) {
+                Text(stringResource(line), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+            }
+        }
         if (!SqlDialects.forEngine(engine).connectable) {
             Text(
                 stringResource(R.string.engine_coming_soon, stringResource(engine.labelRes())),
@@ -682,6 +699,8 @@ private fun TlsSection(
     onMode: (SslMode) -> Unit,
     onImport: (Uri, String) -> Unit,
     onClear: () -> Unit,
+    /** SQL Server verifies against the phone's own CAs when no file is imported (Azure SQL). */
+    caOptional: Boolean = false,
 ) {
     val semantic = LocalSemanticColors.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -689,7 +708,10 @@ private fun TlsSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(stringResource(R.string.tls_mode), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            stringResource(if (caOptional) R.string.sqlserver_tls_title else R.string.tls_mode),
+            style = MaterialTheme.typography.bodyMedium,
+        )
         // Four short names on one track, and the chosen one explained under it: the explanation is
         // what matters, but only for the mode that is on.
         SegmentedChoice(
@@ -744,9 +766,9 @@ private fun TlsSection(
             ) { Text(stringResource(R.string.tls_import_ca)) }
             if (certificate == null) {
                 Text(
-                    stringResource(R.string.tls_ca_required),
+                    stringResource(if (caOptional) R.string.sqlserver_tls_public_note else R.string.tls_ca_required),
                     style = MaterialTheme.typography.bodySmall,
-                    color = semantic.warning,
+                    color = if (caOptional) semantic.textSecondary else semantic.warning,
                 )
             }
         }

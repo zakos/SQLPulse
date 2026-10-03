@@ -270,6 +270,7 @@ class SqlServerIntegrationTest {
         assertEquals(CellType.BOOLEAN, types.getValue("active"))
         assertEquals(CellType.BLOB, types.getValue("payload"))
         assertEquals(CellType.DATE, types.getValue("born"))
+        assertEquals(CellType.DATE, types.getValue("created"))
         assertEquals(CellType.TEXT, types.getValue("guid"))
         assertEquals(CellType.TEXT, types.getValue("doc"))
 

@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.SqlGrammar
+
 /** One statement inside an editor's text, with where it starts and ends. */
 data class ScriptStatement(
     val sql: String,
@@ -16,18 +18,20 @@ data class ScriptStatement(
  * get right is never cutting a statement in half, because half a DELETE is a different DELETE.
  *
  * `DELIMITER` is not supported: it is a client command, and the app refuses the DDL that needs it
- * anyway (§2), so a routine body with internal semicolons cannot be created from here.
+ * anyway (§2), so a routine body with internal semicolons cannot be created from here. Nor is
+ * SQL Server's `GO`, another client command: a script with a `GO` line is not split on it (see
+ * SqlServerDialect for what the editor says instead).
  */
 object SqlScript {
 
-    fun split(text: String): List<ScriptStatement> {
+    fun split(text: String, grammar: SqlGrammar = SqlGrammar.MYSQL): List<ScriptStatement> {
         val statements = mutableListOf<ScriptStatement>()
         var start = 0
         var index = 0
 
         fun emit(end: Int) {
             val slice = text.substring(start, end)
-            if (slice.isNotBlank() && SqlGuards.strip(slice).isNotBlank()) {
+            if (slice.isNotBlank() && SqlGuards.strip(slice, grammar).isNotBlank()) {
                 statements += ScriptStatement(
                     sql = slice.trim(),
                     start = start + slice.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0),
@@ -38,16 +42,16 @@ object SqlScript {
         }
 
         while (index < text.length) {
-            when (val c = text[index]) {
-                '\'', '"', '`' -> index = skipQuoted(text, index, c)
+            // The grammar says what quotes a name or a string here and what starts a comment:
+            // MySQL's by default, T-SQL's `[a;b]` and `#temp` for SQL Server.
+            when {
+                grammar.opensQuote(text, index) -> index = grammar.endOfQuoted(text, index)
 
-                '-' -> index = if (text.startsWith("--", index)) skipLineComment(text, index) else index + 1
+                grammar.opensLineComment(text, index) -> index = skipLineComment(text, index)
 
-                '#' -> index = skipLineComment(text, index)
+                text.startsWith("/*", index) -> index = skipBlockComment(text, index)
 
-                '/' -> index = if (text.startsWith("/*", index)) skipBlockComment(text, index) else index + 1
-
-                ';' -> {
+                text[index] == ';' -> {
                     emit(index)
                     index++
                 }
@@ -65,29 +69,11 @@ object SqlScript {
      * A cursor sitting on the semicolon or just past it belongs to the statement it ends, which is
      * where the cursor is after typing one.
      */
-    fun statementAt(text: String, cursor: Int): ScriptStatement? {
-        val statements = split(text)
+    fun statementAt(text: String, cursor: Int, grammar: SqlGrammar = SqlGrammar.MYSQL): ScriptStatement? {
+        val statements = split(text, grammar)
         return statements.firstOrNull { cursor in it.start..it.end }
             ?: statements.lastOrNull { it.end <= cursor }
             ?: statements.firstOrNull()
-    }
-
-    private fun skipQuoted(text: String, from: Int, quote: Char): Int {
-        var index = from + 1
-        while (index < text.length) {
-            val c = text[index]
-            // Backslash escapes apply to strings but not to backtick-quoted identifiers.
-            if (c == '\\' && quote != '`') {
-                index += 2
-                continue
-            }
-            index++
-            if (c == quote) {
-                // A doubled quote is an escaped quote, not the end of the literal.
-                if (index < text.length && text[index] == quote) index++ else return index
-            }
-        }
-        return index
     }
 
     private fun skipLineComment(text: String, from: Int): Int {

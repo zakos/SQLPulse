@@ -135,3 +135,63 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 14
+
+  # SQL Server speaks another protocol and another SQL, so it has a job of its own instead of a
+  # matrix row: the services block, the environment variables and the test package are all
+  # different. The MySQL jobs above are not touched by it.
+  sqlserver:
+    name: SQL Server 2022
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Sqlpulse_Str0ng!Pw
+        ports:
+          - 1433:1433
+        # sqlcmd 18 refuses an unverifiable certificate unless told -C; the container's own
+        # is self-signed.
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Sqlpulse_Str0ng!Pw -Q 'SELECT 1'"
+          --health-interval=10s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install the compile SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The test creates its own database (sqlpulse_test) and its own schemas, and drops what it
+      # made. Encryption is on and the certificate unchecked (the default of the test helper).
+      - name: SQL Server integration tests
+        env:
+          SQLPULSE_TEST_MSSQL_URL: jdbc:sqlserver://127.0.0.1:1433/sqlpulse_test
+          SQLPULSE_TEST_MSSQL_USER: sa
+          SQLPULSE_TEST_MSSQL_PASSWORD: Sqlpulse_Str0ng!Pw
+        run: ./gradlew --no-daemon testDebugUnitTest --tests 'hu.laurel.sqlpulse.integration.sqlserver.*'
+
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlserver-integration-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
