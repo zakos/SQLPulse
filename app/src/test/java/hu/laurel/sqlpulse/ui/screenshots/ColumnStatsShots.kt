@@ -14,6 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import hu.laurel.sqlpulse.data.grid.ColumnStats
+import hu.laurel.sqlpulse.data.grid.ColumnStatsComputer
+import hu.laurel.sqlpulse.data.sql.CellType
+import hu.laurel.sqlpulse.data.sql.CellValue
+import hu.laurel.sqlpulse.data.sql.ColumnMeta
+import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.ui.grid.ColumnStatsSheetContent
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import org.junit.Rule
@@ -50,6 +55,58 @@ class ColumnStatsShots {
                         max = "999.99",
                     ),
                     onCopy = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun distributionWithOutliers() = paparazzi.screen {
+        Box(Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                shape = Shapes.sheet,
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                val values = listOf("412", "388", "455", "301", "520", "9800", "480", "395", "430", "575", "640", "-2100", "505")
+                val table = ResultTable(
+                    columns = listOf(ColumnMeta("total", CellType.NUMBER, "DECIMAL", "orders")),
+                    rows = values.map { listOf(CellValue.Number(it)) },
+                )
+                ColumnStatsSheetContent(
+                    columnLabel = "total",
+                    stats = ColumnStatsComputer.compute(table, 0)!!,
+                    onCopy = {},
+                    onHighlightOutliersChange = {},
+                    highlightOutliers = true,
+                    outliersExpanded = true,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun distributionCollapsed() = paparazzi.screen {
+        Box(Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                shape = Shapes.sheet,
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                val values = listOf("412", "388", "455", "301", "520", "9800", "480", "395")
+                val table = ResultTable(
+                    columns = listOf(ColumnMeta("total", CellType.NUMBER, "DECIMAL", "orders")),
+                    rows = values.map { listOf(CellValue.Number(it)) },
+                )
+                ColumnStatsSheetContent(
+                    columnLabel = "total",
+                    stats = ColumnStatsComputer.compute(table, 0)!!,
+                    onCopy = {},
+                    onHighlightOutliersChange = {},
                 )
             }
         }

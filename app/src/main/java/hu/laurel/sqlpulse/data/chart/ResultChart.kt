@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.data.chart
 
+import hu.laurel.sqlpulse.data.grid.OutlierOutcome
+import hu.laurel.sqlpulse.data.grid.Outliers
+import hu.laurel.sqlpulse.data.grid.Sample
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
@@ -15,8 +18,22 @@ enum class ChartKind { BARS, LINE }
 /** One drawn value. [label] is what goes under the bar or point. */
 data class ChartPoint(val label: String, val value: Double)
 
-/** One column's worth of values, in the order they are drawn. */
-data class ChartSeries(val label: String, val points: List<ChartPoint>)
+/** Quartiles and Tukey fences of a series, for drawing the band the outlier verdict rests on. */
+data class IqrBand(val q1: Double, val q3: Double, val lowFence: Double, val highFence: Double)
+
+/**
+ * One column's worth of values, in the order they are drawn.
+ *
+ * [outliers] are indexes into [points] that lie outside the IQR fences, judged on the points that
+ * are drawn (not the whole result), so what is marked is what the eye can check. [band] is null
+ * when there are too few points for a verdict.
+ */
+data class ChartSeries(
+    val label: String,
+    val points: List<ChartPoint>,
+    val outliers: Set<Int> = emptySet(),
+    val band: IqrBand? = null,
+)
 
 /**
  * A chart ready to be drawn: nothing left to decide, nothing left to look up.
@@ -31,6 +48,9 @@ data class ChartData(
     val series: List<ChartSeries>,
     val truncatedTo: Int? = null,
 ) {
+    /** How many points are drawn as outliers, over all series. */
+    val outlierCount: Int get() = series.sumOf { it.outliers.size }
+
     val isEmpty: Boolean get() = series.isEmpty() || series.all { it.points.isEmpty() }
 
     /** The largest value drawn, and the smallest — the axis needs both, and zero is always in. */
@@ -113,13 +133,18 @@ object ResultCharts {
         val rows = table.rows.indices.toList()
         val kept = rows.take(MAX_CATEGORIES)
         val series = values.map { column ->
+            val points = kept.mapNotNull { row ->
+                numberOf(table.rows[row].getOrNull(column))?.let { value ->
+                    ChartPoint(label = labelOf(table, chosen.labelColumn, row), value = value)
+                }
+            }
+            val verdict = Outliers.analyze(points.mapIndexed { index, point -> Sample(index, point.value) })
+                as? OutlierOutcome.Report
             ChartSeries(
                 label = table.columns[column].label,
-                points = kept.mapNotNull { row ->
-                    numberOf(table.rows[row].getOrNull(column))?.let { value ->
-                        ChartPoint(label = labelOf(table, chosen.labelColumn, row), value = value)
-                    }
-                },
+                points = points,
+                outliers = verdict?.outliers?.filter { it.byIqr }?.mapTo(HashSet()) { it.row }.orEmpty(),
+                band = verdict?.let { IqrBand(it.q1, it.q3, it.lowFence, it.highFence) },
             )
         }.filter { it.points.isNotEmpty() }
 
