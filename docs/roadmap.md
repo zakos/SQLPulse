@@ -105,7 +105,7 @@ megnézhető.
 
 | Funkció | Hol |
 | --- | --- |
-| Éles MySQL 8.0, 5.7 és MariaDB 11 ellen futó integrációs tesztek a CI-ban | `.github/workflows/integration.yml` |
+| Valódi szerverek (MySQL 8.0, MariaDB, PostgreSQL 16, SQL Server 2022) ellen futó integrációs tesztek — helyben futtatva, CI nincs | `app/src/test/.../integration/` |
 | A vándorlások valódi SQLite-on végigfuttatva, 1-től a mai verzióig | `app/src/test/.../MigrationSqlTest.kt` |
 | Kiadási build R8-cal, a driverek és a natív hívások megtartva | `app/proguard-rules.pro` |
 | Diagnosztikai jelentés hibabejelentéshez, amiben nincs gépnév, felhasználó, jelszó, kulcs, lekérdezés | `data/diagnostics/` |

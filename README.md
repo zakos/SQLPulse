@@ -85,13 +85,13 @@ handling and the JDBC layer are compiled and unit-tested but not yet exercised e
 
 ## CI and installing the app
 
-Two workflows:
+One workflow: `.github/workflows/build.yml` — pushes to `main`, which is what merging a pull
+request does, plus manual runs from the Actions tab. It runs the unit tests and Android Lint and
+uploads the installable debug APK as the artifact `sqlpulse-debug-<run number>`.
 
-- `.github/workflows/check.yml` — every commit on a branch and every pull request: unit tests and
-  Android Lint, no APK. This is the quick feedback loop.
-- `.github/workflows/build.yml` — pushes to `main`, which is what merging a pull request does, plus
-  manual runs from the Actions tab. Same checks, and it uploads the installable debug APK as the
-  artifact `sqlpulse-debug-<run number>`.
+Integration tests (`app/src/test/.../integration/`, against real MySQL/MariaDB, PostgreSQL and
+SQL Server servers) are not run in CI; they skip themselves without their environment variables
+and are run locally (see CLAUDE.md, "Integrációs tesztek helyben").
 
 **Installing an update.** Download the artifact, unzip it, open the APK on the phone. It installs
 over the existing app and keeps its data, because every build is signed with the same key and the

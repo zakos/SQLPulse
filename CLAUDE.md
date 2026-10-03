@@ -5,9 +5,9 @@ a haladás és a teendők. Minden munkamenet végén frissítendő.
 
 ## Mi ez?
 
-**SQLPulse** — belső használatú Android MySQL kliens (Kotlin, Jetpack Compose).
-A kapcsolat SSH alagúton vagy közvetlenül éri el a MySQL/MariaDB kiszolgálót, a MySQL
-kapcsolat lehet sima vagy TLS-es. Package / applicationId: `hu.laurel.sqlpulse`.
+**SQLPulse** — belső használatú Android SQL kliens (Kotlin, Jetpack Compose): MySQL/MariaDB,
+PostgreSQL, SQL Server / Azure SQL és helyi SQLite-fájl. A szerveres kapcsolat SSH alagúton vagy
+közvetlenül megy, lehet sima vagy TLS-es. Motor-réteg: `data/sql/dialect/` (`docs/tobb-motor-terv.md`). Package / applicationId: `hu.laurel.sqlpulse`.
 
 - Specifikáció (magyar): `docs/specification.md` — a kódban a `§5`, `§8` stb. hivatkozások ide mutatnak.
 - Ütemterv / mi kész, mi hiányzik (magyar): `docs/roadmap.md`
@@ -26,10 +26,11 @@ kapcsolat lehet sima vagy TLS-es. Package / applicationId: `hu.laurel.sqlpulse`.
 | Build | AGP 8.7.3, Kotlin 2.0.21, KSP, compileSdk/targetSdk 35, minSdk 28, JDK 17 |
 | UI | Jetpack Compose (BOM 2024.12.01), Material3, Navigation Compose |
 | DI | Hilt 2.52 |
-| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **10** |
+| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **11** |
 | Beállítások | DataStore Preferences |
 | SSH | sshj 0.38.0 (+ BouncyCastle, EdDSA) |
 | MySQL | MariaDB Connector/J 3.4.1; régi (< MySQL 5.5.3) szerverre automatikusan MySQL Connector/J 5.1.49 |
+| Más motorok | pgjdbc 42.7.x (PostgreSQL ≥ 12), mssql-jdbc 13.x jre8 (SQL Server/Azure SQL), sqlite-jdbc 3.5x (natív libek az APK-ban) |
 | Biztonság | Android Keystore (AES-256-GCM), BiometricPrompt |
 | Teszt | JUnit4, MockK, coroutines-test, sqlite-jdbc (migrációs teszt), Compose UI test |
 
@@ -45,10 +46,13 @@ ssh/           TunnelManager (állapotgép), SshTunnel (port forward, jump host)
                (kulcs/jelszó/keyboard-interactive), MysqlProbe (handshake-csomag ellenőrzés)
 data/
   crypto/      KeystoreCrypto, Sealed blobok, DatabaseKeyProvider (SQLCipher jelmondat)
-  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→10)
+  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→11)
   keys/        KeyParsing (OpenSSH v1, PKCS#8, PEM; .ppk/DSA elutasítva), SshKeyRepository
   connection/  ConnectionRepository, környezet (dev/test/éles), ProductionPolicy, időkorlátok,
                CertificateStore (CA), JumpHostCredentials, WriteUnlockStore, SessionHeader(s)
+  sql/dialect/ DatabaseEngine, EngineFeature, SqlDialect/SqlSyntax/SqlGrammar, SchemaCatalog,
+               EngineConnector; MySql/Postgres/SqlServer/Sqlite Dialect+Catalog+Connector;
+               keywords/ (motoronkénti kulcsszavak). LocalDatabaseFiles: SQLite-másolatok.
   sql/         SqlSession (JDBC, driverválasztás), SqlSessionManager (pool, tranzakció),
                QueryExecutor (read-only, WHERE nélküli írás tiltás), SqlGuards, SqlScript,
                QueryParameters (:param), RowEditor/RowSqlBuilder/ColumnEditor (sorszerkesztés),
@@ -85,7 +89,7 @@ ui/            Compose képernyők; navigáció: ui/SqlPulseApp.kt
 ### Navigációs útvonalak (`ui/SqlPulseApp.kt`)
 CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG, SCHEMA_DIFF, QUERY, SCHEMA → TABLE, SEARCH, STORAGE
 
-### Helyi adatbázis táblák (Room, v10)
+### Helyi adatbázis táblák (Room, v11; `connection.engine/fileUri/fileName` a v11-ben)
 `ssh_key`, `connection`, `db_credential`, `ssh_credential`, `ssh_jump_credential`, `known_host`,
 `query_history`, `saved_query`, `cached_database`, `cached_table`, `cached_column`,
 `cached_index`, `cached_foreign_key`, `write_log` (írási napló, FK nélkül, 90 nap / 5000 bejegyzés)
@@ -102,16 +106,17 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 ## Tesztek és CI
 
 - Unit tesztek: `app/src/test/...` — `./gradlew testDebugUnitTest`
-- Integrációs tesztek (valódi MySQL 8.0 / 5.7 / MariaDB 11 a CI-ban): `integration/` csomag
-- Instrumentált UI tesztek: `app/src/androidTest/` (csak kézi workflow)
-- Workflow-k (`.github/workflows/`):
-  - `check.yml` — minden push/PR: unit teszt + lint
-  - `build.yml` — push: + aláírt debug/release APK artifact
-  - `integration.yml` — PR: integrációs tesztek
-  - `security.yml` — PR/push: biztonsági ellenőrzések
-  - `instrumentation.yml` — kézi: emulátoros tesztek
+- Integrációs tesztek: `integration/` csomag (MySQL/MariaDB, `postgres/`, `sqlserver/`, `sqlite/`) —
+  **csak helyben** futnak (env nélkül kihagyják magukat), CI-ban nem.
+- Instrumentált UI tesztek: `app/src/androidTest/` (CI nincs hozzá, csak kézzel/emulátoron)
+- Workflow: **csak `.github/workflows/build.yml`** (push a `main`-re / kézi: unit teszt + lint +
+  aláírt APK artifact). 2026-10-03: a felhasználó kérésére a check/integration/security/instrumentation
+  workflow-k törölve — más CI ne kerüljön vissza.
 - Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
-- **Integrációs tesztek helyben**: nincs Docker-démon, de root-ként megy az
+- **Integrációs tesztek helyben** (PostgreSQL: `apt-get install postgresql`, saját klaszter pl. 5433;
+  SQL Server: `dockerd` háttérben, `mcr.microsoft.com/mssql/server:2022-latest`; env:
+  `SQLPULSE_TEST_POSTGRES_URL/_USER/_PASSWORD`, `SQLPULSE_TEST_MSSQL_URL/_USER/_PASSWORD`;
+  SQLite-hoz nem kell szerver). MySQL/MariaDB: nincs mindig Docker-démon, de root-ként megy az
   `apt-get install mariadb-server`; `mariadbd --datadir=<scratchpad>/… --port=3399` indítás, root
   jelszó `sqlpulse`. MySQL 8: a `mysql-server-core-8.0` .deb-et kicsomagolva (apt-tal ütközne a
   MariaDB-vel). Futtatás: `SQLPULSE_TEST_MYSQL_URL=jdbc:mysql://127.0.0.1:<port>/sqlpulse_test`,
@@ -208,6 +213,16 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   Javasolt: szerkesztő undo/redo, snippetek, szkript megosztása, kiugró értékek, bővebb gombsor,
   SQLite fájl. Döntésre vár: más motorok (PostgreSQL stb.). Nem: DDL-varázsló, AI, hirdetés.
 
+- 2026-10-03: Szerkesztő: korlátlan undo/redo fülenként, kódminták (beépített + saját, DataStore),
+  testreszabható gombsor (Beállítások), lekérdezés megosztása. Kiugró értékek (IQR + robusztus z)
+  az oszlop-összesítőben, a rácsban és a diagramon.
+- 2026-10-03: Több motor: 1. szakasz (Opus) motor-absztrakció + Room v11 + driverek; 2. szakasz
+  párhuzamosan: PostgreSQL, SQL Server/Azure SQL (mssql-jdbc; a driver a read-only-t figyelmen
+  kívül hagyja → az app őrei + szerverjog), SQLite-fájl (SAF → privát másolat, alapból csak olvas),
+  motorfüggő szerkesztő. Összefésüléskor talált hiba: SQL Server `bit` szövegként jött → javítva.
+  1324 unit teszt + lint zöld; integrációs tesztek helyben zöldek: MySQL 8.0.46, MariaDB 10.11,
+  PostgreSQL 16, SQL Server 2022, SQLite. A felhasználó kérésére csak a `build.yml` CI maradt.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
@@ -237,11 +252,16 @@ D. Kényelem:
 - [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v11) kell.
 E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a felhasználó jóváhagyta,
    a csapat PostgreSQL-t, MariaDB-t és MS SQL-t is használ:
-- [ ] (folyamatban) Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · bővebb gombsor.
-- [ ] (folyamatban) Kiugró értékek (oszlop-összesítés + diagram).
-- [ ] (folyamatban) Több motor, 1. szakasz: motor-absztrakció (`SqlDialect`), Room v11 (`engine`),
-      driver-megvalósíthatóság, terv: `docs/tobb-motor-terv.md`.
-- [ ] Több motor, 2. szakasz (párhuzamosan): PostgreSQL · SQL Server/Azure SQL · SQLite fájl.
+- [x] Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · bővebb gombsor.
+- [x] Kiugró értékek (oszlop-összesítés + rács + diagram).
+- [x] Több motor 1–2. szakasz: PostgreSQL · SQL Server/Azure SQL · SQLite fájl.
+- [ ] Más motorokon még ki van kapcsolva (MySQL-only kód): EXPLAIN-fa (`ExplainJson` csak MySQL
+      JSON), keresés, séma-összehasonlítás, Tárhely, Szerver/Pulzus; SQLite-on eredmény-szerkesztés.
+- [ ] Készüléken kipróbálni: pgjdbc/mssql-jdbc TLS Androidon, SQLite fájlválasztó, SSH-alagút PG/MSSQL-lel.
+- [ ] SQL Server: `GO` elválasztó nem támogatott; varbinary/text/ntext/xml cellaszerkesztés hibázhat;
+      Azure AD nincs. PostgreSQL: a jsonb `?` operátort a driver paraméternek veszi.
+- [ ] SQLite: kulcs nélküli tábla csak olvasható; visszaírás az eredeti fájlba nincs; WAL-fájlok nem másolódnak.
+- [ ] Döntésre vár: a diagram csak IQR-kiugrókat jelöl (a lap a z-szabályt is listázza).
 - [ ] Oracle: nem kérték.
 
 ## Teendők / nyitott pontok
