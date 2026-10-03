@@ -2,7 +2,15 @@ package hu.laurel.sqlpulse.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.ui.engine.EngineFeaturesViewModel
+import hu.laurel.sqlpulse.ui.engine.EngineGate
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
 import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -62,6 +70,11 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
         connectRequests.filterNotNull().collect { navController.popBackStack(Routes.CONNECTIONS, false) }
     }
 
+    // What the open connection's engine can do; every screen below reads it to hide what it cannot
+    // (MySQL, and no connection at all, mean everything).
+    val engineFeatures by hiltViewModel<EngineFeaturesViewModel>().features.collectAsStateWithLifecycle()
+
+    CompositionLocalProvider(LocalEngineFeatures provides engineFeatures) {
     NavHost(navController = navController, startDestination = Routes.CONNECTIONS) {
         composable(Routes.CONNECTIONS) {
             ConnectionListScreen(
@@ -94,14 +107,18 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
         }
 
         composable(Routes.SERVER) {
-            ServerScreen(
-                onBack = { navController.popBackStack() },
-                onOpenQuery = { navController.navigate(Routes.QUERY) },
-            )
+            EngineGate(EngineFeature.SERVER_ACTIVITY, onBack = { navController.popBackStack() }) {
+                ServerScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenQuery = { navController.navigate(Routes.QUERY) },
+                )
+            }
         }
 
         composable(Routes.PULSE) {
-            PulseScreen(onBack = { navController.popBackStack() })
+            EngineGate(EngineFeature.PULSE, onBack = { navController.popBackStack() }) {
+                PulseScreen(onBack = { navController.popBackStack() })
+            }
         }
 
         composable(Routes.BACKUP) {
@@ -109,30 +126,36 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
         }
 
         composable(Routes.MAP) {
-            SchemaMapScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTable = { database, table ->
-                    navController.navigate(Routes.table(database, table))
-                },
-            )
+            EngineGate(EngineFeature.SCHEMA_MAP, onBack = { navController.popBackStack() }) {
+                SchemaMapScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
         }
 
         composable(Routes.SEARCH) {
-            DatabaseSearchScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTable = { database, table ->
-                    navController.navigate(Routes.table(database, table))
-                },
-            )
+            EngineGate(EngineFeature.DATABASE_SEARCH, onBack = { navController.popBackStack() }) {
+                DatabaseSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
         }
 
         composable(Routes.STORAGE) {
-            StorageScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTable = { database, table ->
-                    navController.navigate(Routes.table(database, table))
-                },
-            )
+            EngineGate(EngineFeature.STORAGE, onBack = { navController.popBackStack() }) {
+                StorageScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
         }
 
         composable(Routes.SETTINGS) {
@@ -186,5 +209,6 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
                 },
             )
         }
+    }
     }
 }

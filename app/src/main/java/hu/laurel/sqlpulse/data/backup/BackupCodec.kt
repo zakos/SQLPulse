@@ -109,6 +109,8 @@ object BackupCodec {
             "queryTimeoutSeconds" to JsonValue.Num(connection.queryTimeoutSeconds),
             "sslMode" to JsonValue.Str(connection.sslMode),
             "caCertificate" to connection.caCertificate.orJsonNull(),
+            "engine" to JsonValue.Str(connection.engine),
+            "fileName" to connection.fileName.orJsonNull(),
             "savedQueries" to JsonValue.Arr(connection.savedQueries.map(::encodeQuery)),
             "dbPassword" to connection.dbPassword.orJsonNull(),
             "sshPassword" to connection.sshPassword.orJsonNull(),
@@ -140,6 +142,9 @@ object BackupCodec {
         queryTimeoutSeconds = obj.intOr("queryTimeoutSeconds", DEFAULT_QUERY_TIMEOUT),
         sslMode = obj.strOrNull("sslMode") ?: "DISABLED",
         caCertificate = obj.strOrNull("caCertificate"),
+        // Absent in every backup written before the app knew other engines: those are all MySQL.
+        engine = obj.strOrNull("engine") ?: "MYSQL",
+        fileName = obj.strOrNull("fileName"),
         savedQueries = obj.arr("savedQueries").map { decodeQuery(it.asObject("savedQuery")) },
         dbPassword = obj.strOrNull("dbPassword"),
         sshPassword = obj.strOrNull("sshPassword"),

@@ -283,6 +283,20 @@ object MigrationStatements {
     )
 
     /**
+     * 10→11: a connection says which database engine it talks to.
+     *
+     * `engine` defaults to 'MYSQL', which is what every existing connection is — the app spoke
+     * nothing else. The two file columns are for SQLite, which has no host: nullable with no
+     * default, so a server connection simply never has them. Plain ADD COLUMNs, no rebuild: the
+     * connection table is the one table a failed rebuild would lose the user's work from.
+     */
+    val MIGRATION_10_11: List<String> = listOf(
+        "ALTER TABLE `connection` ADD COLUMN `engine` TEXT NOT NULL DEFAULT 'MYSQL'",
+        "ALTER TABLE `connection` ADD COLUMN `fileUri` TEXT",
+        "ALTER TABLE `connection` ADD COLUMN `fileName` TEXT",
+    )
+
+    /**
      * Every migration in order, keyed by the version it leaves the database at: index 0 is 1→2.
      * The test walks this list, so a ninth migration added to [Migrations] without being added
      * here goes untested — and a migration added here without being wired into [Migrations] does
@@ -298,5 +312,6 @@ object MigrationStatements {
         7 to MIGRATION_7_8,
         8 to MIGRATION_8_9,
         9 to MIGRATION_9_10,
+        10 to MIGRATION_10_11,
     )
 }

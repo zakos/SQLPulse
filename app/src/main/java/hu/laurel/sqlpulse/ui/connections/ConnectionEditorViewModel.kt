@@ -22,6 +22,8 @@ import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.data.sql.SslProperties
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
 import hu.laurel.sqlpulse.security.UnlockCancelledException
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
@@ -38,6 +40,11 @@ import kotlinx.coroutines.launch
 
 data class ConnectionForm(
     val id: Long = 0,
+    /** Which database product this is; decides which of the fields below mean anything. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
+    /** SQLite: where the file was picked from, and its name. Unused by server engines. */
+    val fileUri: String? = null,
+    val fileName: String? = null,
     val name: String = "",
     val color: ConnectionColor = ConnectionColor.Blue,
     /** On by default: a tunnel is the safe shape, and the spec's original rule (§4). */
@@ -85,7 +92,13 @@ data class ConnectionForm(
      */
     val canSave: Boolean
         get() = name.isNotBlank() &&
-            dbHost.isNotBlank() &&
+            // An engine whose implementation has not landed is shown, but cannot be saved.
+            SqlDialects.forEngine(engine).connectable &&
+            (if (engine.hasServer) canSaveServer else fileName != null)
+
+    /** The server half of [canSave]: host, port, TLS, timeouts and, with a tunnel, the SSH host. */
+    private val canSaveServer: Boolean
+        get() = dbHost.isNotBlank() &&
             dbPort.toIntOrNull() != null &&
             // A verifying TLS mode without a CA file would fail at connect time, not at save.
             !SslProperties.missingCertificate(sslMode, caCertificate) &&
@@ -111,6 +124,19 @@ data class ConnectionForm(
                 jumpPort.toIntOrNull() != null &&
                 hasJumpCredential
             )
+
+    /**
+     * The form switched to [next]. The port follows the engine while it still holds the previous
+     * engine's default — a port the user typed is theirs and stays.
+     */
+    fun withEngine(next: DatabaseEngine): ConnectionForm {
+        val port = dbPort.trim()
+        val followsDefault = port.isEmpty() || port == engine.defaultPort?.toString()
+        return copy(
+            engine = next,
+            dbPort = if (followsDefault && next.defaultPort != null) next.defaultPort.toString() else dbPort,
+        )
+    }
 
     /** Nothing to check while the hops share a credential: the one above has already been checked. */
     private val hasJumpCredential: Boolean
@@ -316,7 +342,11 @@ class ConnectionEditorViewModel @Inject constructor(
         id = id,
         name = name.trim(),
         color = color.name,
-        useSshTunnel = useSsh,
+        engine = engine.name,
+        fileUri = fileUri.takeUnless { engine.hasServer },
+        fileName = fileName.takeUnless { engine.hasServer },
+        // A file has nothing to tunnel to; saving the flag on would ask for an SSH key it never uses.
+        useSshTunnel = useSsh && engine.hasServer,
         sshHost = sshHost.trim(),
         sshPort = sshPort.toIntOrNull() ?: 22,
         sshUser = sshUser.trim(),
@@ -352,6 +382,9 @@ class ConnectionEditorViewModel @Inject constructor(
         hasJumpSshPassword: Boolean,
     ) = ConnectionForm(
         id = id,
+        engine = DatabaseEngine.fromName(engine),
+        fileUri = fileUri,
+        fileName = fileName,
         name = name,
         color = ConnectionColor.fromName(color),
         useSsh = useSshTunnel,

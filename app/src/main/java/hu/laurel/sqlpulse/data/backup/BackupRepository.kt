@@ -142,6 +142,8 @@ class BackupRepository @Inject constructor(
                 queryTimeoutSeconds = connection.queryTimeoutSeconds,
                 sslMode = connection.sslMode,
                 caCertificate = connection.caCertificate,
+                engine = connection.engine,
+                fileName = connection.fileName,
                 savedQueries = queries.map {
                     BackupSavedQuery(name = it.name, sql = it.sql, parameters = it.parameters)
                 },
@@ -372,5 +374,9 @@ class BackupRepository @Inject constructor(
         caCertificate = caCertificate,
         // Deliberately not carried: "last used" is this device's history, not the other one's.
         lastUsedAt = null,
+        engine = engine,
+        // The picker grant (fileUri) belongs to the other device; the file has to be picked again.
+        fileUri = null,
+        fileName = fileName,
     )
 }

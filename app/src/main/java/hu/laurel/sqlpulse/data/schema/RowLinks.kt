@@ -1,6 +1,8 @@
 package hu.laurel.sqlpulse.data.schema
 
 import hu.laurel.sqlpulse.data.sql.PreparedSql
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /** One column of a link: the child column and the parent column it references. */
 data class LinkColumn(val child: String, val parent: String)
@@ -64,7 +66,7 @@ data class KeyColumnUsage(
  * a test.
  *
  * Every value taken from a cell is a bound parameter. Identifiers cannot be bound, so they go
- * through [quoteIdentifier]; nothing else is ever written into the statement text.
+ * through the dialect's quoting ([SqlSyntax], MySQL by default); nothing else is written in.
  */
 object RowLinks {
 
@@ -166,19 +168,25 @@ object RowLinks {
         table: String,
         filter: RowFilter,
         limit: Int = CHILD_LIMIT,
+        syntax: SqlSyntax = MySqlDialect,
     ): PreparedSql {
         require(!filter.isEmpty) { "a link lookup needs at least one column" }
         return PreparedSql(
-            sql = "SELECT * FROM ${qualified(database, table)}${where(filter)} LIMIT $limit",
+            sql = syntax.limit("SELECT * FROM ${syntax.qualify(database, table)}${where(filter, syntax)}", limit),
             parameters = filter.matches.map { it.value },
         )
     }
 
     /** Counts what a filter matches, for the "what points at this" list. */
-    fun countRows(database: String, table: String, filter: RowFilter): PreparedSql {
+    fun countRows(
+        database: String,
+        table: String,
+        filter: RowFilter,
+        syntax: SqlSyntax = MySqlDialect,
+    ): PreparedSql {
         require(!filter.isEmpty) { "a link lookup needs at least one column" }
         return PreparedSql(
-            sql = "SELECT COUNT(*) FROM ${qualified(database, table)}${where(filter)}",
+            sql = "SELECT COUNT(*) FROM ${syntax.qualify(database, table)}${where(filter, syntax)}",
             parameters = filter.matches.map { it.value },
         )
     }
@@ -206,11 +214,8 @@ object RowLinks {
     private fun valueOf(row: Map<String, String?>, column: String): String? =
         row.entries.firstOrNull { it.key.equals(column, ignoreCase = true) }?.value
 
-    private fun qualified(database: String, table: String) =
-        "${quoteIdentifier(database)}.${quoteIdentifier(table)}"
-
-    private fun where(filter: RowFilter) = filter.matches.joinToString(
+    private fun where(filter: RowFilter, syntax: SqlSyntax) = filter.matches.joinToString(
         prefix = " WHERE ",
         separator = " AND ",
-    ) { "${quoteIdentifier(it.column)} = ?" }
+    ) { "${syntax.quoteIdentifier(it.column)} = ?" }
 }

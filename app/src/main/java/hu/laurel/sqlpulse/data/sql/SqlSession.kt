@@ -1,10 +1,10 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.EngineConnector
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
 import java.io.Closeable
 import java.sql.Connection
-import java.sql.Driver
-import java.sql.SQLException
-import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,9 +26,16 @@ data class JdbcConfig(
      * Whether something already encrypts this link — an SSH tunnel, in practice.
      *
      * It decides one thing: whether the driver may ask the server for its RSA public key. See
-     * [SqlSession.openWith].
+     * MySqlConnector (data/sql/dialect/MySqlDialect.kt).
      */
     val tunnelled: Boolean = false,
+    /** Which engine — and so which connector, driver and URL — this session uses. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
+    /**
+     * The database file, for an engine without a server (SQLite): an absolute path in app-private
+     * storage. [host] and [port] are unused then. Null for every server engine.
+     */
+    val localFile: String? = null,
 )
 
 /**
@@ -37,7 +44,11 @@ data class JdbcConfig(
  * Connections are created lazily and handed out one at a time; [close] drops them all, which is
  * what happens when the tunnel — or, for a direct connection, the session — goes away.
  */
-class SqlSession(private val config: JdbcConfig) : Closeable {
+class SqlSession(
+    config: JdbcConfig,
+    /** How a connection is opened; the engine's own unless a test hands one in. */
+    private val connector: EngineConnector = SqlDialects.forEngine(config.engine).connector(config),
+) : Closeable {
 
     private val idle = ArrayBlockingQueue<Connection>(MAX_CONNECTIONS)
     private val created = AtomicInteger(0)
@@ -45,10 +56,11 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
     @Volatile
     private var closed = false
 
-    /** Set once the first connection succeeds, so the rest of the pool does not try both. */
-    @Volatile
-    var settled: JdbcDriverKind? = null
-        private set
+    /**
+     * Which MySQL driver the first connection settled on (see MySqlConnector), so the rest of the
+     * pool does not try both. Null before then and for every other engine.
+     */
+    val settled: JdbcDriverKind? get() = connector.settled
 
     /** Borrows a connection, runs [block], and returns the connection to the pool. */
     fun <T> use(block: (Connection) -> T): T {
@@ -109,73 +121,8 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
         }
     }
 
-    /**
-     * Opens a connection with whichever driver this server speaks.
-     *
-     * The modern driver is tried first and is what nearly every server gets. It builds
-     * `SET NAMES utf8mb4` into the handshake, and a server older than MySQL 5.5.3 has never heard
-     * of utf8mb4 and refuses the session — that refusal, and only that one, moves the session to
-     * the legacy driver for good. Anything else (a wrong password, an unreachable host) is the
-     * caller's to hear about at once.
-     */
-    private fun open(): Connection {
-        settled?.let { return openWith(it) }
-        return try {
-            openWith(JdbcDriverKind.MODERN).also { settled = JdbcDriverKind.MODERN }
-        } catch (e: SQLException) {
-            if (!SqlFailures.isCharacterSetRefusal(e)) throw e
-            openWith(JdbcDriverKind.LEGACY).also { settled = JdbcDriverKind.LEGACY }
-        }
-    }
-
-    private fun openWith(kind: JdbcDriverKind): Connection {
-        val properties = Properties().apply {
-            setProperty("user", config.user)
-            config.password?.let { setProperty("password", it) }
-            setProperty("connectTimeout", config.connectTimeoutMs.toString())
-            setProperty("socketTimeout", config.socketTimeoutMs.toString())
-            // §11: a dropped connection is never retried behind the user's back.
-            setProperty("autoReconnect", "false")
-            setProperty("tcpKeepAlive", "true")
-            // MySQL 8 authenticates with caching_sha2_password by default. Over an unencrypted
-            // link the driver will not send the password unless it can encrypt it with the
-            // server's RSA public key, and it refuses to fetch that key on its own — a server
-            // that handed over its own key could be an impostor collecting the password. Inside
-            // an SSH tunnel that objection is already answered: the whole conversation is
-            // encrypted and the host key was pinned when the tunnel was built. So the retrieval
-            // is allowed there and nowhere else; a direct, unencrypted connection to such a
-            // server is told to turn on TLS instead (see SqlFailures.AUTHENTICATION_UNPROTECTED).
-            if (config.tunnelled && config.sslMode == SslMode.DISABLED) {
-                setProperty("allowPublicKeyRetrieval", "true")
-            }
-            // A malicious or compromised server can otherwise ask the client for local files.
-            when (kind) {
-                JdbcDriverKind.MODERN -> setProperty("allowLocalInfile", "false")
-                JdbcDriverKind.LEGACY -> {
-                    setProperty("allowLoadLocalInfile", "false")
-                    // The old driver needs telling; the new one is UTF-8 without being asked.
-                    setProperty("useUnicode", "true")
-                    setProperty("characterEncoding", "UTF-8")
-                    // Its own statement cache and metadata cache are memory we do not need.
-                    setProperty("cachePrepStmts", "false")
-                }
-            }
-            SslProperties.propertiesFor(config.sslMode, config.caCertificatePath, kind)
-                .forEach { (key, value) -> setProperty(key, value) }
-        }
-
-        val scheme = if (kind == JdbcDriverKind.MODERN) "mariadb" else "mysql"
-        val url = "jdbc:$scheme://${config.host}:${config.port}/${config.database}"
-        // The driver class is named rather than discovered: DriverManager finds its drivers
-        // through a declaration in META-INF, and that lookup is not reliable on Android.
-        val driver = if (kind == JdbcDriverKind.MODERN) modernDriver else legacyDriver
-        return (driver.connect(url, properties)
-            ?: throw SQLException("the driver did not accept $url")).apply {
-            // Belt and braces next to the MySQL grants (§3): the server rejects writes anyway.
-            isReadOnly = config.readOnly
-            autoCommit = true
-        }
-    }
+    /** Opens one connection the engine's way (MySQL: MySqlConnector's modern driver and fallback). */
+    private fun open(): Connection = connector.open()
 
     override fun close() {
         closed = true
@@ -187,12 +134,6 @@ class SqlSession(private val config: JdbcConfig) : Closeable {
     }
 
     companion object {
-        // Instances rather than DriverManager registrations: both classes register themselves
-        // through java.sql.DriverManager, and on Android that registry is not reliably populated
-        // from a jar's service declaration.
-        private val modernDriver: Driver by lazy { org.mariadb.jdbc.Driver() }
-        private val legacyDriver: Driver by lazy { com.mysql.jdbc.Driver() }
-
         /** §4: one pool per connection, at most three JDBC connections. */
         const val MAX_CONNECTIONS = 3
         private const val VALIDATION_TIMEOUT_SECONDS = 2

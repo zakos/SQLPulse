@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
-import hu.laurel.sqlpulse.data.schema.quoteIdentifier
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /** One sorted column. Absence of a [ColumnSort] means the table's own order. */
 data class ColumnSort(val column: String, val descending: Boolean)
@@ -26,24 +27,30 @@ data class ColumnFilter(
 /**
  * SQL fragments for sorting and filtering a table page.
  *
- * Column names are identifiers and cannot be bound, so they are backtick-quoted; the filter value
- * is a bound parameter and never interpolated.
+ * Column names are identifiers and cannot be bound, so they are quoted the way [SqlSyntax] says
+ * (backticks for MySQL, the default); the filter value is a bound parameter and never interpolated.
  */
 object TableQuery {
 
     /** `ORDER BY` for [sort], or an empty string. */
-    fun orderBy(sort: ColumnSort?): String = when (sort) {
+    fun orderBy(sort: ColumnSort?, syntax: SqlSyntax = MySqlDialect): String = when (sort) {
         null -> ""
-        else -> " ORDER BY ${quoteIdentifier(sort.column)} " + if (sort.descending) "DESC" else "ASC"
+        else -> " ORDER BY ${syntax.quoteIdentifier(sort.column)} " + if (sort.descending) "DESC" else "ASC"
     }
 
     /** `WHERE` for [filter], or an empty string. A blank filter matches everything. */
-    fun where(filter: ColumnFilter?): String = when {
+    fun where(filter: ColumnFilter?, syntax: SqlSyntax = MySqlDialect): String = when {
         filter == null || filter.isEmpty -> ""
         else -> " WHERE " + (
             listOf(
-                if (filter.exact) "${quoteIdentifier(filter.column)} = ?" else "${quoteIdentifier(filter.column)} LIKE ?",
-            ) + filter.also.map { "${quoteIdentifier(it.first)} = ?" }
+                if (filter.exact) {
+                    "${syntax.quoteIdentifier(filter.column)} = ?"
+                } else {
+                    // The bound pattern escapes % and _ with a backslash; the engine is told so
+                    // where backslash is not already LIKE's escape.
+                    "${syntax.quoteIdentifier(filter.column)} LIKE ?${syntax.likeEscape}"
+                },
+            ) + filter.also.map { "${syntax.quoteIdentifier(it.first)} = ?" }
             ).joinToString(" AND ")
     }
 

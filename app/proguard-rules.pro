@@ -77,3 +77,52 @@
 # as one of the other shapes. R8 treats a missing class as an error, so it has to be told that
 # this one is expected to be absent rather than left out by mistake.
 -dontwarn sun.security.x509.**
+
+
+# ---------------------------------------------------------------------------------------------
+# Further engines (docs/tobb-motor-terv.md). Both drivers are kept whole for the same reason the
+# MariaDB one is: they load their socket/SSL factories, authentication plugins and message bundles
+# by class name, which R8 cannot follow.
+# ---------------------------------------------------------------------------------------------
+
+# PostgreSQL (pgjdbc). Everything it names but Android lacks belongs to optional features this app
+# never switches on: Windows SSPI (waffle/JNA), Kerberos (GSS), OSGi registration, XA, and the
+# checker-framework annotations its sources are compiled with.
+-keep class org.postgresql.** { *; }
+-dontwarn org.postgresql.**
+-dontwarn waffle.windows.auth.**
+-dontwarn com.sun.jna.**
+-dontwarn org.ietf.jgss.**
+-dontwarn org.osgi.**
+-dontwarn javax.transaction.xa.**
+-dontwarn javax.sql.XAConnection
+-dontwarn javax.sql.XADataSource
+-dontwarn org.checkerframework.**
+
+# SQL Server (Microsoft mssql-jdbc). The missing classes are its optional Azure AD / Key Vault
+# stack (msal4j, azure-*, reactor, gson), the ANTLR parser of Always Encrypted, Kerberos/JAAS,
+# SQLXML's StAX, and three JDK-only pieces: JDBC 4.2's JDBCType/SQLType (only reached through
+# setObject(…, SQLType), which this app never calls), java.lang.management (only for a
+# percentage-valued maxResultBuffer, which is never set) and java.beans.Transient (an annotation).
+-keep class com.microsoft.sqlserver.** { *; }
+-keep class microsoft.sql.** { *; }
+-dontwarn com.microsoft.sqlserver.**
+-dontwarn com.microsoft.aad.msal4j.**
+-dontwarn com.azure.**
+-dontwarn reactor.core.**
+-dontwarn com.google.gson.**
+-dontwarn org.antlr.v4.**
+-dontwarn javax.security.auth.**
+-dontwarn javax.xml.stream.**
+-dontwarn javax.xml.transform.stax.**
+-dontwarn java.lang.management.**
+-dontwarn java.sql.JDBCType
+-dontwarn java.sql.SQLType
+-dontwarn java.beans.Transient
+
+# SQLite (xerial sqlite-jdbc) for files opened from the phone. Its native library calls back into
+# the Java side by class and method name (functions, collations, progress handlers), so nothing
+# of it may be renamed. It also names GraalVM's and a few desktop-only classes it never reaches
+# on Android.
+-keep class org.sqlite.** { *; }
+-dontwarn org.sqlite.**

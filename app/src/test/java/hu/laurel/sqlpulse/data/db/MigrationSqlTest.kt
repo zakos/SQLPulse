@@ -141,7 +141,7 @@ class MigrationSqlTest {
     // ------------------------------------------------------- the whole ladder
 
     /**
-     * Every table and column the current entities declare exists after 1 → 10, with matching
+     * Every table and column the current entities declare exists after 1 → 11, with matching
      * nullability. The expectation is read out of `Entities.kt` itself (see [EntitySource]), so a
      * field added to an entity without a migration fails here.
      */
@@ -205,7 +205,7 @@ class MigrationSqlTest {
 
     /** The user's saved connection, key and sealed password come out the other side unchanged. */
     @Test
-    fun `data written at version 1 survives to version 10`() {
+    fun `data written at version 1 survives to version 11`() {
         seedVersion1()
         migrateToCurrent()
 
@@ -527,6 +527,44 @@ class MigrationSqlTest {
         assertEquals("PRODUCTION", kept["environment"])
     }
 
+    /**
+     * 10→11 adds the engine. Every connection saved before it is a MySQL connection, so the
+     * existing row has to come out as MYSQL with no SQLite file, and a new row inserted the way
+     * the version-10 app would (without naming the column) has to land on MYSQL as well.
+     */
+    @Test
+    fun `the 10 to 11 engine column makes every existing connection MySQL`() {
+        seedVersion1()
+        migrate(1, 10)
+        assertFalse("`engine` must not exist before version 11", columns("connection").containsKey("engine"))
+
+        migrate(10, 11)
+
+        val connection = columns("connection")
+        assertEquals("'MYSQL'", connection.getValue("engine").default)
+        assertTrue(connection.getValue("engine").notNull)
+        for (name in listOf("fileUri", "fileName")) {
+            assertNull("`$name` must not have a default", connection.getValue(name).default)
+            assertFalse("`$name` must stay nullable", connection.getValue(name).notNull)
+        }
+        val existing = rows("SELECT * FROM `connection`").single()
+        assertEquals("MYSQL", existing["engine"])
+        assertNull(existing["fileUri"])
+        assertNull(existing["fileName"])
+        assertEquals("prod reporting", existing["name"])
+        assertEquals("10.0.0.7", existing["dbHost"])
+
+        exec(
+            "INSERT INTO `connection` (name, color, useSshTunnel, sshHost, sshPort, sshUser, sshKeyId," +
+                " dbHost, dbPort, `database`, dbUser, readOnly)" +
+                " VALUES ('older app', 'Blue', 0, '', 22, '', NULL, 'db', 3306, 'x', 'u', 1)",
+        )
+        assertEquals(
+            "MYSQL",
+            rows("SELECT engine FROM `connection` WHERE name = 'older app'").single()["engine"],
+        )
+    }
+
     @Test
     fun `the 4 to 5 credential table is added alongside the existing one`() {
         seedVersion1()
@@ -575,7 +613,7 @@ class MigrationSqlTest {
          * it imports Room — so bumping the schema means bumping this too, and `every version step
          * is covered` then fails until the new migration is listed.
          */
-        const val CURRENT_VERSION = 10
+        const val CURRENT_VERSION = 11
 
         /** The five tables the offline schema cache lives in, added at version 9. */
         val CACHE_TABLES = listOf(

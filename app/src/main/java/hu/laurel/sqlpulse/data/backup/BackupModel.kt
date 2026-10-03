@@ -84,6 +84,17 @@ data class BackupConnection(
     val sslMode: String,
     /** File name of an entry in [BackupPayload.certificates]. */
     val caCertificate: String?,
+    /**
+     * Name of a DatabaseEngine entry. A backup written before engines existed has no such key,
+     * and every connection in it is MySQL — which is what the decoder fills in.
+     */
+    val engine: String = "MYSQL",
+    /**
+     * SQLite: the picked file's display name. The file itself is not carried (it is data, and can
+     * be large), nor its content URI (a picker grant does not travel between devices): a restored
+     * SQLite connection asks for its file again.
+     */
+    val fileName: String? = null,
     val savedQueries: List<BackupSavedQuery> = emptyList(),
     val dbPassword: String? = null,
     val sshPassword: String? = null,

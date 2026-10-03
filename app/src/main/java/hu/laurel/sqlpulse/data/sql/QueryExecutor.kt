@@ -72,9 +72,13 @@ class QueryExecutor @Inject constructor(
         rowLimit: Int = SqlGuards.DEFAULT_ROW_LIMIT,
         readOnly: Boolean,
     ): QueryOutcome {
+        // Every decision below is the live engine's: MySQL's dialect is SqlGuards and WriteImpact
+        // themselves, so for MySQL nothing changed.
+        val dialect = sessions.dialect()
+
         // `USE` is answered by moving the session's database, not by sending it to one pooled
         // connection and leaving the others behind (§7.4).
-        SqlGuards.useTarget(sql)?.let { database ->
+        dialect.namespaceSwitch(sql)?.let { database ->
             sessions.selectDatabase(database)
             return QueryOutcome(
                 table = ResultTable.EMPTY,
@@ -83,7 +87,7 @@ class QueryExecutor @Inject constructor(
             )
         }
 
-        val kind = SqlGuards.classify(sql)
+        val kind = dialect.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()
         if (kind == StatementKind.WRITE) {
@@ -98,12 +102,12 @@ class QueryExecutor @Inject constructor(
             )
             if (!access.allowed) throw WritesLockedException(access)
         }
-        if (settings.settings.first().blockWritesWithoutWhere && SqlGuards.isUnguardedWrite(sql)) {
+        if (settings.settings.first().blockWritesWithoutWhere && dialect.isUnguardedWrite(sql)) {
             throw UnguardedWriteException()
         }
 
-        val limited = SqlGuards.applyDefaultLimit(sql, rowLimit)
-        val bound = SqlGuards.bindParameters(limited.sql)
+        val limited = dialect.applyDefaultLimit(sql, rowLimit)
+        val bound = dialect.bindParameters(limited.sql)
 
         val started = System.currentTimeMillis()
         // Taken before the write: a COMMIT from elsewhere while it runs must not change what the
@@ -202,8 +206,9 @@ class QueryExecutor @Inject constructor(
         sql: String,
         parameters: Map<String, ParameterValue> = emptyMap(),
     ): Long? {
-        val count = WriteImpact.countQuery(sql) ?: return null
-        val bound = SqlGuards.bindParameters(count)
+        val dialect = sessions.dialect()
+        val count = dialect.writeCountQuery(sql) ?: return null
+        val bound = dialect.bindParameters(count)
         return runCatching {
             sessions.withConnection { connection ->
                 connection.prepareStatement(bound.sql).use { statement ->
@@ -230,9 +235,10 @@ class QueryExecutor @Inject constructor(
         sql: String,
         parameters: Map<String, ParameterValue> = emptyMap(),
     ): WriteRowPreview? {
-        val query = WriteImpact.previewQuery(sql) ?: return null
+        val dialect = sessions.dialect()
+        val query = dialect.writePreviewQuery(sql, WriteImpact.PREVIEW_ROWS) ?: return null
         if (!query.sql.startsWith("SELECT ")) return null
-        val bound = SqlGuards.bindParameters(query.sql)
+        val bound = dialect.bindParameters(query.sql)
         return runCatching {
             sessions.withConnection { connection ->
                 connection.prepareStatement(bound.sql).use { statement ->

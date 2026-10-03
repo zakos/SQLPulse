@@ -72,7 +72,8 @@ class RowEditor @Inject constructor(
         oldValue: String?,
         newValue: String?,
     ): RowEdit {
-        val plain = RowSqlBuilder.update(database, table, key, column, newValue)
+        val syntax = sessions.dialect()
+        val plain = RowSqlBuilder.update(database, table, key, column, newValue, syntax = syntax)
         return RowEdit(
             statement = RowSqlBuilder.update(
                 database = database,
@@ -81,6 +82,7 @@ class RowEditor @Inject constructor(
                 column = column,
                 newValue = newValue,
                 expectedValue = Expected.of(oldValue),
+                syntax = syntax,
             ),
             // The undo only applies while the value is still the one we wrote, for the same reason.
             undo = RowSqlBuilder.update(
@@ -90,11 +92,12 @@ class RowEditor @Inject constructor(
                 column = column,
                 newValue = oldValue,
                 expectedValue = Expected.of(newValue),
+                syntax = syntax,
             ),
-            preview = RowSqlBuilder.render(plain),
+            preview = RowSqlBuilder.render(plain, syntax),
             kind = EditKind.UPDATE,
             unguarded = plain,
-            conflictProbe = RowSqlBuilder.selectValue(database, table, key, column),
+            conflictProbe = RowSqlBuilder.selectValue(database, table, key, column, syntax),
             newValue = newValue,
         )
     }
@@ -105,21 +108,23 @@ class RowEditor @Inject constructor(
      * two-step confirmation instead, and for the table name to be typed on a production connection.
      */
     fun prepareDelete(database: String, table: String, key: Map<String, String?>): RowEdit {
-        val statement = RowSqlBuilder.delete(database, table, key)
+        val syntax = sessions.dialect()
+        val statement = RowSqlBuilder.delete(database, table, key, syntax)
         return RowEdit(
             statement = statement,
             undo = null,
-            preview = RowSqlBuilder.render(statement),
+            preview = RowSqlBuilder.render(statement, syntax),
             kind = EditKind.DELETE,
         )
     }
 
     fun prepareInsert(database: String, table: String, values: Map<String, String?>): RowEdit {
-        val statement = RowSqlBuilder.insert(database, table, values)
+        val syntax = sessions.dialect()
+        val statement = RowSqlBuilder.insert(database, table, values, syntax)
         return RowEdit(
             statement = statement,
             undo = null,
-            preview = RowSqlBuilder.render(statement),
+            preview = RowSqlBuilder.render(statement, syntax),
             kind = EditKind.INSERT,
         )
     }
@@ -198,7 +203,7 @@ class RowEditor @Inject constructor(
         source = source,
         // The values written in (escaped), not the placeholders: "which row" is the question a
         // log gets asked.
-        statement = RowSqlBuilder.render(statement),
+        statement = RowSqlBuilder.render(statement, sessions.dialect()),
         affectedRows = affected,
         failure = failure,
         startedAt = started,

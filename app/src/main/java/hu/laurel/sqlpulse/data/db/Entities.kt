@@ -130,6 +130,19 @@ data class ConnectionEntity(
     /** File name under the app's `ca` directory holding the CA that signs the server cert. */
     val caCertificate: String? = null,
     val lastUsedAt: Long? = null,
+    /**
+     * Name of a DatabaseEngine entry. Every row from before engines existed is MySQL, which is
+     * what the column's default says (migration 10→11).
+     */
+    val engine: String = "MYSQL",
+    /**
+     * SQLite only: the Storage Access Framework URI the database file was picked from. The app
+     * opens its own copy in private storage (`filesDir/sqlite/<id>.sqlite`); this is where the copy
+     * came from, kept so the user can be told and can refresh it. Null for server engines.
+     */
+    val fileUri: String? = null,
+    /** SQLite only: the picked file's display name, for the list and the title bar. */
+    val fileName: String? = null,
 )
 
 @Entity(tableName = "db_credential")

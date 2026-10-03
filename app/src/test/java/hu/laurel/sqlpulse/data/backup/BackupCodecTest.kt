@@ -42,6 +42,41 @@ class BackupCodecTest {
         assertEquals(payload, BackupCodec.decode(BackupCodec.encode(payload)))
     }
 
+    /**
+     * A backup written before the app knew other engines has no `engine` key. Every connection in
+     * it was a MySQL connection, so that is what it has to come back as — not a decode failure,
+     * and not whatever the newest default might be.
+     */
+    @Test
+    fun `a connection from a backup without engines comes back as MySQL`() {
+        val old = """
+            {"connections":[{"name":"legacy","color":"Teal","useSshTunnel":false,"dbHost":"db.example.com",
+            "dbPort":3306,"database":"shop","dbUser":"app","savedQueries":[]}],"sshKeys":[],"certificates":[]}
+        """.trimIndent()
+        val connection = BackupCodec.decode(old).connections.single()
+        assertEquals("MYSQL", connection.engine)
+        assertNull(connection.fileName)
+        assertEquals("db.example.com", connection.dbHost)
+    }
+
+    @Test
+    fun `the engine and the SQLite file name survive the round trip`() {
+        val sqlite = BackupSamples.connection("field data").copy(
+            engine = "SQLITE",
+            useSshTunnel = false,
+            fileName = "inspections.db",
+        )
+        val postgres = BackupSamples.connection("reporting").copy(engine = "POSTGRESQL", dbPort = 5432)
+        val payload = BackupPayload(connections = listOf(sqlite, postgres))
+        val text = BackupCodec.encode(payload)
+        assertTrue(text.contains("\"engine\":\"SQLITE\""))
+        val decoded = BackupCodec.decode(text).connections
+        assertEquals("SQLITE", decoded[0].engine)
+        assertEquals("inspections.db", decoded[0].fileName)
+        assertEquals("POSTGRESQL", decoded[1].engine)
+        assertEquals(payload.connections, decoded)
+    }
+
     @Test
     fun `a payload missing a required field is refused`() {
         val broken = """{"connections":[{"name":"x"}],"sshKeys":[],"certificates":[]}"""
