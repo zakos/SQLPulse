@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server and Pulse screens on PostgreSQL and SQL Server -->
+    <string name="server_kill_gone">Connection %1$d is already gone.</string>
+    <string name="server_kill_own">That is this app\'s own connection; ending it would cut the screen off from the server.</string>
+    <string name="server_needs_privilege">This panel needs the %1$s permission, which this account does not have. Ask whoever runs the server to grant it.</string>
+    <string name="server_terminate_title">End session %1$d?</string>
+    <string name="server_terminate">End session</string>
+    <string name="server_terminate_note">Ending the session also rolls back its open transaction and closes its connection. Use this when ending the statement is not enough.</string>
+    <string name="server_show_idle">Idle sessions</string>
+
+    <string name="repl_standby">Standby</string>
+    <string name="repl_not_replica_mssql_body">This server has no availability group (or none this login can see), so there is nothing to report.</string>
+    <string name="repl_no_privilege_pg_body">Seeing the other servers of a replication setup needs superuser or the pg_read_all_stats (pg_monitor) role. This says nothing about whether the server replicates.</string>
+    <string name="repl_no_privilege_mssql_body">Availability-group state needs the VIEW SERVER STATE permission. This says nothing about whether the server is in a group.</string>
+
+    <string name="slow_ext_missing_title">pg_stat_statements is not installed</string>
+    <string name="slow_ext_missing_body">PostgreSQL keeps statement statistics only through the pg_stat_statements extension. A database administrator has to add it to shared_preload_libraries (a restart) and run CREATE EXTENSION pg_stat_statements in this database. The app never changes the server.</string>
+    <string name="slow_ext_not_loaded_title">pg_stat_statements is not loaded</string>
+    <string name="slow_ext_not_loaded_body">The extension exists in this database, but the server was not started with it in shared_preload_libraries, so it records nothing. Add it there and restart the server.</string>
+    <string name="slow_no_privilege_mssql_body">This needs the VIEW SERVER STATE permission.</string>
+    <string name="slow_rows_sent">%1$s rows</string>
+    <string name="slow_blocks">%1$s blocks read</string>
+    <string name="slow_hint_dollar">Normalised statements. Tap one to open it in the editor; nothing is run. Each $1, $2 … becomes :p1, :p2 … and the editor asks for the values when you run it. The copy icon copies the text as it is.</string>
+
+    <string name="pulse_no_privilege">Pulse reads the server\'s counters, which needs the %1$s permission. This account does not have it.</string>
+    <string name="pulse_cache_hit">Reads from cache</string>
+    <string name="pulse_pg_active">Active queries</string>
+    <string name="pulse_pg_idle_in_xact">Idle in transaction</string>
+    <string name="pulse_pg_commits">Commits</string>
+    <string name="pulse_pg_rollbacks">Rollbacks</string>
+    <string name="pulse_pg_tuples_read">Rows read</string>
+    <string name="pulse_pg_tuples_written">Rows written</string>
+    <string name="pulse_pg_deadlocks">Deadlocks</string>
+    <string name="pulse_ms_batch_requests">Batch requests</string>
+    <string name="pulse_ms_transactions">Transactions</string>
+    <string name="pulse_ms_blocked">Blocked requests</string>
+    <string name="pulse_ms_lock_waits">Lock waits</string>
+    <string name="pulse_ms_page_life">Page life expectancy</string>
+    <string name="pulse_unit_seconds_now">seconds, right now</string>
+</resources>

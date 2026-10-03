@@ -76,7 +76,8 @@ object ServerMetrics {
         return ((requests - disk).coerceAtLeast(0L)).toDouble() / requests.toDouble()
     }
 
-    private fun delta(previous: ServerSample, current: ServerSample, key: String): Long? {
+    /** How far a counter climbed between two samples; null when missing or when it went backwards. */
+    fun delta(previous: ServerSample, current: ServerSample, key: String): Long? {
         val before = previous.value(key) ?: return null
         val after = current.value(key) ?: return null
         return (after - before).takeIf { it >= 0L }
@@ -162,6 +163,32 @@ object HealthRules {
         rate == null -> Health.CALM
         rate < 0.90 -> Health.ALARMED
         rate < 0.95 -> Health.BUSY
+        else -> Health.CALM
+    }
+
+    /** Sessions in use against the server's limit: running out of slots is an outage, not a slowdown. */
+    fun connectionsOfMax(connections: Long?, max: Long?): Health {
+        if (connections == null || max == null || max <= 0L) return Health.CALM
+        val share = connections.toDouble() / max.toDouble()
+        return when {
+            share >= 0.90 -> Health.ALARMED
+            share >= 0.75 -> Health.BUSY
+            else -> Health.CALM
+        }
+    }
+
+    /** A transaction left open holds locks and stops vacuum; one is worth a glance, several are a problem. */
+    fun idleInTransaction(count: Long?): Health = when {
+        count == null || count == 0L -> Health.CALM
+        count >= 5 -> Health.ALARMED
+        else -> Health.BUSY
+    }
+
+    /** SQL Server's rule of thumb: under five minutes a page stays in memory, the cache is too small for the load. */
+    fun pageLifeExpectancy(seconds: Long?): Health = when {
+        seconds == null -> Health.CALM
+        seconds < 300 -> Health.ALARMED
+        seconds < 1_000 -> Health.BUSY
         else -> Health.CALM
     }
 

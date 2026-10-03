@@ -33,6 +33,7 @@ object MySqlDialect : SqlDialect {
     override val grammar = SqlGrammar.MYSQL
     override val connectable = true
     override val features = EngineFeature.ALL
+    override val server: ServerCatalog = MySqlServerCatalog
 
     override fun quoteIdentifier(name: String): String = backtickQuote(name)
 

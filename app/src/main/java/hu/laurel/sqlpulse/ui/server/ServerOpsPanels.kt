@@ -58,6 +58,8 @@ import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.durationUnits
 import hu.laurel.sqlpulse.ui.query.SqlVisualTransformation
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -107,10 +109,13 @@ fun ReplicationPanel(
     rawContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val engine = LocalEngineFeatures.current.engine
     when (report) {
         ReplicationReport.NotReplica -> EmptyState(
             title = stringResource(R.string.repl_not_replica_title),
-            body = stringResource(R.string.repl_not_replica_body),
+            body = stringResource(
+                if (engine == DatabaseEngine.SQLSERVER) R.string.repl_not_replica_mssql_body else R.string.repl_not_replica_body,
+            ),
             actionLabel = stringResource(R.string.refresh),
             onAction = onRefresh,
             modifier = modifier.fillMaxWidth(),
@@ -118,7 +123,13 @@ fun ReplicationPanel(
 
         ReplicationReport.NoPrivilege -> EmptyState(
             title = stringResource(R.string.repl_no_privilege_title),
-            body = stringResource(R.string.repl_no_privilege_body),
+            body = stringResource(
+                when (engine) {
+                    DatabaseEngine.POSTGRESQL -> R.string.repl_no_privilege_pg_body
+                    DatabaseEngine.SQLSERVER -> R.string.repl_no_privilege_mssql_body
+                    else -> R.string.repl_no_privilege_body
+                },
+            ),
             actionLabel = stringResource(R.string.refresh),
             onAction = onRefresh,
             modifier = modifier.fillMaxWidth(),
@@ -203,7 +214,10 @@ private fun ReplicationCard(channel: ReplicationChannel) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        listOfNotNull(stringResource(R.string.repl_source), channel.sourceUser).joinToString(" · "),
+                        listOfNotNull(
+                            stringResource(if (channel.peerIsDownstream) R.string.repl_standby else R.string.repl_source),
+                            channel.sourceUser,
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = semantic.textSecondary,
                     )
@@ -211,12 +225,35 @@ private fun ReplicationCard(channel: ReplicationChannel) {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            ThreadChip(stringResource(R.string.repl_io_thread), channel.ioThread)
-            ThreadChip(stringResource(R.string.repl_sql_thread), channel.sqlThread)
+        // PostgreSQL and SQL Server have no IO/SQL thread pair; their state is a word and a few figures.
+        if (channel.showThreads) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                ThreadChip(stringResource(R.string.repl_io_thread), channel.ioThread)
+                ThreadChip(stringResource(R.string.repl_sql_thread), channel.sqlThread)
+            }
+        }
+        if (channel.details.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                channel.details.forEach { fact ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
+                        Text(
+                            fact.label,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = semantic.textSecondary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            fact.value,
+                            style = MonoStyles.cell.copy(fontSize = 12.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
 
-        channel.sqlState?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary) }
+        channel.sqlState?.takeIf { channel.showThreads }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary) }
         if (channel.sqlDelaySeconds > 0) {
             Text(
                 stringResource(R.string.repl_delay_note, channel.sqlDelaySeconds),
@@ -322,9 +359,17 @@ fun SlowPanel(
     modifier: Modifier = Modifier,
     onOpenInEditor: (String) -> Unit = {},
 ) {
+    val engine = LocalEngineFeatures.current.engine
     when (report) {
+        SlowStatementsReport.ExtensionMissing -> SlowEmpty(R.string.slow_ext_missing_title, R.string.slow_ext_missing_body, onRefresh, modifier)
+        SlowStatementsReport.ExtensionNotLoaded -> SlowEmpty(R.string.slow_ext_not_loaded_title, R.string.slow_ext_not_loaded_body, onRefresh, modifier)
         SlowStatementsReport.PerformanceSchemaOff -> SlowEmpty(R.string.slow_off_title, R.string.slow_off_body, onRefresh, modifier)
-        SlowStatementsReport.NoPrivilege -> SlowEmpty(R.string.slow_no_privilege_title, R.string.slow_no_privilege_body, onRefresh, modifier)
+        SlowStatementsReport.NoPrivilege -> SlowEmpty(
+            R.string.slow_no_privilege_title,
+            if (engine == DatabaseEngine.SQLSERVER) R.string.slow_no_privilege_mssql_body else R.string.slow_no_privilege_body,
+            onRefresh,
+            modifier,
+        )
         SlowStatementsReport.Unsupported -> SlowEmpty(R.string.slow_unsupported_title, R.string.slow_unsupported_body, onRefresh, modifier)
         is SlowStatementsReport.Rows -> Column(modifier) {
             Row(
@@ -358,7 +403,9 @@ fun SlowPanel(
                 ) {
                     item {
                         Text(
-                            stringResource(R.string.slow_hint),
+                            stringResource(
+                                if (report.statements.firstOrNull()?.dollarPlaceholders == true) R.string.slow_hint_dollar else R.string.slow_hint,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = semantic.textSecondary,
                         )
@@ -398,7 +445,7 @@ private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformatio
             // Open, never run: a digest has its values replaced by ?, which become :p1, :p2 … so
             // the editor's own parameter dialog asks for them, and running it unasked against a
             // production server is not something a list tap should do.
-            .clickable { onOpenInEditor(DigestPlaceholders.toNamed(statement.digestText).sql) }
+            .clickable { onOpenInEditor(DigestPlaceholders.toNamed(statement.digestText, statement.dollarPlaceholders).sql) }
             .padding(horizontal = 14.dp, vertical = Spacing.m),
         verticalArrangement = Arrangement.spacedBy(Spacing.s),
     ) {
@@ -440,7 +487,11 @@ private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformatio
             listOfNotNull(
                 statement.schema,
                 stringResource(R.string.slow_calls, count(statement.count)),
-                stringResource(R.string.slow_rows, count(statement.rowsExamined), count(statement.rowsSent)),
+                // MySQL counts rows examined and sent; the others only the rows returned, and say how much they read.
+                statement.rowsExamined?.let {
+                    stringResource(R.string.slow_rows, count(it), count(statement.rowsSent))
+                } ?: stringResource(R.string.slow_rows_sent, count(statement.rowsSent)),
+                statement.blocksRead?.let { stringResource(R.string.slow_blocks, count(it)) },
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = semantic.textSecondary,
@@ -449,8 +500,14 @@ private fun SlowCard(statement: SlowStatement, highlight: SqlVisualTransformatio
             if (statement.noIndexUsed > 0) {
                 InfoBadge(stringResource(R.string.slow_no_index, count(statement.noIndexUsed)), semantic.warning)
             }
+            // PostgreSQL does not say when a statement was first or last seen.
+            val seen = if (statement.firstSeen == null && statement.lastSeen == null) {
+                ""
+            } else {
+                stringResource(R.string.slow_seen, shortTime(statement.firstSeen), shortTime(statement.lastSeen))
+            }
             Text(
-                stringResource(R.string.slow_seen, shortTime(statement.firstSeen), shortTime(statement.lastSeen)),
+                seen,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = semantic.textSecondary,
                 maxLines = 1,

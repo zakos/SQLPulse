@@ -17,7 +17,7 @@ import hu.laurel.sqlpulse.ui.keys.KeyImportState
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreenContent
 import hu.laurel.sqlpulse.ui.keys.KeyStoreController
 import hu.laurel.sqlpulse.ui.pulse.Metric
-import hu.laurel.sqlpulse.ui.pulse.MetricId
+import hu.laurel.sqlpulse.data.schema.MetricId
 import hu.laurel.sqlpulse.ui.pulse.PulseController
 import hu.laurel.sqlpulse.ui.pulse.PulseInterval
 import hu.laurel.sqlpulse.ui.pulse.PulseScreenContent

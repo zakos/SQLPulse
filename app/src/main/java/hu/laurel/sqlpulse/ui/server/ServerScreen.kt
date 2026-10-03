@@ -72,6 +72,10 @@ import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.query.SqlVisualTransformation
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.data.sql.dialect.KillAction
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
@@ -109,6 +113,15 @@ fun ServerScreenContent(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
+    val engine = LocalEngineFeatures.current
+    // Only the panels this engine has: replication and the slow list are features, not baseline.
+    val panels = ServerPanel.entries.filter { panel ->
+        when (panel) {
+            ServerPanel.REPLICATION -> engine.has(EngineFeature.REPLICATION)
+            ServerPanel.SLOW -> engine.has(EngineFeature.SLOW_QUERIES)
+            else -> true
+        }
+    }
     var killTarget by remember { mutableStateOf<Pair<Long, String>?>(null) }
     // The diagnostics report lives here because this is where somebody stands when something is
     // wrong with the server, and because it is read once and copied rather than navigated to.
@@ -188,19 +201,31 @@ fun ServerScreenContent(
             // query against a server that may be busy.
             // The chosen chip is scrolled into view: the later panels sit off the right edge.
             val chipState = rememberLazyListState()
-            LaunchedEffect(state.panel) { chipState.animateScrollToItem(state.panel.ordinal) }
+            LaunchedEffect(state.panel) { chipState.animateScrollToItem(panels.indexOf(state.panel).coerceAtLeast(0)) }
             LazyRow(
                 state = chipState,
                 contentPadding = PaddingValues(horizontal = Spacing.l),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s),
             ) {
-                items(ServerPanel.entries) { panel ->
+                items(panels) { panel ->
                     FilterChip(
                         selected = panel == state.panel,
                         onClick = { viewModel.selectPanel(panel) },
                         label = { Text(stringResource(panel.labelRes())) },
                     )
                 }
+            }
+
+            state.missingPrivilege?.let { privilege ->
+                // Its own state, not an error: the panel cannot be read by this account, and the
+                // text names what to ask for.
+                EmptyState(
+                    title = stringResource(R.string.repl_no_privilege_title),
+                    body = stringResource(R.string.server_needs_privilege, privilege),
+                    actionLabel = stringResource(R.string.refresh),
+                    onAction = viewModel::refresh,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             state.error?.let { message ->
@@ -210,12 +235,27 @@ fun ServerScreenContent(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s),
                 )
-                Text(
-                    text = stringResource(R.string.server_process_privilege),
-                    color = semantic.textSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = Spacing.l),
-                )
+                // The PROCESS grant is MySQL's; the other engines name their permission themselves.
+                if (engine.engine == null || engine.engine == DatabaseEngine.MYSQL) {
+                    Text(
+                        text = stringResource(R.string.server_process_privilege),
+                        color = semantic.textSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = Spacing.l),
+                    )
+                }
+            }
+
+            // Sessions that are doing nothing are hidden by default where the engine can tell (a
+            // busy server has hundreds of pooled idle connections); this brings them back.
+            if (state.panel == ServerPanel.QUERIES && state.capabilities.idleFilter) {
+                Row(modifier = Modifier.padding(start = Spacing.l, end = Spacing.l, top = Spacing.s)) {
+                    FilterChip(
+                        selected = state.showIdle,
+                        onClick = { viewModel.setShowIdle(!state.showIdle) },
+                        label = { Text(stringResource(R.string.server_show_idle)) },
+                    )
+                }
             }
 
             if (state.loading) {
@@ -225,6 +265,12 @@ fun ServerScreenContent(
             }
 
             val table = state.table
+            // Where only the whole session can be ended, the button says so instead of "End statement".
+            val killLabel = if (KillAction.CANCEL in state.capabilities.killActions) {
+                R.string.server_kill
+            } else {
+                R.string.server_terminate
+            }
             val replication = state.replication
             val slow = state.slow
             when {
@@ -247,6 +293,7 @@ fun ServerScreenContent(
                 )
 
                 state.panel == ServerPanel.REPLICATION || state.panel == ServerPanel.SLOW -> Unit
+                state.missingPrivilege != null -> Unit
                 table == null -> Unit
                 table.rows.isEmpty() && !state.loading -> EmptyState(
                     title = stringResource(state.panel.emptyRes()),
@@ -262,6 +309,16 @@ fun ServerScreenContent(
                     table = table,
                     onKill = { id, info -> killTarget = id to info },
                     onOpenInEditor = onOpenInEditor,
+                    killLabel = killLabel,
+                )
+
+                // Open transactions as cards, the state in colour: "idle in transaction" is the one
+                // to look for, and a grid would bury it.
+                state.panel == ServerPanel.TRANSACTIONS && state.capabilities.transactionCards -> TransactionCards(
+                    table = table,
+                    onKill = { id, info -> killTarget = id to info },
+                    onOpenInEditor = onOpenInEditor,
+                    killLabel = killLabel,
                 )
 
                 else -> ResultGrid(
@@ -271,7 +328,9 @@ fun ServerScreenContent(
                         when (state.panel) {
                             // Replication and the digest list are read-only and have no thread or account.
                             ServerPanel.REPLICATION, ServerPanel.SLOW -> Unit
-                            ServerPanel.USERS -> viewModel.showGrants(selection.value.asText())
+                            // The account is the row's first column, whichever cell was tapped.
+                            ServerPanel.USERS -> table.rows.getOrNull(selection.rowIndex)?.firstOrNull()
+                                ?.asText()?.let(viewModel::showGrants)
                             else -> killTarget = selection.toKillTarget(table)
                         }
                     },
@@ -310,17 +369,50 @@ fun ServerScreenContent(
     }
 
     killTarget?.let { (id, info) ->
+        val actions = state.capabilities.killActions
+        val canCancel = KillAction.CANCEL in actions
+        val canTerminate = KillAction.TERMINATE in actions
         AlertDialog(
             onDismissRequest = { killTarget = null },
-            title = { Text(stringResource(R.string.server_kill_title, id)) },
-            text = { Text(info, style = MonoStyles.cell) },
+            // Where only the whole session can be ended (SQL Server) the title says so.
+            title = {
+                Text(stringResource(if (canCancel) R.string.server_kill_title else R.string.server_terminate_title, id))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+                    Text(info, style = MonoStyles.cell)
+                    // The harder option stays a deliberate second choice, below the gentle one.
+                    if (canCancel && canTerminate) {
+                        Text(
+                            stringResource(R.string.server_terminate_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = semantic.textSecondary,
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.terminate(id)
+                                killTarget = null
+                            },
+                            shape = Shapes.button,
+                            border = BorderStroke(1.dp, semantic.danger.copy(alpha = 0.4f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = semantic.danger),
+                        ) { Text(stringResource(R.string.server_terminate)) }
+                    } else if (canTerminate) {
+                        Text(
+                            stringResource(R.string.server_terminate_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = semantic.textSecondary,
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.kill(id)
                         killTarget = null
                     },
-                ) { Text(stringResource(R.string.server_kill)) }
+                ) { Text(stringResource(if (canCancel) R.string.server_kill else R.string.server_terminate)) }
             },
             dismissButton = {
                 TextButton(onClick = { killTarget = null }) { Text(stringResource(R.string.cancel)) }
@@ -337,6 +429,7 @@ private fun ProcessCards(
     table: ResultTable,
     onKill: (Long, String) -> Unit,
     onOpenInEditor: (String) -> Unit,
+    killLabel: Int = R.string.server_kill,
 ) {
     val semantic = LocalSemanticColors.current
     fun column(name: String) = table.columns.indexOfFirst { it.label.equals(name, ignoreCase = true) }
@@ -441,7 +534,7 @@ private fun ProcessCards(
                             modifier = Modifier.height(40.dp),
                         ) {
                             Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(stringResource(R.string.server_kill), modifier = Modifier.padding(start = 6.dp))
+                            Text(stringResource(killLabel), modifier = Modifier.padding(start = 6.dp))
                         }
                     }
                 }

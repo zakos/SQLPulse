@@ -46,6 +46,17 @@ data class ReplicationChannel(
     val relayLogFile: String?,
     val relayLogPos: Long?,
     val execSourceLogPos: Long?,
+    /**
+     * False for engines that have no IO/SQL thread pair (PostgreSQL streaming, SQL Server
+     * availability groups): the card then leaves the thread chips out and reads [verdictOverride].
+     */
+    val showThreads: Boolean = true,
+    /** The engine's own verdict, for replication that [ReplicationStatus.verdict] cannot judge from threads. */
+    val verdictOverride: ReplicationHealth? = null,
+    /** This channel is a standby the server feeds (a primary's view), not a source it follows. */
+    val peerIsDownstream: Boolean = false,
+    /** Engine-specific figures shown under the lag (PostgreSQL write/flush/replay lag, send queue, …). */
+    val details: List<ServerFact> = emptyList(),
 ) {
     /** The first error either thread reported, IO before SQL. */
     val lastError: String? get() = lastIoError ?: lastSqlError
@@ -134,6 +145,7 @@ object ReplicationStatus {
     }
 
     fun verdict(channel: ReplicationChannel): ReplicationHealth {
+        channel.verdictOverride?.let { return it }
         if (channel.lastError != null) return ReplicationHealth.ERROR
         if (channel.ioThread == ThreadState.STOPPED || channel.sqlThread == ThreadState.STOPPED) {
             return ReplicationHealth.STOPPED
@@ -149,6 +161,14 @@ object ReplicationStatus {
             lag > LAGGING_SECONDS -> ReplicationHealth.LAGGING
             else -> ReplicationHealth.OK
         }
+    }
+
+    /** The verdict a lag alone gives, for engines whose state is only "streaming or not". */
+    fun verdictByLag(lagSeconds: Long?): ReplicationHealth = when {
+        lagSeconds == null -> ReplicationHealth.UNKNOWN
+        lagSeconds > FAR_BEHIND_SECONDS -> ReplicationHealth.FAR_BEHIND
+        lagSeconds > LAGGING_SECONDS -> ReplicationHealth.LAGGING
+        else -> ReplicationHealth.OK
     }
 
     private fun severity(health: ReplicationHealth) = when (health) {

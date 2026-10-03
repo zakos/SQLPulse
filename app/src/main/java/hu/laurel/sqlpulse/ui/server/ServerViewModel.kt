@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.schema.ServerFact
 import hu.laurel.sqlpulse.data.schema.ReplicationReport
 import hu.laurel.sqlpulse.data.schema.ServerRepository
@@ -14,6 +15,10 @@ import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.dialect.KillAction
+import hu.laurel.sqlpulse.data.sql.dialect.MissingPrivilegeException
+import hu.laurel.sqlpulse.data.sql.dialect.OwnSessionException
+import hu.laurel.sqlpulse.data.sql.dialect.ServerCapabilities
 import hu.laurel.sqlpulse.ui.explain
 import hu.laurel.sqlpulse.ui.handoff.EditorHandoff
 import java.sql.SQLException
@@ -42,6 +47,12 @@ data class ServerUiState(
     val users: ResultTable? = null,
     /** The account whose grants are on screen, with what the server said about it. */
     val grants: AccountGrants? = null,
+    /** What the live engine can do here: which kill actions, whether idle sessions can be hidden. */
+    val capabilities: ServerCapabilities = ServerCapabilities.MYSQL,
+    /** Idle sessions are listed too (only where [ServerCapabilities.idleFilter]). */
+    val showIdle: Boolean = false,
+    /** The permission the panel on screen needs and the account lacks, instead of an error. */
+    val missingPrivilege: String? = null,
     val loading: Boolean = false,
     val error: String? = null,
     val connected: Boolean = false,
@@ -87,7 +98,10 @@ class ServerViewModel @Inject constructor(
         sessions.state
             .onEach { state ->
                 val ready = state is SqlSessionState.Ready
-                _uiState.value = _uiState.value.copy(connected = ready)
+                _uiState.value = _uiState.value.copy(
+                    connected = ready,
+                    capabilities = if (ready) server.capabilities else ServerCapabilities.MYSQL,
+                )
                 if (ready) {
                     refresh()
                 } else {
@@ -116,13 +130,19 @@ class ServerViewModel @Inject constructor(
      * asked for, is not a refresh anyone wants over a tunnel. The overview is fetched alongside,
      * because it is a single cheap statement and it is always visible.
      */
-    override fun refresh() {
+    override fun refresh() = refresh(keepError = false)
+
+    private fun refresh(keepError: Boolean) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(loading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                loading = true,
+                error = if (keepError) _uiState.value.error else null,
+                missingPrivilege = null,
+            )
             try {
                 val state = _uiState.value
                 val updated = when (state.panel) {
-                    ServerPanel.QUERIES -> state.copy(processes = server.processList())
+                    ServerPanel.QUERIES -> state.copy(processes = server.processList(state.showIdle))
                     ServerPanel.TRANSACTIONS -> state.copy(transactions = server.transactions())
                     ServerPanel.LOCKS -> state.copy(lockWaits = server.lockWaits())
                     ServerPanel.REPLICATION -> state.copy(replication = server.replication())
@@ -132,6 +152,8 @@ class ServerViewModel @Inject constructor(
                 // The overview is optional: a user without those variables still gets the list.
                 val facts = runCatching { server.overview() }.getOrDefault(emptyList())
                 _uiState.value = updated.copy(facts = facts, loading = false)
+            } catch (e: MissingPrivilegeException) {
+                _uiState.value = _uiState.value.copy(loading = false, missingPrivilege = e.privilege)
             } catch (e: Exception) {
                 // Usually "Access denied": seeing other users' queries needs the PROCESS grant (§3).
                 _uiState.value = _uiState.value.copy(
@@ -171,11 +193,25 @@ class ServerViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(grants = null)
     }
 
-    override fun kill(processId: Long) {
+    override fun kill(processId: Long) = stop(processId, _uiState.value.capabilities.primaryKill)
+
+    override fun terminate(processId: Long) = stop(processId, KillAction.TERMINATE)
+
+    override fun setShowIdle(show: Boolean) {
+        if (show == _uiState.value.showIdle) return
+        _uiState.value = _uiState.value.copy(showIdle = show)
+        refresh()
+    }
+
+    private fun stop(processId: Long, action: KillAction) {
         viewModelScope.launch {
             try {
-                server.killQuery(processId)
-                refresh()
+                val found = server.stop(processId, action)
+                // Gone already: it finished between the list and the tap. Say so, then show the new list.
+                if (!found) {
+                    _uiState.value = _uiState.value.copy(error = context.getString(R.string.server_kill_gone, processId))
+                }
+                refresh(keepError = !found)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = describe(e))
             }
@@ -183,6 +219,8 @@ class ServerViewModel @Inject constructor(
     }
 
     private fun describe(e: Exception): String = when (e) {
+        is OwnSessionException -> context.getString(R.string.server_kill_own)
+        is MissingPrivilegeException -> context.getString(R.string.server_needs_privilege, e.privilege)
         is SQLException -> context.explain(SqlFailures.of(e))
         else -> e.message ?: e.toString()
     }
