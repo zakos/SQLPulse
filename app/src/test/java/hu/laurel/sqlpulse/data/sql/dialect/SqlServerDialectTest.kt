@@ -538,11 +538,12 @@ class SqlServerDialectTest {
                 EngineFeature.ROW_EDITING, EngineFeature.EDITABLE_RESULTS, EngineFeature.WRITE_PREVIEW,
                 EngineFeature.CSV_IMPORT, EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP,
                 EngineFeature.ROUTINES, EngineFeature.TRIGGERS,
+                EngineFeature.SERVER_ACTIVITY, EngineFeature.REPLICATION, EngineFeature.SLOW_QUERIES, EngineFeature.PULSE,
             ),
             dialect.features,
         )
         assertFalse(dialect.supports(EngineFeature.EXPLAIN))
-        assertFalse(dialect.supports(EngineFeature.SERVER_ACTIVITY))
+        assertTrue(dialect.supports(EngineFeature.SERVER_ACTIVITY))
         assertEquals(setOf("sys", "INFORMATION_SCHEMA", "guest"), dialect.systemNamespaces)
         // USE moves one pooled connection and not the others: it is not intercepted, and not a query.
         assertNull(dialect.namespaceSwitch("USE other"))

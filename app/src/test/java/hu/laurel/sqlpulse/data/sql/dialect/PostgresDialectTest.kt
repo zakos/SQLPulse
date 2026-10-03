@@ -491,8 +491,7 @@ class PostgresDialectTest {
         // Not offered: screens that read MySQL-only things (docs/tobb-motor-terv.md, 5).
         for (feature in listOf(
             EngineFeature.EXPLAIN, EngineFeature.DATABASE_SEARCH, EngineFeature.SCHEMA_DIFF,
-            EngineFeature.SERVER_ACTIVITY, EngineFeature.PULSE, EngineFeature.SLOW_QUERIES,
-            EngineFeature.REPLICATION, EngineFeature.STORAGE, EngineFeature.EVENTS,
+            EngineFeature.STORAGE, EngineFeature.EVENTS,
         )) {
             assertFalse("$feature is not implemented for PostgreSQL", d.supports(feature))
         }
@@ -500,6 +499,7 @@ class PostgresDialectTest {
             EngineFeature.ROW_EDITING, EngineFeature.CSV_IMPORT, EngineFeature.ROW_LINKS, EngineFeature.SCHEMA_MAP,
             EngineFeature.TABLE_DDL, EngineFeature.WRITE_PREVIEW, EngineFeature.EDITABLE_RESULTS,
             EngineFeature.ROUTINES, EngineFeature.TRIGGERS,
+            EngineFeature.SERVER_ACTIVITY, EngineFeature.PULSE, EngineFeature.SLOW_QUERIES, EngineFeature.REPLICATION,
         )) {
             assertTrue("$feature works", d.supports(feature))
         }
