@@ -182,11 +182,14 @@ class MySqlDialectTest {
     }
 
     @Test
-    fun `the registry hands MySQL its dialect and the rest their stubs`() {
+    fun `the registry hands MySQL its dialect and an unfinished engine its stub`() {
         assertSame(MySqlDialect, SqlDialects.forEngine(DatabaseEngine.MYSQL))
         for (engine in DatabaseEngine.entries - DatabaseEngine.MYSQL) {
             val stub = SqlDialects.forEngine(engine)
             assertEquals(engine, stub.engine)
+            // An engine whose phase-2 work has landed has its own test; only what is still a stub
+            // is held to the stub's contract.
+            if (stub !is UnsupportedDialect) continue
             assertFalse("$engine is not finished", stub.connectable)
             assertTrue(stub.features.isEmpty())
             val refused = runCatching { stub.connector(JdbcConfig("h", 1, "d", "u", null, true, engine = engine)) }

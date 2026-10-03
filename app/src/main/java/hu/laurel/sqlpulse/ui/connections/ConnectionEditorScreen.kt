@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -704,7 +705,9 @@ private fun FileSection(
                 stringResource(
                     R.string.sqlite_file_details,
                     formatByteSize(form.fileSize),
-                    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(form.fileCopiedAt)),
+                    DateFormat.getDateTimeInstance(
+                        DateFormat.MEDIUM, DateFormat.SHORT, LocalConfiguration.current.locales[0],
+                    ).format(Date(form.fileCopiedAt)),
                 ),
                 style = MonoStyles.cell.copy(fontSize = 12.sp),
                 color = semantic.textSecondary,
