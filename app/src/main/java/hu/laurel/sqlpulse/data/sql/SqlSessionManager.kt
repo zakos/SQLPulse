@@ -4,8 +4,13 @@ import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
+import hu.laurel.sqlpulse.data.connection.LocalDatabaseFiles
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.di.IoDispatcher
 import hu.laurel.sqlpulse.net.ManualReason
@@ -83,6 +88,7 @@ class SqlSessionManager @Inject constructor(
     private val tunnelManager: TunnelManager,
     private val connections: ConnectionRepository,
     private val certificates: CertificateStore,
+    private val localFiles: LocalDatabaseFiles,
     private val network: NetworkWatcher,
     @IoDispatcher private val io: CoroutineDispatcher,
     @ApplicationScope private val scope: CoroutineScope,
@@ -103,6 +109,13 @@ class SqlSessionManager @Inject constructor(
 
     @Volatile
     private var session: SqlSession? = null
+
+    /**
+     * The engine of the connection being opened or last opened. Stays after the session closes,
+     * so a screen still showing a lost session's results quotes names the way that engine does.
+     */
+    @Volatile
+    private var activeDialect: SqlDialect = MySqlDialect
 
     /**
      * The connection a manual transaction is running on, or null when statements commit as they go.
@@ -171,14 +184,15 @@ class SqlSessionManager @Inject constructor(
         val target = _database.value
         val open = transaction
         inFlight.incrementAndGet()
+        val dialect = activeDialect
         return try {
             withContext(io) {
                 if (open != null) {
-                    if (target != null && open.catalog != target) open.catalog = target
+                    if (target != null) dialect.useNamespace(open, target)
                     block(open)
                 } else {
                     live.use { connection ->
-                        if (target != null && connection.catalog != target) connection.catalog = target
+                        if (target != null) dialect.useNamespace(connection, target)
                         block(connection)
                     }
                 }
@@ -259,6 +273,12 @@ class SqlSessionManager @Inject constructor(
             stored,
         )
     }
+
+    /**
+     * How the current (or last) connection's engine speaks: quoting, limits, catalog queries.
+     * MySQL until a connection of another engine has been opened.
+     */
+    fun dialect(): SqlDialect = activeDialect
 
     /** Which driver the live session opened with, or null when there is no session. */
     fun driverInUse(): JdbcDriverKind? = session?.settled
@@ -379,6 +399,9 @@ class SqlSessionManager @Inject constructor(
         val entity = connections.byId(tunnel.connectionId) ?: return
         cancelReconnect()
         _state.value = SqlSessionState.Opening
+        val engine = DatabaseEngine.fromName(entity.engine)
+        val dialect = SqlDialects.forEngine(engine)
+        activeDialect = dialect
 
         val password = try {
             connections.password(entity.id, entity.name)
@@ -405,17 +428,18 @@ class SqlSessionManager @Inject constructor(
                     tunnelled = entity.useSshTunnel,
                     connectTimeoutMs = ConnectionTimeouts.connectMillis(entity.connectTimeoutSeconds),
                     socketTimeoutMs = ConnectionTimeouts.socketMillis(entity.queryTimeoutSeconds),
+                    engine = engine,
+                    localFile = if (engine.hasServer) null else localFiles.pathFor(entity.id).absolutePath,
                 ),
             )
-            val version = withContext(io) {
-                fresh.use { it.metaData.databaseProductVersion }
+            val (version, namespace) = withContext(io) {
+                fresh.use { it.metaData.databaseProductVersion to dialect.initialNamespace(it, entity.database) }
             }
             session = fresh
             wroteSinceConnect = false
             // Back on the database the user was on, not on the connection's default: the reconnect
             // is meant to be invisible, and a silently different catalog is the opposite of that.
-            _database.value = databaseBeforeLoss?.takeIf { it.isNotBlank() }
-                ?: entity.database.takeIf { it.isNotBlank() }
+            _database.value = databaseBeforeLoss?.takeIf { it.isNotBlank() } ?: namespace
             databaseBeforeLoss = null
             _state.value = SqlSessionState.Ready(entity, version)
         } catch (e: SQLException) {
@@ -423,7 +447,7 @@ class SqlSessionManager @Inject constructor(
             _state.value = SqlSessionState.Failed(
                 message = "${e.errorCode}: ${e.message}",
                 detail = e.toString(),
-                failure = SqlFailures.of(e),
+                failure = dialect.failureOf(e),
             )
         } catch (e: Exception) {
             _state.value = SqlSessionState.Failed(e.message.orEmpty(), e.toString())

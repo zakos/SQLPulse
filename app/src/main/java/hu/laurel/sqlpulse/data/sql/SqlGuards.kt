@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.SqlGrammar
+
 /** What a statement will do to the database. Decides whether a read-only connection accepts it. */
 enum class StatementKind {
     /** SELECT, SHOW, DESCRIBE, EXPLAIN, WITH ... SELECT. */
@@ -19,24 +21,25 @@ enum class StatementKind {
  * MySQL grants (§3) and the read-only flag on the JDBC connection. It exists to catch the obvious
  * mistakes before they travel: an UPDATE typed into a read-only connection, or a SELECT with no
  * LIMIT against a table with millions of rows (§7.4).
+ *
+ * Every scanner takes a [SqlGrammar] — which quotes and comments the engine has — defaulting to
+ * MySQL's, which is what these functions knew before there were other engines. The dialects
+ * (data/sql/dialect) pass their own; the MySQL behaviour is unchanged by construction.
  */
 object SqlGuards {
 
     const val DEFAULT_ROW_LIMIT = 500
 
-    private val READ_STARTERS = setOf("select", "show", "describe", "desc", "explain", "with", "analyze")
-    private val WRITE_STARTERS = setOf("insert", "update", "delete", "replace")
-
-    fun classify(sql: String): StatementKind {
-        val stripped = strip(sql)
+    fun classify(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): StatementKind {
+        val stripped = strip(sql, grammar)
         val first = firstKeyword(stripped) ?: return StatementKind.OTHER
         // A CTE says nothing about what the statement does: MySQL 8 lets an UPDATE or a DELETE
         // follow one, and `WITH ... UPDATE` counted as a read is exactly the accident this guard
         // is here to catch.
-        if (first == "with") return classifyAfterCte(stripped)
+        if (first == "with") return classifyAfterCte(stripped, grammar)
         return when (first) {
-            in READ_STARTERS -> StatementKind.READ
-            in WRITE_STARTERS -> StatementKind.WRITE
+            in grammar.readStarters -> StatementKind.READ
+            in grammar.writeStarters -> StatementKind.WRITE
             else -> StatementKind.OTHER
         }
     }
@@ -49,13 +52,13 @@ object SqlGuards {
      * write keyword found at that level belongs to the statement itself. Erring towards WRITE
      * there costs a confirmation dialog; erring towards READ would let the write past it.
      */
-    private fun classifyAfterCte(strippedSql: String): StatementKind {
+    private fun classifyAfterCte(strippedSql: String, grammar: SqlGrammar): StatementKind {
         val tail = cteTail(strippedSql)
-            ?: return if (hasTopLevelWrite(strippedSql)) StatementKind.WRITE else StatementKind.READ
+            ?: return if (hasTopLevelWrite(strippedSql, grammar)) StatementKind.WRITE else StatementKind.READ
         return when (firstKeyword(tail)) {
-            in WRITE_STARTERS -> StatementKind.WRITE
-            in READ_STARTERS -> StatementKind.READ
-            else -> if (hasTopLevelWrite(tail)) StatementKind.WRITE else StatementKind.READ
+            in grammar.writeStarters -> StatementKind.WRITE
+            in grammar.readStarters -> StatementKind.READ
+            else -> if (hasTopLevelWrite(tail, grammar)) StatementKind.WRITE else StatementKind.READ
         }
     }
 
@@ -129,7 +132,7 @@ object SqlGuards {
     }
 
     /** True when a write keyword stands outside every parenthesis of [strippedSql]. */
-    private fun hasTopLevelWrite(strippedSql: String): Boolean {
+    private fun hasTopLevelWrite(strippedSql: String, grammar: SqlGrammar): Boolean {
         var depth = 0
         var index = 0
         while (index < strippedSql.length) {
@@ -139,7 +142,7 @@ object SqlGuards {
                 c == ')' -> { depth--; index++ }
                 c.isLetter() || c == '_' -> {
                     val word = readWord(strippedSql, index)
-                    if (depth <= 0 && word.lowercase() in WRITE_STARTERS) return true
+                    if (depth <= 0 && word.lowercase() in grammar.writeStarters) return true
                     index += word.length
                 }
 
@@ -156,10 +159,14 @@ object SqlGuards {
      * @return the SQL to run, and whether a limit was added — the UI notes that quietly above the
      *   result.
      */
-    fun applyDefaultLimit(sql: String, limit: Int = DEFAULT_ROW_LIMIT): LimitResult {
+    fun applyDefaultLimit(
+        sql: String,
+        limit: Int = DEFAULT_ROW_LIMIT,
+        grammar: SqlGrammar = SqlGrammar.MYSQL,
+    ): LimitResult {
         val trimmed = sql.trim().trimEnd(';')
-        if (classify(trimmed) != StatementKind.READ) return LimitResult(trimmed, false)
-        val stripped = strip(trimmed)
+        if (classify(trimmed, grammar) != StatementKind.READ) return LimitResult(trimmed, false)
+        val stripped = strip(trimmed, grammar)
         val starter = firstKeyword(stripped)
         // SHOW/DESCRIBE return small, fixed result sets and reject LIMIT in most forms.
         if (starter != "select" && starter != "with") return LimitResult(trimmed, false)
@@ -174,8 +181,8 @@ object SqlGuards {
         Regex("(?i)\\blimit\\s+(\\d+|\\?|:[a-z_][a-z0-9_]*)").containsMatchIn(strippedSql)
 
     /** The `:name` placeholders of a saved query (§7.4), in order of first appearance. */
-    fun parameters(sql: String): List<String> =
-        Regex(":([a-zA-Z_][a-zA-Z0-9_]*)").findAll(strip(sql))
+    fun parameters(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): List<String> =
+        Regex(":([a-zA-Z_][a-zA-Z0-9_]*)").findAll(strip(sql, grammar))
             .map { it.groupValues[1] }
             .distinct()
             .toList()
@@ -187,9 +194,9 @@ object SqlGuards {
      * A LIMIT does not count: `DELETE FROM t LIMIT 10` still picks its ten rows arbitrarily. This
      * is a typo guard, not a security boundary; the boundary is the MySQL grants (§3).
      */
-    fun isUnguardedWrite(sql: String): Boolean {
-        if (classify(sql) != StatementKind.WRITE) return false
-        val stripped = strip(sql)
+    fun isUnguardedWrite(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): Boolean {
+        if (classify(sql, grammar) != StatementKind.WRITE) return false
+        val stripped = strip(sql, grammar)
         // A WHERE inside a CTE body guards the CTE, not the UPDATE that follows it. A prelude we
         // cannot walk falls back to the whole statement, which errs towards letting it run — the
         // confirmation dialog still stands in front of it.
@@ -233,20 +240,20 @@ object SqlGuards {
      * query containing `'12:30'` or `time::text` is not mangled. A name may appear several times;
      * it is then bound several times, which is what a prepared statement needs.
      */
-    fun bindParameters(sql: String): BoundStatement {
+    fun bindParameters(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): BoundStatement {
         val out = StringBuilder(sql.length)
         val order = mutableListOf<String>()
         var index = 0
         while (index < sql.length) {
             val c = sql[index]
             when {
-                c == '\'' || c == '"' || c == '`' -> {
-                    val end = endOfLiteral(sql, index)
+                grammar.opensQuote(sql, index) -> {
+                    val end = grammar.endOfQuoted(sql, index)
                     out.append(sql, index, end)
                     index = end
                 }
 
-                sql.startsWith("--", index) || c == '#' -> {
+                grammar.opensLineComment(sql, index) -> {
                     val end = sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
                     out.append(sql, index, end)
                     index = end
@@ -288,22 +295,8 @@ object SqlGuards {
     private fun Char.isValidParameterChar() = isLetterOrDigit() || this == '_'
 
     /** @return the index just past the closing quote of the literal starting at [start]. */
-    internal fun endOfLiteral(sql: String, start: Int): Int {
-        val closing = sql[start]
-        var index = start + 1
-        while (index < sql.length) {
-            val current = sql[index]
-            if (current == '\\' && closing != '`') {
-                index += 2
-                continue
-            }
-            index++
-            if (current == closing) {
-                if (index < sql.length && sql[index] == closing) index++ else return index
-            }
-        }
-        return index
-    }
+    internal fun endOfLiteral(sql: String, start: Int, grammar: SqlGrammar = SqlGrammar.MYSQL): Int =
+        grammar.endOfQuoted(sql, start)
 
     private fun firstKeyword(strippedSql: String): String? =
         strippedSql.trimStart('(', ' ', '\t', '\n', '\r')
@@ -315,39 +308,23 @@ object SqlGuards {
      * Removes comments and the contents of quoted literals and identifiers, so keyword matching
      * does not trip over a table called `limit_log` or a string containing "delete".
      */
-    fun strip(sql: String): String {
+    fun strip(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): String {
         val out = StringBuilder(sql.length)
         var index = 0
         while (index < sql.length) {
-            when (val c = sql[index]) {
-                '\'', '"', '`' -> {
-                    val closing = c
+            val c = sql[index]
+            when {
+                // A doubled quote inside is an escaped quote, not the end of the literal; the
+                // grammar knows that, and whether a backslash escapes too.
+                grammar.opensQuote(sql, index) -> {
                     out.append(' ')
-                    index++
-                    while (index < sql.length) {
-                        val current = sql[index]
-                        if (current == '\\' && closing != '`') {
-                            index += 2
-                            continue
-                        }
-                        index++
-                        if (current == closing) {
-                            // A doubled quote is an escaped quote, not the end of the literal.
-                            if (index < sql.length && sql[index] == closing) index++ else break
-                        }
-                    }
+                    index = grammar.endOfQuoted(sql, index)
                 }
 
-                '-' -> if (sql.startsWith("--", index)) {
+                grammar.opensLineComment(sql, index) ->
                     index = sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
-                } else {
-                    out.append(c)
-                    index++
-                }
 
-                '#' -> index = sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
-
-                '/' -> if (sql.startsWith("/*", index)) {
+                c == '/' -> if (sql.startsWith("/*", index)) {
                     val end = sql.indexOf("*/", index + 2)
                     index = if (end >= 0) end + 2 else sql.length
                     out.append(' ')

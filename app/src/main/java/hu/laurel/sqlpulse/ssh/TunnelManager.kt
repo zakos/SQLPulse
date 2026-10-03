@@ -10,6 +10,8 @@ import hu.laurel.sqlpulse.data.connection.JumpHostCredentials
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.KnownHostDao
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
 import hu.laurel.sqlpulse.di.ApplicationScope
 import hu.laurel.sqlpulse.di.IoDispatcher
 import hu.laurel.sqlpulse.net.NetworkChange
@@ -177,6 +179,12 @@ class TunnelManager @Inject constructor(
             return
         }
 
+        // A SQLite file has nothing to reach: no tunnel, no port, no probe.
+        if (!DatabaseEngine.fromName(connection.engine).hasServer) {
+            openLocalFile(connection)
+            return
+        }
+
         if (!connection.useSshTunnel) {
             connectDirectly(connection)
             return
@@ -250,7 +258,9 @@ class TunnelManager @Inject constructor(
 
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)
         try {
-            _serverVersion.value = withContext(io) { MysqlProbe.serverVersion(port = port) }
+            _serverVersion.value = withContext(io) {
+                probeFor(connection).probe(SshTunnel.LOOPBACK, port, PROBE_TIMEOUT_MS)
+            }
         } catch (e: Exception) {
             fresh.close()
             tunnel = null
@@ -284,7 +294,7 @@ class TunnelManager @Inject constructor(
         _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)
         try {
             _serverVersion.value = withContext(io) {
-                MysqlProbe.serverVersion(port = connection.dbPort, host = connection.dbHost)
+                probeFor(connection).probe(connection.dbHost, connection.dbPort, PROBE_TIMEOUT_MS)
             }
         } catch (e: Exception) {
             _state.value = TunnelState.Failed(
@@ -306,6 +316,32 @@ class TunnelManager @Inject constructor(
         // just the same, so it is watched too.
         startWatchingNetwork()
     }
+
+    /**
+     * A database file on the phone (SQLite). There is no network involved, so no tunnel, no
+     * foreground service and no network watch: the session layer opens the file as soon as this
+     * says Active. Whether the file is there is the session's to find out, with its own error.
+     */
+    private suspend fun openLocalFile(connection: ConnectionEntity) {
+        val connectionId = connection.id
+        _state.value = TunnelState.Connecting(connectionId, ConnectStep.MYSQL)
+        withContext(io) { connections.touch(connectionId, System.currentTimeMillis()) }
+        _state.value = TunnelState.Active(
+            connectionId = connectionId,
+            host = "",
+            port = 0,
+            since = System.currentTimeMillis(),
+            tunnelled = false,
+        )
+    }
+
+    /**
+     * The engine's own "is this the database we expect" check: MySQL reads the version off its
+     * handshake (MysqlProbe, as always); an engine that does not speak first only proves the port
+     * answers.
+     */
+    private fun probeFor(connection: ConnectionEntity) =
+        SqlDialects.forEngine(DatabaseEngine.fromName(connection.engine))
 
     private suspend fun askAboutHostKey(prompt: HostKeyPrompt): Boolean {
         if (prompt.storedFingerprint != null) return false
@@ -442,6 +478,9 @@ class TunnelManager @Inject constructor(
     companion object {
         /** §5: at most five minutes in the background, then the tunnel drops. */
         const val BACKGROUND_GRACE_MS = 5 * 60 * 1000L
+
+        /** How long the database step's probe waits; MysqlProbe's own default. */
+        private const val PROBE_TIMEOUT_MS = 10_000
     }
 }
 

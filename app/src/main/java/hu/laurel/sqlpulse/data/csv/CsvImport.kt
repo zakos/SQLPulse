@@ -3,6 +3,8 @@ package hu.laurel.sqlpulse.data.csv
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.sql.PreparedSql
 import hu.laurel.sqlpulse.data.sql.RowSqlBuilder
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /**
  * How a file's columns line up with a table's.
@@ -65,13 +67,14 @@ object CsvImport {
         match: ColumnMatch,
         header: List<String>,
         rows: List<List<String?>>,
+        syntax: SqlSyntax = MySqlDialect,
     ): List<PreparedSql> {
         val indexes = match.matched.keys.map { header.indexOf(it) }
         val targets = match.matched.values.toList()
         return rows.mapNotNull { row ->
             val values = indexes.map { index -> row.getOrNull(index) }
             if (values.all { it == null }) return@mapNotNull null
-            RowSqlBuilder.insert(database, table, targets.zip(values).toMap())
+            RowSqlBuilder.insert(database, table, targets.zip(values).toMap(), syntax)
         }
     }
 

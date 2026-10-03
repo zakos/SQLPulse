@@ -95,6 +95,7 @@ class CsvImporter @Inject constructor(
             match = plan.match,
             header = plan.table.header,
             rows = plan.table.rows,
+            syntax = sessions.dialect(),
         )
         if (statements.isEmpty()) return 0
         writeGate.check()
