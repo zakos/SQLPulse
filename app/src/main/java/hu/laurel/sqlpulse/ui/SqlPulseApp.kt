@@ -24,6 +24,7 @@ import hu.laurel.sqlpulse.ui.settings.SettingsScreen
 import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
 import hu.laurel.sqlpulse.ui.schemadiff.SchemaDiffScreen
 import hu.laurel.sqlpulse.ui.server.ServerScreen
+import hu.laurel.sqlpulse.ui.settings.KeyBarSettingsScreen
 import hu.laurel.sqlpulse.ui.storage.StorageScreen
 import hu.laurel.sqlpulse.ui.writelog.WriteLogScreen
 import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
@@ -43,6 +44,7 @@ object Routes {
     const val SCHEMA_DIFF = "schema-diff"
     const val STORAGE = "storage"
     const val WRITE_LOG = "write_log"
+    const val KEY_BAR = "key_bar"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -139,7 +141,12 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
                 onOpenWriteLog = { navController.navigate(Routes.WRITE_LOG) },
+                onOpenKeyBar = { navController.navigate(Routes.KEY_BAR) },
             )
+        }
+
+        composable(Routes.KEY_BAR) {
+            KeyBarSettingsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.WRITE_LOG) {

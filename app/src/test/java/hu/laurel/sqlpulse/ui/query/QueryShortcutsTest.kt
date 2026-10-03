@@ -30,6 +30,16 @@ class QueryShortcutsTest {
     }
 
     @Test
+    fun `ctrl z undoes, and ctrl shift z or ctrl y redoes`() {
+        assertEquals(QueryShortcut.UNDO, QueryShortcuts.of(KeyPress("z", ctrl = true)))
+        assertEquals(QueryShortcut.REDO, QueryShortcuts.of(KeyPress("Z", ctrl = true, shift = true)))
+        assertEquals(QueryShortcut.REDO, QueryShortcuts.of(KeyPress("Y", ctrl = true)))
+        assertNull(QueryShortcuts.of(KeyPress("Y", ctrl = true, shift = true)))
+        assertNull(QueryShortcuts.of(KeyPress("Z")))
+        assertNull(QueryShortcuts.of(KeyPress("Z", ctrl = true, alt = true)))
+    }
+
+    @Test
     fun `escape needs no modifier`() {
         assertEquals(QueryShortcut.DISMISS, QueryShortcuts.of(KeyPress("Escape")))
     }

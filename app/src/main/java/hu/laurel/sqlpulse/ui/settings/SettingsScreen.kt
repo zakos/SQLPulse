@@ -56,6 +56,7 @@ fun SettingsScreen(
      */
     onOpenBackup: () -> Unit = {},
     onOpenWriteLog: () -> Unit = {},
+    onOpenKeyBar: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     SettingsScreenContent(
@@ -63,6 +64,7 @@ fun SettingsScreen(
         onOpenKeyStore = onOpenKeyStore,
         onOpenBackup = onOpenBackup,
         onOpenWriteLog = onOpenWriteLog,
+        onOpenKeyBar = onOpenKeyBar,
         viewModel = viewModel,
     )
 }
@@ -75,6 +77,7 @@ fun SettingsScreenContent(
     onOpenKeyStore: () -> Unit,
     onOpenBackup: () -> Unit = {},
     onOpenWriteLog: () -> Unit = {},
+    onOpenKeyBar: () -> Unit = {},
     viewModel: SettingsController,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -225,6 +228,11 @@ fun SettingsScreenContent(
                 title = stringResource(R.string.writelog_open),
                 subtitle = stringResource(R.string.writelog_open_note),
                 onClick = onOpenWriteLog,
+            ) { RowChevron() }
+            ListRow(
+                title = stringResource(R.string.keybar_title),
+                subtitle = stringResource(R.string.keybar_open_note),
+                onClick = onOpenKeyBar,
             ) { RowChevron() }
 
             Text(

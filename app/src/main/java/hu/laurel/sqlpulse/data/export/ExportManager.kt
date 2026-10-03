@@ -48,6 +48,33 @@ class ExportManager @Inject constructor(
         }
     }
 
+    /**
+     * The text of a query for the share sheet.
+     *
+     * Short SQL goes as plain text, which every messaging app and note taker accepts. Past
+     * [MAX_INLINE_SQL] it goes as a `.sql` file instead: an intent carries its extras through the
+     * binder, and a script of several hundred kilobytes would throw rather than be shared.
+     */
+    suspend fun sqlIntent(sql: String): Intent {
+        if (sql.length <= MAX_INLINE_SQL) {
+            return Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, sql)
+            }
+        }
+        return withContext(io) {
+            val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
+            val file = File(directory, "query-${System.currentTimeMillis()}.sql")
+            file.writeText(sql)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+    }
+
     /** Called at start and whenever the app locks, so exports never outlive the session (§9). */
     fun clearExports() {
         runCatching { File(context.cacheDir, EXPORT_DIRECTORY).deleteRecursively() }
@@ -59,5 +86,6 @@ class ExportManager @Inject constructor(
     private companion object {
         const val EXPORT_DIRECTORY = "exports"
         const val MAX_NAME_LENGTH = 40
+        const val MAX_INLINE_SQL = 50_000
     }
 }

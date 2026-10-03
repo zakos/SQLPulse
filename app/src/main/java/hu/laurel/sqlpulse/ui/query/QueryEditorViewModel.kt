@@ -14,6 +14,13 @@ import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.query.DraftBook
+import hu.laurel.sqlpulse.data.query.EditorPrefsRepository
+import hu.laurel.sqlpulse.data.query.KeyBar
+import hu.laurel.sqlpulse.data.query.KeyBarConfig
+import hu.laurel.sqlpulse.data.query.KeyBarItem
+import hu.laurel.sqlpulse.data.query.KeyInsertion
+import hu.laurel.sqlpulse.data.query.Snippet
+import hu.laurel.sqlpulse.data.query.SnippetEngine
 import hu.laurel.sqlpulse.data.query.QueryDraft
 import hu.laurel.sqlpulse.data.query.QueryDraftStore
 import hu.laurel.sqlpulse.data.query.QueryRepository
@@ -62,6 +69,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -151,6 +159,9 @@ data class QueryEditorUiState(
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Whether the active tab has an edit to take back, or one that was taken back. Set by the view model. */
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     /** Set while a hand-typed write waits to be confirmed (§7.4). */
     val writeConfirmation: WriteConfirmation? = null,
     /** Set when opening a tab was refused because [QueryTabs.MAX_TABS] is already open. */
@@ -237,10 +248,34 @@ class QueryEditorViewModel @Inject constructor(
     writeUnlock: WriteUnlockStore,
     private val snapshotVault: SnapshotVault,
     private val editorHandoff: EditorHandoff,
+    private val editorPrefs: EditorPrefsRepository,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
-    override val uiState: StateFlow<QueryEditorUiState> = _uiState.asStateFlow()
+
+    /**
+     * One undo history per tab, in memory only. Created when a tab is first edited and dropped with
+     * the tab; drafts restored from disk start without one.
+     */
+    private val histories = EditHistories()
+
+    /** Bumped when a history changes whether the active tab can undo or redo, to republish the state. */
+    private val historyTick = MutableStateFlow(0)
+    private var publishedUndoRedo = false to false
+
+    override val uiState: StateFlow<QueryEditorUiState> = combine(_uiState, historyTick) { state, _ ->
+        val history = histories.peek(state.activeTabId)
+        val flags = (history?.canUndo == true) to (history?.canRedo == true)
+        publishedUndoRedo = flags
+        state.copy(canUndo = flags.first, canRedo = flags.second)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value)
+
+    override val snippets: StateFlow<List<Snippet>> = editorPrefs.snippets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    override val keyBar: StateFlow<List<KeyBarItem>> = editorPrefs.keyBar
+        .map { KeyBar.visible(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KeyBar.visible(KeyBarConfig.DEFAULT))
 
     /** Editing the rows of the result in place, when the statement maps onto one table. */
     private val editing = QueryResultEditing(
@@ -411,6 +446,8 @@ class QueryEditorViewModel @Inject constructor(
             // id later would offer a comparison between two unrelated questions.
             snapshots = state.snapshots - id,
         )
+        histories.drop(id)
+        touchHistory()
         noteDraftChange()
     }
 
@@ -471,14 +508,21 @@ class QueryEditorViewModel @Inject constructor(
         execute(listOf(statement.sql), parameters)
     }
 
-    fun setSql(sql: String) {
+    fun setSql(sql: String, kind: EditKind = EditKind.OTHER) {
+        val before = _uiState.value.active
+        val history = historyFor(before)
         updateActive { it.copy(sql = sql, error = null) }
+        history.record(EditorText(sql, before.selectionStart, before.selectionEnd), kind, nowMs())
+        touchHistory()
         refreshSuggestions()
         noteDraftChange()
     }
 
     /** One call for what a keystroke changes: the text, where the cursor landed, and the hints. */
     override fun onEditorChanged(sql: String, selectionStart: Int, selectionEnd: Int) {
+        val before = _uiState.value.active
+        val history = historyFor(before)
+        val kind = EditHistory.classify(before.sql, sql)
         updateActive {
             it.copy(
                 sql = sql,
@@ -487,6 +531,8 @@ class QueryEditorViewModel @Inject constructor(
                 error = null,
             )
         }
+        history.record(EditorText(sql, selectionStart, selectionEnd), kind, nowMs())
+        touchHistory()
         refreshSuggestions()
         noteDraftChange()
     }
@@ -527,8 +573,92 @@ class QueryEditorViewModel @Inject constructor(
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val before = tab.sql.take(at)
         val separator = if (before.isEmpty() || before.last().isWhitespace()) "" else " "
-        replaceRange(at, at, separator + text)
+        replaceRange(at, at, separator + text, EditKind.KEY_INSERT)
     }
+
+    /** A key from the key bar: the text goes in with the spacing a keyword or operator needs. */
+    override fun insertKey(key: String) {
+        val tab = _uiState.value.active
+        val start = tab.selectionStart.coerceIn(0, tab.sql.length)
+        val end = tab.selectionEnd.coerceIn(start, tab.sql.length)
+        val text = KeyInsertion.textFor(key, tab.sql.substring(0, start), tab.sql.substring(end))
+        replaceRange(start, end, text, EditKind.KEY_INSERT)
+    }
+
+    /** Drops a snippet in at the cursor and selects its first word to fill in. */
+    override fun insertSnippet(snippet: Snippet) {
+        val tab = _uiState.value.active
+        val result = SnippetEngine.insert(tab.sql, tab.selectionStart, tab.selectionEnd, snippet.body)
+        applyEdit(result.text, result.selectionStart, result.selectionEnd, EditKind.SNIPPET)
+    }
+
+    override fun saveSnippet(id: String?, name: String, body: String) {
+        viewModelScope.launch { editorPrefs.saveSnippet(id, name, body) }
+    }
+
+    override fun deleteSnippet(id: String) {
+        viewModelScope.launch { editorPrefs.deleteSnippet(id) }
+    }
+
+    override fun undo() {
+        val history = historyFor(_uiState.value.active)
+        history.undo()?.let(::restore)
+    }
+
+    override fun redo() {
+        val history = historyFor(_uiState.value.active)
+        history.redo()?.let(::restore)
+    }
+
+    /** Puts a state the history handed back into the active tab, selection included. */
+    private fun restore(state: EditorText) {
+        updateActive {
+            it.copy(
+                sql = state.text,
+                selectionStart = state.selectionStart,
+                selectionEnd = state.selectionEnd,
+                suggestions = emptyList(),
+                error = null,
+            )
+        }
+        touchHistory()
+        refreshSuggestions()
+        noteDraftChange()
+    }
+
+    /**
+     * Hands the editor's text to the share sheet: the selection if there is one, else all of it.
+     * Only the SQL — never a result, a connection name or a database.
+     */
+    override fun shareQuery() {
+        val tab = _uiState.value.active
+        val text = if (tab.hasSelection) {
+            val start = tab.selectionStart.coerceIn(0, tab.sql.length)
+            tab.sql.substring(start, tab.selectionEnd.coerceIn(start, tab.sql.length))
+        } else {
+            tab.sql
+        }
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(shareIntent = exports.sqlIntent(text))
+            } catch (e: Exception) {
+                updateActive { it.copy(error = describe(e)) }
+            }
+        }
+    }
+
+    /** The tab's history, started from its text if it has none or the text moved without it. */
+    private fun historyFor(tab: QueryTab): EditHistory =
+        histories.of(tab.id, EditorText(tab.sql, tab.selectionStart, tab.selectionEnd))
+
+    private fun touchHistory() {
+        val history = histories.peek(_uiState.value.activeTabId)
+        val flags = (history?.canUndo == true) to (history?.canRedo == true)
+        if (flags != publishedUndoRedo) historyTick.value++
+    }
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
     /**
      * Completes the word the cursor sits in.
@@ -541,21 +671,29 @@ class QueryEditorViewModel @Inject constructor(
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val start = SqlCompletion.contextAt(tab.sql, at).prefixStart.coerceIn(0, at)
-        replaceRange(start, at, suggestion)
+        replaceRange(start, at, suggestion, EditKind.COMPLETION)
     }
 
     /** Replaces a range of the editor's text and leaves the cursor after what was inserted. */
-    private fun replaceRange(start: Int, end: Int, text: String) {
-        val caret = start + text.length
+    private fun replaceRange(start: Int, end: Int, text: String, kind: EditKind) {
+        val sql = _uiState.value.active.sql
+        applyEdit(sql.substring(0, start) + text + sql.substring(end), start + text.length, start + text.length, kind)
+    }
+
+    /** Sets the active tab's text from something other than typing, as one undo step of its own. */
+    private fun applyEdit(text: String, selectionStart: Int, selectionEnd: Int, kind: EditKind) {
+        val history = historyFor(_uiState.value.active)
         updateActive {
             it.copy(
-                sql = it.sql.substring(0, start) + text + it.sql.substring(end),
-                selectionStart = caret,
-                selectionEnd = caret,
+                sql = text,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd,
                 suggestions = emptyList(),
                 error = null,
             )
         }
+        history.record(EditorText(text, selectionStart, selectionEnd), kind, nowMs())
+        touchHistory()
         noteDraftChange()
     }
 
@@ -572,9 +710,9 @@ class QueryEditorViewModel @Inject constructor(
             val start = tab.selectionStart.coerceIn(0, tab.sql.length)
             val end = tab.selectionEnd.coerceIn(start, tab.sql.length)
             val formatted = SqlFormatter.format(tab.sql.substring(start, end))
-            setSql(tab.sql.substring(0, start) + formatted + tab.sql.substring(end))
+            setSql(tab.sql.substring(0, start) + formatted + tab.sql.substring(end), EditKind.FORMAT)
         } else {
-            setSql(SqlScript.split(tab.sql).joinToString(";\n\n") { SqlFormatter.format(it.sql) } + ";")
+            setSql(SqlScript.split(tab.sql).joinToString(";\n\n") { SqlFormatter.format(it.sql) } + ";", EditKind.FORMAT)
         }
     }
 
@@ -1026,6 +1164,7 @@ class QueryEditorViewModel @Inject constructor(
      * then marked as holding unsaved text.
      */
     override fun load(sql: String, saved: Boolean) {
+        val history = historyFor(_uiState.value.active)
         // A query taken from the history or the favourites is meant to be read and edited, so the
         // editor unfolds even if a result was filling the screen.
         updateActive {
@@ -1039,6 +1178,9 @@ class QueryEditorViewModel @Inject constructor(
                 savedSql = if (saved) sql else it.savedSql,
             )
         }
+        // Loading a favourite over text is undoable: the text it replaced is not lost.
+        history.record(EditorText(sql, sql.length, sql.length), EditKind.OTHER, nowMs())
+        touchHistory()
         noteDraftChange()
     }
 
@@ -1213,6 +1355,9 @@ class QueryEditorViewModel @Inject constructor(
                 activeTabId = book.activeId ?: tabs.first().id,
             )
             lastWritten = book
+            // A restored draft is where this session's history starts, not something to undo past.
+            histories.clear()
+            touchHistory()
             refreshSuggestions()
         }
         job.invokeOnCompletion { draftsReady.complete(Unit) }

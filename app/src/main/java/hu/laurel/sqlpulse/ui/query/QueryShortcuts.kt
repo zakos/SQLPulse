@@ -25,6 +25,12 @@ enum class QueryShortcut {
     FIND,
     SAVE_FAVOURITE,
 
+    /** Take back the last edit; Ctrl+Z. */
+    UNDO,
+
+    /** Put back what was taken back; Ctrl+Shift+Z or Ctrl+Y. */
+    REDO,
+
     /** Escape: close whatever is open over the editor. */
     DISMISS,
 }
@@ -49,6 +55,9 @@ object QueryShortcuts {
             key == "F" && press.shift -> QueryShortcut.FORMAT
             key == "F" -> QueryShortcut.FIND
             key == "S" && !press.shift -> QueryShortcut.SAVE_FAVOURITE
+            key == "Z" && press.shift -> QueryShortcut.REDO
+            key == "Z" -> QueryShortcut.UNDO
+            key == "Y" && !press.shift -> QueryShortcut.REDO
             else -> null
         }
     }
