@@ -50,7 +50,3 @@ class SqlVisualTransformation(
     }
 }
 
-/** The characters the phone keyboard hides, in the order the spec lists them (§7.4). */
-val KEY_ROW_ITEMS = listOf(
-    "SELECT", "FROM", "WHERE", "*", "=", "<", ">", ",", "'", "%", "(", ")",
-)

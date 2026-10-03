@@ -37,6 +37,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -143,6 +145,9 @@ import hu.laurel.sqlpulse.ui.grid.ExportSheet
 import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
+import hu.laurel.sqlpulse.data.query.KeyAction
+import hu.laurel.sqlpulse.ui.settings.KeyFace
+import hu.laurel.sqlpulse.ui.settings.keyName
 import hu.laurel.sqlpulse.ui.snapshot.SnapshotSheet
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -182,6 +187,9 @@ fun QueryEditorContent(
     var favouriteDialogOpen by remember { mutableStateOf(false) }
     var exportMenuOpen by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
+    var snippetsOpen by remember { mutableStateOf(false) }
+    val snippets by viewModel.snippets.collectAsStateWithLifecycle()
+    val keyBar by viewModel.keyBar.collectAsStateWithLifecycle()
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
     var detailRow by remember { mutableStateOf<Int?>(null) }
@@ -239,6 +247,18 @@ fun QueryEditorContent(
                 true
             }
 
+            // Consumed even when there is nothing to take back, so the text field's own undo
+            // never runs behind the editor's back and desynchronises the two.
+            QueryShortcut.UNDO -> {
+                if (state.canUndo) viewModel.undo()
+                true
+            }
+
+            QueryShortcut.REDO -> {
+                if (state.canRedo) viewModel.redo()
+                true
+            }
+
             // Escape only takes back what it opened; with nothing open it belongs to the system.
             QueryShortcut.DISMISS -> if (findOpen) {
                 findOpen = false
@@ -274,16 +294,39 @@ fun QueryEditorContent(
                     }
                 },
                 actions = {
+                    // Slightly closer together than the default 48dp: with undo and redo the bar
+                    // carries five actions, and the connection's name still has to be readable.
+                    IconButton(
+                        onClick = viewModel::undo,
+                        enabled = state.canUndo,
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = stringResource(R.string.editor_undo),
+                        )
+                    }
+                    IconButton(
+                        onClick = viewModel::redo,
+                        enabled = state.canRedo,
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = stringResource(R.string.editor_redo),
+                        )
+                    }
                     IconButton(
                         onClick = { viewModel.format() },
                         enabled = state.sql.isNotBlank(),
+                        modifier = Modifier.size(42.dp),
                     ) {
                         Icon(
                             Icons.Default.FormatAlignLeft,
                             contentDescription = stringResource(R.string.query_format),
                         )
                     }
-                    IconButton(onClick = { findOpen = !findOpen }) {
+                    IconButton(onClick = { findOpen = !findOpen }, modifier = Modifier.size(42.dp)) {
                         Icon(
                             Icons.Default.Search,
                             contentDescription = stringResource(R.string.query_find),
@@ -292,6 +335,7 @@ fun QueryEditorContent(
                     IconButton(
                         onClick = { favouriteDialogOpen = true },
                         enabled = state.sql.isNotBlank(),
+                        modifier = Modifier.size(42.dp),
                     ) {
                         Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
                     }
@@ -332,7 +376,12 @@ fun QueryEditorContent(
                     if (field.text != state.sql) {
                         field = TextFieldValue(
                             text = state.sql,
-                            selection = TextRange(state.selectionStart.coerceIn(0, state.sql.length)),
+                            // The whole selection, not only its start: an undo or a snippet puts a
+                            // range back, and a caret would lose it.
+                            selection = TextRange(
+                                state.selectionStart.coerceIn(0, state.sql.length),
+                                state.selectionEnd.coerceIn(0, state.sql.length),
+                            ),
                         )
                     }
                 }
@@ -385,18 +434,30 @@ fun QueryEditorContent(
                         contentPadding = PaddingValues(horizontal = Spacing.m, vertical = Spacing.s),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(KEY_ROW_ITEMS) { item ->
+                        items(keyBar, key = { it.id }) { item ->
+                            val enabled = when (item.action) {
+                                KeyAction.Undo -> state.canUndo
+                                KeyAction.Redo -> state.canRedo
+                                else -> true
+                            }
                             Box(
                                 modifier = Modifier
                                     .height(40.dp)
                                     .widthIn(min = 44.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(semantic.surfaceRaised)
-                                    .clickable(role = Role.Button) { viewModel.append(item) }
+                                    .clickable(enabled = enabled, role = Role.Button, onClickLabel = keyName(item)) {
+                                        when (val action = item.action) {
+                                            is KeyAction.Insert -> viewModel.insertKey(action.text)
+                                            KeyAction.Undo -> viewModel.undo()
+                                            KeyAction.Redo -> viewModel.redo()
+                                            KeyAction.Snippets -> snippetsOpen = true
+                                        }
+                                    }
                                     .padding(horizontal = Spacing.m),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(item, style = MonoStyles.cell.copy(fontSize = 14.sp))
+                                KeyFace(item, dimmed = !enabled)
                             }
                         }
                     }
@@ -460,6 +521,21 @@ fun QueryEditorContent(
                                             viewModel.explain()
                                         },
                                     )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.editor_snippets)) },
+                                        onClick = {
+                                            runMenuOpen = false
+                                            snippetsOpen = true
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.editor_share_query)) },
+                                        enabled = state.sql.isNotBlank(),
+                                        onClick = {
+                                            runMenuOpen = false
+                                            viewModel.shareQuery()
+                                        },
+                                    )
                                     if (state.isScript && !state.hasSelection) {
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.query_run_current)) },
@@ -517,6 +593,25 @@ fun QueryEditorContent(
                 }
 
                 if (state.running) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+
+                if (snippetsOpen) {
+                    val active = state.active
+                    val selected = if (active.hasSelection) {
+                        val start = active.selectionStart.coerceIn(0, active.sql.length)
+                        active.sql.substring(start, active.selectionEnd.coerceIn(start, active.sql.length))
+                    } else {
+                        active.sql
+                    }
+                    SnippetSheet(
+                        snippets = snippets,
+                        selectedText = selected,
+                        hasSelection = active.hasSelection,
+                        onInsert = viewModel::insertSnippet,
+                        onSave = viewModel::saveSnippet,
+                        onDelete = viewModel::deleteSnippet,
+                        onDismiss = { snippetsOpen = false },
+                    )
+                }
         }
 
         val outputPane: @Composable ColumnScope.() -> Unit = {
@@ -1414,6 +1509,8 @@ private fun Key.shortcutName(): String = when (this) {
     Key.Enter, Key.NumPadEnter -> "ENTER"
     Key.F -> "F"
     Key.S -> "S"
+    Key.Z -> "Z"
+    Key.Y -> "Y"
     Key.Escape -> "ESCAPE"
     else -> ""
 }

@@ -5,6 +5,8 @@ import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.grid.ResultFilter
+import hu.laurel.sqlpulse.data.query.KeyBarItem
+import hu.laurel.sqlpulse.data.query.Snippet
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,15 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface QueryEditorController {
     fun append(text: String)
+    fun insertKey(key: String) = append(key)
+    fun insertSnippet(snippet: Snippet) = Unit
+    fun saveSnippet(id: String?, name: String, body: String) = Unit
+    fun deleteSnippet(id: String) = Unit
+    fun undo() = Unit
+    fun redo() = Unit
+    fun shareQuery() = Unit
+    val snippets: StateFlow<List<Snippet>>
+    val keyBar: StateFlow<List<KeyBarItem>>
     fun cancel()
     fun closeTab(id: Long)
     fun compareWithSnapshot()

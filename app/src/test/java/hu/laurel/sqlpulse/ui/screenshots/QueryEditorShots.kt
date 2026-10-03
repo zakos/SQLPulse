@@ -112,6 +112,9 @@ class FakeQueryController(
     override val uiState: StateFlow<QueryEditorUiState> = MutableStateFlow(state)
     override val history: StateFlow<List<QueryHistoryEntity>> = MutableStateFlow(emptyList())
     override val favourites: StateFlow<List<SavedQueryEntity>> = MutableStateFlow(emptyList())
+    override val snippets: StateFlow<List<hu.laurel.sqlpulse.data.query.Snippet>> = MutableStateFlow(emptyList())
+    override val keyBar: StateFlow<List<hu.laurel.sqlpulse.data.query.KeyBarItem>> =
+        MutableStateFlow(hu.laurel.sqlpulse.data.query.KeyBar.visible(hu.laurel.sqlpulse.data.query.KeyBarConfig.DEFAULT))
     override val sessionState: StateFlow<SqlSessionState> = MutableStateFlow(
         SqlSessionState.Ready(
             ConnectionEntity(name = "Számlázó", color = "Amber", sshHost = "jump.test.local", sshUser = "deploy", sshKeyId = null, dbHost = "10.0.4.12", database = "billing", dbUser = "app_ro", environment = "TEST"),

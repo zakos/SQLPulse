@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_undo">Visszavonás</string>
+    <string name="editor_redo">Újra</string>
+    <string name="editor_snippets">Szövegrészletek</string>
+    <string name="editor_share_query">Lekérdezés szövegének megosztása</string>
+
+    <string name="snippets_title">Szövegrészletek</string>
+    <string name="snippets_search">Keresés a részletek közt</string>
+    <string name="snippets_mine">Sajátjaim</string>
+    <string name="snippets_builtin">Beépített</string>
+    <string name="snippets_empty_mine">Még nincs mentett részlet. Mentsd el a kijelölt szöveget vagy az egész szerkesztőt, hogy újra felhasználhasd.</string>
+    <string name="snippets_none_found">Nincs találat.</string>
+    <string name="snippets_save_current">A szerkesztő szövegének mentése részletként</string>
+    <string name="snippets_save_selection">A kijelölés mentése részletként</string>
+    <string name="snippets_name">Név</string>
+    <string name="snippets_text">SQL</string>
+    <string name="snippets_placeholder_hint">A kitöltendő szót jelöld így: {{szó}}; beszúráskor az első ki van jelölve.</string>
+    <string name="snippets_save">Mentés</string>
+    <string name="snippets_edit">Részlet szerkesztése</string>
+    <string name="snippets_delete">Részlet törlése</string>
+    <string name="snippets_delete_confirm">Törlöd: „%1$s”?</string>
+    <string name="snippets_delete_yes">Törlés</string>
+    <string name="snippets_builtin_note">Csak sablonok: semmi nem fut le, amíg te nem futtatod, és egyik sem módosítja a tábla szerkezetét.</string>
+
+    <string name="keybar_title">Szerkesztő gombsora</string>
+    <string name="keybar_note">A SQL szerkesztőben a billentyűzet feletti gombok. Átrendezheted, elrejtheted a nem használtakat, vagy visszaállíthatod az alapot.</string>
+    <string name="keybar_open_note">A billentyűzet feletti gombok sorrendje, elrejtése</string>
+    <string name="keybar_reset">Alaphelyzet</string>
+    <string name="keybar_move_up">%1$s feljebb</string>
+    <string name="keybar_move_down">%1$s lejjebb</string>
+</resources>
