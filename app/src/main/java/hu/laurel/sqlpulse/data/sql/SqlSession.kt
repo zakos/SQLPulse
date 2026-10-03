@@ -26,7 +26,7 @@ data class JdbcConfig(
      * Whether something already encrypts this link — an SSH tunnel, in practice.
      *
      * It decides one thing: whether the driver may ask the server for its RSA public key. See
-     * [SqlSession.openWith].
+     * MySqlConnector (data/sql/dialect/MySqlDialect.kt).
      */
     val tunnelled: Boolean = false,
     /** Which engine — and so which connector, driver and URL — this session uses. */
