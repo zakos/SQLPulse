@@ -241,6 +241,11 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   térkép 0 kitalált kapcsolat `mantis_*_table` nevekkel + apró dobozok; szerkesztő „500 sor” felirat
   5000-es beállítás mellett; SQLite-fájlnál „éles kiszolgáló” szöveg + régi dialógus; kulcsimport
   gomb betűnként tördel; SQLite UPDATE `"..."` szöveggel → nincs darabszám. Képek: scratchpad/device/.
+  → Javítva (2 subagent): ⋮ menü a fejlécekben, egysoros `ConnectionTitle`; DDL vízszintes görgetés;
+  `alap: ''`/`NULL`; `ServerFactView` (magyar kulcsok, üzemidő, egy TLS-sor); éles megerősítő kártya
+  fájl-szöveggel; kulcsimport kártya; `LinkGuesser` közös elő-/utótag + szerep-oszlopok (reporter_id
+  → user), olvasható térképdobozok; a szerkesztő sorlimitje a beállítást követi (eddig fix 500 volt!);
+  SQLite egyedi-kulcs hiba magyarul. A „nincs darabszám” a sikertelen írások naplója volt, nem hiba.
 
 ## Javasolt következő fejlesztések (2026-10-02)
 
