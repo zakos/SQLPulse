@@ -5,6 +5,7 @@ import androidx.annotation.StringRes
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.SqlFailure
 import hu.laurel.sqlpulse.data.sql.SqlFailureKind
+import hu.laurel.sqlpulse.data.sql.SqlFailures
 
 /** The sentence that explains a kind of failure, or null when there is nothing to add. */
 @StringRes
@@ -35,6 +36,14 @@ fun Context.explain(failure: SqlFailure): String {
     val server = failure.serverMessage.ifBlank {
         if (failure.errorCode != 0) getString(R.string.sql_error_code, failure.errorCode) else ""
     }
-    val explanation = failure.kind.explanationRes()?.let { getString(it) }
+    // A SQLite uniqueness failure names the columns, which makes a sharper sentence than the
+    // generic one: the user can see which key their UPDATE collided on.
+    val columns = failure.takeIf { it.kind == SqlFailureKind.DUPLICATE_KEY }
+        ?.let { SqlFailures.uniqueConstraintColumns(it.serverMessage) }
+    val explanation = if (columns != null) {
+        getString(R.string.sql_error_unique_columns, columns)
+    } else {
+        failure.kind.explanationRes()?.let { getString(it) }
+    }
     return listOfNotNull(explanation, server.takeIf { it.isNotBlank() }).joinToString("\n\n")
 }

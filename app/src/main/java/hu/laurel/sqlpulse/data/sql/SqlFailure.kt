@@ -126,6 +126,17 @@ object SqlFailures {
         return byMessage(message)
     }
 
+    /**
+     * The `table.column, ...` list SQLite names in a uniqueness failure ("UNIQUE constraint
+     * failed: article.ArtNr, article.SubArtNr"), or null for any other message. SQLite is the one
+     * engine whose message carries the columns in a fixed, parseable form; for the others the
+     * server's own sentence is shown as it is.
+     */
+    fun uniqueConstraintColumns(message: String): String? =
+        UNIQUE_FAILED.find(message)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+
+    private val UNIQUE_FAILED = Regex("UNIQUE constraint failed: ([^()]+)")
+
     private fun byErrorCode(code: Int): SqlFailureKind? = when (code) {
         1045, 1698, 1251 -> SqlFailureKind.AUTHENTICATION
         // 1044 is "access denied to database": the user is right, the grant is missing.

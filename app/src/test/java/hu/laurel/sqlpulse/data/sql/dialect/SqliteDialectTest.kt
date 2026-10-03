@@ -23,6 +23,13 @@ class SqliteDialectTest {
     private val dialect = SqliteDialect
 
     @Test
+    fun `a write with double quoted strings is still counted and previewed`() {
+        val sql = "UPDATE article set ArtNr=\"x\" where Label like \"%csirk%\""
+        assertEquals("SELECT COUNT(*) FROM article where Label like \"%csirk%\"", dialect.writeCountQuery(sql))
+        assertTrue(dialect.writePreviewQuery(sql, 20) != null)
+    }
+
+    @Test
     fun `the engine is registered and connectable with a feature list that stays honest`() {
         assertSame(dialect, SqlDialects.forEngine(DatabaseEngine.SQLITE))
         assertEquals(DatabaseEngine.SQLITE, dialect.engine)

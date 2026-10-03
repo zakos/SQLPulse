@@ -9,6 +9,17 @@ import org.junit.Test
 class WriteImpactTest {
 
     @Test
+    fun `double quoted strings keep their text in the count and the preview`() {
+        // MySQL's default mode reads "..." as a string; SQLite falls back to one when no column
+        // has the name. Either way the derived SELECT carries the same text as the write.
+        val sql = "UPDATE article set ArtNr=\"x\" where Label like \"%csirk%\""
+        assertEquals("SELECT COUNT(*) FROM article where Label like \"%csirk%\"", WriteImpact.countQuery(sql))
+        val preview = WriteImpact.previewQuery(sql)
+        assertEquals(listOf("ArtNr"), preview?.changedColumns)
+        assertTrue(preview!!.sql.contains("(\"x\") AS"))
+    }
+
+    @Test
     fun `an update becomes a count over the same table and where`() {
         assertEquals(
             "SELECT COUNT(*) FROM orders WHERE paid = 0 AND id > 10",
