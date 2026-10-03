@@ -235,10 +235,14 @@ D. Kényelem:
 - [ ] Parancsikonok készüléken kipróbálva még nincsenek (hidegindítás, `onNewIntent`).
 - [ ] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”.
 - [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v11) kell.
-E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`), döntésre vár:
-- [ ] Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · kiugró értékek · bővebb gombsor.
-- [ ] SQLite fájl megnyitása a telefonról (közepes).
-- [ ] Más motorok (PostgreSQL, SQL Server, Oracle) — nagy; csak valós igény esetén.
+E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a felhasználó jóváhagyta,
+   a csapat PostgreSQL-t, MariaDB-t és MS SQL-t is használ:
+- [ ] (folyamatban) Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · bővebb gombsor.
+- [ ] (folyamatban) Kiugró értékek (oszlop-összesítés + diagram).
+- [ ] (folyamatban) Több motor, 1. szakasz: motor-absztrakció (`SqlDialect`), Room v11 (`engine`),
+      driver-megvalósíthatóság, terv: `docs/tobb-motor-terv.md`.
+- [ ] Több motor, 2. szakasz (párhuzamosan): PostgreSQL · SQL Server/Azure SQL · SQLite fájl.
+- [ ] Oracle: nem kérték.
 
 ## Teendők / nyitott pontok
 
