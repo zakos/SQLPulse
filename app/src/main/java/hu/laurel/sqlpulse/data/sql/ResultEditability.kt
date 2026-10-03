@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.schema.TableStructure
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
 import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
@@ -439,6 +440,16 @@ object ResultEditabilities {
                         Kind.QUOTED,
                         sql.substring(i + 1, maxOf(i + 1, end - 1)).replace("$idQuote$idQuote", idQuote.toString()),
                     )
+                    i = end
+                }
+
+                // SQLite names things with "x", `x` (MySQL's way) and [x] (T-SQL's); only the first
+                // is the engine's own quote, so the other two would be read as strings and the
+                // column behind them as an expression, which is never editable.
+                syntax.engine == DatabaseEngine.SQLITE && (c == '`' || c == '[') -> {
+                    val end = minOf(grammar.endOfQuoted(sql, i), sql.length)
+                    val inner = sql.substring(i + 1, maxOf(i + 1, end - 1))
+                    out += Token(Kind.QUOTED, if (c == '`') inner.replace("``", "`") else inner)
                     i = end
                 }
 

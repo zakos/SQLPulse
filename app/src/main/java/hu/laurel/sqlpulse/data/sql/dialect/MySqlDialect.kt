@@ -13,6 +13,8 @@ import hu.laurel.sqlpulse.data.sql.SslProperties
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WriteImpact
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
+import hu.laurel.sqlpulse.data.sql.plan.MySqlPlanReader
+import hu.laurel.sqlpulse.data.sql.plan.PlanReader
 import hu.laurel.sqlpulse.ssh.MysqlProbe
 import java.sql.Connection
 import java.sql.Driver
@@ -65,6 +67,8 @@ object MySqlDialect : SqlDialect {
      * server older than 5.6 (QueryEditorViewModel), so only the JSON form is named here.
      */
     override fun explain(sql: String): String = "$EXPLAIN_JSON$sql"
+
+    override val planReader: PlanReader get() = MySqlPlanReader
 
     override fun writeCountQuery(sql: String): String? = WriteImpact.countQuery(sql)
 

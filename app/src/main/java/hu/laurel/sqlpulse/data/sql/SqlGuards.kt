@@ -240,7 +240,15 @@ object SqlGuards {
      * query containing `'12:30'` or `time::text` is not mangled. A name may appear several times;
      * it is then bound several times, which is what a prepared statement needs.
      */
-    fun bindParameters(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): BoundStatement {
+    fun bindParameters(
+        sql: String,
+        grammar: SqlGrammar = SqlGrammar.MYSQL,
+        /**
+         * What to write in place of a placeholder, given its name; `?` when null. For a statement
+         * that cannot be prepared and so cannot take bound values (a SQL Server plan request).
+         */
+        placeholder: ((String) -> String)? = null,
+    ): BoundStatement {
         val out = StringBuilder(sql.length)
         val order = mutableListOf<String>()
         var index = 0
@@ -274,8 +282,9 @@ object SqlGuards {
                 c == ':' && sql.getOrNull(index + 1)?.isValidParameterStart() == true -> {
                     var end = index + 1
                     while (end < sql.length && sql[end].isValidParameterChar()) end++
-                    order += sql.substring(index + 1, end)
-                    out.append('?')
+                    val name = sql.substring(index + 1, end)
+                    order += name
+                    out.append(placeholder?.invoke(name) ?: "?")
                     index = end
                 }
 

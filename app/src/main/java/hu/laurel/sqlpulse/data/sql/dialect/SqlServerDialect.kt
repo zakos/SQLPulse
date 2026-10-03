@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
 import hu.laurel.sqlpulse.data.sql.JdbcConfig
+import hu.laurel.sqlpulse.data.sql.ParameterBinding
 import hu.laurel.sqlpulse.data.sql.ResultEditability
 import hu.laurel.sqlpulse.data.sql.SqlFailure
 import hu.laurel.sqlpulse.data.sql.SqlFailureKind
@@ -8,6 +9,8 @@ import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
+import hu.laurel.sqlpulse.data.sql.plan.PlanReader
+import hu.laurel.sqlpulse.data.sql.plan.SqlServerPlanReader
 import java.sql.Connection
 import java.sql.SQLException
 
@@ -35,12 +38,13 @@ object SqlServerDialect : SqlDialect {
     override val connectable = true
 
     /**
-     * What is built and tested against a real server. Missing on purpose: EXPLAIN (SHOWPLAN needs
-     * `SET SHOWPLAN_XML ON` on the same connection), TABLE_DDL (no `SHOW CREATE TABLE`; views
-     * and routines do show their definition), and
-     * the server screens (they read MySQL status variables).
+     * What is built and tested against a real server. EXPLAIN is the estimated plan
+     * (`SET SHOWPLAN_XML ON` on the one connection, see [inPlanMode]). Missing on purpose: TABLE_DDL
+     * (no `SHOW CREATE TABLE`; views and routines do show their definition), and the server
+     * screens (they read MySQL status variables).
      */
     override val features: Set<EngineFeature> = setOf(
+        EngineFeature.EXPLAIN,
         EngineFeature.ROW_EDITING,
         EngineFeature.DATABASE_SEARCH,
         EngineFeature.SCHEMA_DIFF,
@@ -94,6 +98,51 @@ object SqlServerDialect : SqlDialect {
     /** A database is a different connection here (see the class comment): nothing to intercept. */
     override fun namespaceSwitch(sql: String): String? = null
 
+    /**
+     * SQL Server has no EXPLAIN statement, so the "explain statement" is the query itself behind a
+     * marker comment: [isExplain] recognises it, and the executor then asks for the plan through
+     * [inPlanMode] instead of running anything. The comment is sent to the server too, where it
+     * is a comment and costs nothing, and shows in the query history as what it was.
+     */
+    override fun explain(sql: String): String = "$SHOWPLAN_MARKER\n$sql"
+
+    override fun isExplain(sql: String): Boolean = sql.trimStart().startsWith(SHOWPLAN_MARKER)
+
+    override val planReader: PlanReader get() = SqlServerPlanReader
+
+    /** Measured on SQL Server 2022: under SHOWPLAN a prepared statement returns nothing at all. */
+    override val plansAsPlainBatch: Boolean get() = true
+
+    override fun planLiteral(binding: ParameterBinding): String = when (binding) {
+        ParameterBinding.Null -> "NULL"
+        // N'' so a non-Latin value is not turned into question marks on its way into the plan.
+        is ParameterBinding.Text -> "N'" + binding.value.replace("'", "''") + "'"
+        is ParameterBinding.Integer -> binding.value.toString()
+        is ParameterBinding.Decimal -> binding.value.toBigDecimal().toPlainString()
+        is ParameterBinding.Bool -> if (binding.value) "1" else "0"
+    }
+
+    /**
+     * `SET SHOWPLAN_XML ON` makes this connection return the estimated plan of each batch instead
+     * of executing it, so the statement behind an EXPLAIN button is not run (a `DELETE` explained
+     * deletes nothing). The setting belongs to the connection, and the pool lends the same
+     * connection to the next query: the reset is therefore in a `finally`, and a connection that
+     * cannot be reset is closed so the pool never lends it again (SqlSession drops a closed
+     * connection on release). Better one reconnect than a pool whose queries all answer with plans.
+     */
+    override fun <T> inPlanMode(connection: Connection, block: () -> T): T {
+        try {
+            connection.createStatement().use { it.execute("SET SHOWPLAN_XML ON") }
+            return block()
+        } finally {
+            try {
+                connection.createStatement().use { it.execute("SET SHOWPLAN_XML OFF") }
+            } catch (e: Exception) {
+                runCatching { connection.close() }
+            }
+        }
+    }
+
     override fun writeCountQuery(sql: String): String? = TSql.writeCountQuery(sql)
 
     override fun writePreviewQuery(sql: String, limit: Int): WritePreviewQuery? =
@@ -126,6 +175,9 @@ object SqlServerDialect : SqlDialect {
     // ---------------------------------------------------------------- errors
 
     override fun failureOf(error: SQLException): SqlFailure = SqlServerFailures.of(error)
+
+    /** Leading comment that marks a statement as a plan request; see [explain]. */
+    const val SHOWPLAN_MARKER = "/* sqlpulse:showplan */"
 }
 
 /**

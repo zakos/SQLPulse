@@ -1,0 +1,1 @@
+{"sql": "SELECT * FROM orders WHERE total > 100", "rows": [[2, 0, 0, "SCAN orders"]]}

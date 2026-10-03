@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Végrehajtási terv PostgreSQL, SQL Server és SQLite esetén -->
+    <string name="plan_node_join">Illesztés</string>
+    <string name="plan_node_operation">Lépés</string>
+
+    <string name="plan_flag_key_lookup">Az indexben talált minden sort újra elő kell venni a táblából: az index nem tartalmaz minden kért oszlopot.</string>
+    <string name="plan_flag_auto_index">Az SQLite ideiglenes indexet épít ehhez a lépéshez; a tábla egyik saját indexe sem felel meg.</string>
+
+    <string name="explain_key_lookup">Az indexben talált sorokat a tábla külön-külön újra előveszi.</string>
+    <string name="explain_automatic_index">Az SQLite eldobható indexet épít a lekérdezés futása közben.</string>
+
+    <string name="plan_no_cost_sqlite">Az SQLite nem közöl költséget vagy sorbecslést, ezért egyik lépés sincs „legnehezebbnek” jelölve. A SCAN egy egész táblát vagy indexet olvas végig; a SEARCH indexen vagy a rowid-n keresztül megy.</string>
+    <string name="plan_estimate_only">Csak becslés: az utasítást megtervezte, de nem futtatta.</string>
+
+    <string name="plan_missing_title">Indexek, amelyeket a kiszolgáló hiányol</string>
+    <string name="plan_missing_index">%1$s táblán (%2$s)</string>
+    <string name="plan_missing_index_include">beleértve: (%1$s)</string>
+    <string name="plan_missing_index_impact">a költség kb. %1$s%%-át szüntetné meg</string>
+    <string name="plan_missing_note">Csak olvasásra: az app soha nem hoz létre indexet.</string>
+</resources>

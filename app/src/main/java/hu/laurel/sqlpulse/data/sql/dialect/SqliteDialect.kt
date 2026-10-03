@@ -1,7 +1,7 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
 import hu.laurel.sqlpulse.data.sql.JdbcConfig
-import hu.laurel.sqlpulse.data.sql.NotEditableReason
+import hu.laurel.sqlpulse.data.sql.ResultEditabilities
 import hu.laurel.sqlpulse.data.sql.ResultEditability
 import hu.laurel.sqlpulse.data.sql.SqlFailure
 import hu.laurel.sqlpulse.data.sql.SqlFailureKind
@@ -10,6 +10,8 @@ import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WriteImpact
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
+import hu.laurel.sqlpulse.data.sql.plan.PlanReader
+import hu.laurel.sqlpulse.data.sql.plan.SqlitePlanReader
 import java.sql.Connection
 import java.sql.SQLException
 
@@ -30,11 +32,12 @@ import java.sql.SQLException
  *    `SELECT *` does not carry it, so such a table is shown read-only ("no primary key") rather
  *    than edited by a key the user cannot see. Giving it a rowid fallback is a change to the shared
  *    table query and the table screen, left for later.
- *  - EXPLAIN stays off: `EXPLAIN QUERY PLAN` returns a flat list of `detail` strings, not the
- *    JSON the plan tree reads. [explain] still names the statement so a later tree can use it, and
- *    the user can type it into the editor today and read the rows.
- *  - Editable query results, database search and schema comparison are not enabled; they read
- *    MySQL's catalog or analysis directly (docs/tobb-motor-terv.md §7).
+ *  - EXPLAIN is `EXPLAIN QUERY PLAN`: rows of `detail` text with a parent id, drawn as a tree by
+ *    [SqlitePlanReader]. SQLite has no costs, so the tree has no cost bar and no "heaviest" step;
+ *    it still tells a SCAN (whole table) from a SEARCH (index or rowid).
+ *  - Editable query results work for a plain SELECT of a table with a primary key.
+ *  - Database search and schema comparison are not enabled; they read MySQL's catalog directly
+ *    (docs/tobb-motor-terv.md §7).
  *  - A statement cannot be time-limited, only cancelled: sqlite-jdbc maps the JDBC query timeout
  *    to the lock wait, and `Statement.cancel()` interrupts the running statement.
  */
@@ -57,6 +60,8 @@ object SqliteDialect : SqlDialect {
     override val connectable = true
 
     override val features: Set<EngineFeature> = setOf(
+        EngineFeature.EXPLAIN,
+        EngineFeature.EDITABLE_RESULTS,
         EngineFeature.ROW_EDITING,
         EngineFeature.DATABASE_SEARCH,
         EngineFeature.SCHEMA_DIFF,
@@ -123,8 +128,14 @@ object SqliteDialect : SqlDialect {
     /** SQLite has one namespace per connection; `USE` is not a statement here. */
     override fun namespaceSwitch(sql: String): String? = null
 
-    /** The plan as rows of text; the plan tree reads MySQL's JSON and is not enabled for SQLite. */
+    /**
+     * The plan as rows of `(id, parent, notused, detail)`, which [SqlitePlanReader] turns into a
+     * tree. Plain `EXPLAIN` would return the virtual machine's opcodes, which say nothing a
+     * person can act on.
+     */
     override fun explain(sql: String): String = "EXPLAIN QUERY PLAN $sql"
+
+    override val planReader: PlanReader get() = SqlitePlanReader
 
     // ---------------------------------------------------------------- writes
 
@@ -172,9 +183,14 @@ object SqliteDialect : SqlDialect {
         return words
     }
 
-    /** Not enabled: the analysis behind editable results reads MySQL's text and column rules. */
-    override fun resultEditability(sql: String): ResultEditability =
-        ResultEditability.NotEditable(NotEditableReason.UNSUPPORTED)
+    /**
+     * The shared analysis, read with SQLite's quoting (`"x"`, `` `x` `` and `[x]` all name things).
+     * It maps a plain `SELECT` of one table onto that table; the schema check that follows
+     * (ResultEditabilities.confirm) then insists on a primary key that is in the result. A table
+     * without one — which has only the hidden `rowid` — is therefore shown read-only, for the
+     * same reason row editing refuses it (see the class comment).
+     */
+    override fun resultEditability(sql: String): ResultEditability = ResultEditabilities.analyse(sql, this)
 
     // ---------------------------------------------------------------- session
 

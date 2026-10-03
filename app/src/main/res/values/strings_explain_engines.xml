@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Query plan for PostgreSQL, SQL Server and SQLite -->
+    <string name="plan_node_join">Join</string>
+    <string name="plan_node_operation">Step</string>
+
+    <string name="plan_flag_key_lookup">Every row found in the index is fetched again from the table: the index lacks some of the columns asked for.</string>
+    <string name="plan_flag_auto_index">SQLite builds a temporary index for this step; none of the table\'s own indexes fits.</string>
+
+    <string name="explain_key_lookup">Rows found in an index are looked up again in the table, one by one.</string>
+    <string name="explain_automatic_index">SQLite builds a throwaway index while the query runs.</string>
+
+    <string name="plan_no_cost_sqlite">SQLite reports no costs or row estimates, so no step is marked as the heaviest. SCAN reads a whole table or index; SEARCH goes through an index or the rowid.</string>
+    <string name="plan_estimate_only">Estimate only: the statement was planned, not run.</string>
+
+    <string name="plan_missing_title">Indexes the server wished for</string>
+    <string name="plan_missing_index">%1$s on (%2$s)</string>
+    <string name="plan_missing_index_include">including (%1$s)</string>
+    <string name="plan_missing_index_impact">would remove about %1$s%% of the cost</string>
+    <string name="plan_missing_note">Shown for reading only; the app never creates an index.</string>
+</resources>

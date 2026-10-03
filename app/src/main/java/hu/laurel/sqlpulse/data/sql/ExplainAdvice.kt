@@ -19,6 +19,12 @@ enum class ExplainNote {
 
     /** The estimate is large enough that it will be felt on a phone. */
     MANY_ROWS,
+
+    /** Every row found in an index is looked up again in the table (SQL Server key lookup). */
+    KEY_LOOKUP,
+
+    /** SQLite builds a throwaway index at run time because none of the table's fits. */
+    AUTOMATIC_INDEX,
 }
 
 /**

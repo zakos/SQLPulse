@@ -1,0 +1,1 @@
+{"sql": "SELECT c.name, SUM(o.total) FROM customer c JOIN orders o ON o.customer_id = c.id WHERE o.placed > '2026-06-01' GROUP BY c.name ORDER BY 2 DESC", "rows": [[8, 0, 0, "SCAN o"], [12, 0, 0, "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)"], [15, 0, 0, "USE TEMP B-TREE FOR GROUP BY"], [54, 0, 0, "USE TEMP B-TREE FOR ORDER BY"]]}
