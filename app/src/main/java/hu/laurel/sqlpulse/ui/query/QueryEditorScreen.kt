@@ -146,6 +146,12 @@ import hu.laurel.sqlpulse.ui.grid.ResultFilterBar
 import hu.laurel.sqlpulse.ui.grid.ResultGrid
 import hu.laurel.sqlpulse.ui.labelRes
 import hu.laurel.sqlpulse.data.query.KeyAction
+import hu.laurel.sqlpulse.data.query.KeyBar
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
 import hu.laurel.sqlpulse.ui.settings.KeyFace
 import hu.laurel.sqlpulse.ui.settings.keyName
 import hu.laurel.sqlpulse.ui.snapshot.SnapshotSheet
@@ -189,7 +195,11 @@ fun QueryEditorContent(
     var findOpen by remember { mutableStateOf(false) }
     var snippetsOpen by remember { mutableStateOf(false) }
     val snippets by viewModel.snippets.collectAsStateWithLifecycle()
-    val keyBar by viewModel.keyBar.collectAsStateWithLifecycle()
+    val engineFeatures = LocalEngineFeatures.current
+    // What the live engine calls things: its quote on the key bar, its keywords in the colouring.
+    val syntax = remember(engineFeatures.engine) { SqlDialects.forEngine(engineFeatures.engine ?: DatabaseEngine.MYSQL) }
+    val storedKeyBar by viewModel.keyBar.collectAsStateWithLifecycle()
+    val keyBar = remember(storedKeyBar, syntax) { KeyBar.forEngine(storedKeyBar, syntax) }
     var renameDialogOpen by remember { mutableStateOf(false) }
     var selectedCell by remember { mutableStateOf<CellSelection?>(null) }
     var detailRow by remember { mutableStateOf<Int?>(null) }
@@ -397,6 +407,7 @@ fun QueryEditorContent(
                 } else {
                     SqlEditorField(
                         value = field,
+                        syntax = syntax,
                         onValueChange = { value ->
                             field = value
                             viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
@@ -513,14 +524,17 @@ fun QueryEditorContent(
                                     )
                                 }
                                 DropdownMenu(expanded = runMenuOpen, onDismissRequest = { runMenuOpen = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.query_explain)) },
-                                        enabled = state.sql.isNotBlank() && state.connectionName != null,
-                                        onClick = {
-                                            runMenuOpen = false
-                                            viewModel.explain()
-                                        },
-                                    )
+                                    // Hidden, not greyed out, where the engine has no plan to read.
+                                    if (engineFeatures.has(EngineFeature.EXPLAIN)) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.query_explain)) },
+                                            enabled = state.sql.isNotBlank() && state.connectionName != null,
+                                            onClick = {
+                                                runMenuOpen = false
+                                                viewModel.explain()
+                                            },
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.editor_snippets)) },
                                         onClick = {
@@ -1689,6 +1703,7 @@ private fun TabNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: 
 @Composable
 private fun SqlEditorField(
     value: TextFieldValue,
+    syntax: SqlSyntax,
     onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1732,6 +1747,7 @@ private fun SqlEditorField(
                     comment = semantic.cellNull,
                     identifier = semantic.cellDate,
                     parameter = semantic.warning,
+                    syntax = syntax,
                 ),
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())

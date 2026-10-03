@@ -23,6 +23,11 @@ data class SqlGrammar(
     val hashComments: Boolean = false,
     /** PostgreSQL's dollar-quoted strings: `$$ … $$`, `$fn$ … $fn$`. */
     val dollarQuotes: Boolean = false,
+    /**
+     * Whether `"…"` is a string, as it is in MySQL's default mode. Everywhere else it quotes a
+     * name, and the highlighter colours it as one.
+     */
+    val doubleQuotedStrings: Boolean = false,
     /** First words of a statement that only reads. `with` is resolved by what follows the CTEs. */
     val readStarters: Set<String>,
     /** First words of a row-level write (§2: no DDL, so CREATE/ALTER/DROP are never here). */
@@ -34,6 +39,14 @@ data class SqlGrammar(
         val c = sql[index]
         return c in quotes || (dollarQuotes && c == '$' && dollarTag(sql, index) != null)
     }
+
+    /**
+     * Whether the quote opened by [open] wraps a name rather than a string: a backtick or a
+     * `[bracket]` always does, `"` unless this engine treats it as a string. Only for colouring;
+     * the scanners that guard writes do not care which kind of quoted text they skip.
+     */
+    fun isIdentifierQuote(open: Char): Boolean =
+        open == '`' || open == '[' || (open == '"' && !doubleQuotedStrings)
 
     /** True when a line comment starts at [index]. */
     fun opensLineComment(sql: String, index: Int): Boolean =
@@ -88,6 +101,7 @@ data class SqlGrammar(
             backslashEscapes = true,
             backslashFreeQuotes = setOf('`'),
             hashComments = true,
+            doubleQuotedStrings = true,
             readStarters = setOf("select", "show", "describe", "desc", "explain", "with", "analyze"),
             writeStarters = setOf("insert", "update", "delete", "replace"),
         )

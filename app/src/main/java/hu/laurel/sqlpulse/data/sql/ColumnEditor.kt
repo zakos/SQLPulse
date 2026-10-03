@@ -45,7 +45,8 @@ object ColumnEditors {
             type.startsWith("set(") -> CellEditor.Choices(optionsIn(typeName))
             // tinyint(1) is the only integer MySQL means as a boolean; tinyint(4) is a number.
             type.startsWith("tinyint(1)") && !type.contains("unsigned") -> CellEditor.Bool
-            type == "bit(1)" || type == "boolean" || type == "bool" -> CellEditor.Bool
+            // Bare `bit` is T-SQL's boolean (MySQL always reports a width).
+            type == "bit(1)" || type == "bit" || type == "boolean" || type == "bool" -> CellEditor.Bool
             type.startsWith("date") && !type.startsWith("datetime") -> CellEditor.Date
             type.startsWith("datetime") || type.startsWith("timestamp") -> CellEditor.DateTime
             type.startsWith("time") -> CellEditor.Time
@@ -92,5 +93,7 @@ object ColumnEditors {
     private val NUMERIC = listOf(
         "int", "smallint", "mediumint", "bigint", "tinyint",
         "decimal", "numeric", "float", "double", "real",
+        // PostgreSQL and SQL Server names; none of them is a MySQL type, so MySQL is unaffected.
+        "serial", "smallserial", "bigserial", "money", "smallmoney",
     )
 }

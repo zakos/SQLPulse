@@ -9,6 +9,8 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import hu.laurel.sqlpulse.data.sql.SqlHighlighter
 import hu.laurel.sqlpulse.data.sql.TokenRole
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
 
 /**
@@ -25,13 +27,15 @@ class SqlVisualTransformation(
     private val comment: Color = SqlPulseColors.CellNull,
     private val identifier: Color = SqlPulseColors.CellDate,
     private val parameter: Color = SqlPulseColors.DarkWarning,
+    /** The engine's quoting, comments and keywords; MySQL's until a session says otherwise. */
+    private val syntax: SqlSyntax = MySqlDialect,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
         val source = text.text
         val annotated = AnnotatedString.Builder(source).apply {
             addStyle(SpanStyle(color = plain), 0, source.length)
-            SqlHighlighter.tokenize(source).forEach { token ->
+            SqlHighlighter.tokenize(source, syntax.grammar, syntax.keywords).forEach { token ->
                 val style = when (token.role) {
                     TokenRole.KEYWORD -> SpanStyle(color = keyword, fontWeight = FontWeight.Medium)
                     TokenRole.STRING -> SpanStyle(color = string)

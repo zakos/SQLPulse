@@ -48,6 +48,9 @@ import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlFormatter
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialect
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.SqlScript
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -290,6 +293,9 @@ class QueryEditorViewModel @Inject constructor(
     )
     override val resultEditing: ResultEditController get() = editing
 
+    /** The live session's engine: what the editor asks about quotes, comments, parameters and EXPLAIN. */
+    private val dialect: SqlDialect get() = sessions.dialect()
+
     private val connectionId = MutableStateFlow(0L)
     private var runJob: Job? = null
     private var completionJob: Job? = null
@@ -504,7 +510,7 @@ class QueryEditorViewModel @Inject constructor(
     /** Runs only the statement the cursor is in, leaving the rest of the script alone. */
     override fun runCurrent(parameters: Map<String, ParameterValue>) {
         val tab = _uiState.value.active
-        val statement = SqlScript.statementAt(tab.sql, tab.selectionStart) ?: return
+        val statement = SqlScript.statementAt(tab.sql, tab.selectionStart, dialect.grammar) ?: return
         execute(listOf(statement.sql), parameters)
     }
 
@@ -670,7 +676,7 @@ class QueryEditorViewModel @Inject constructor(
     override fun complete(suggestion: String) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
-        val start = SqlCompletion.contextAt(tab.sql, at).prefixStart.coerceIn(0, at)
+        val start = SqlCompletion.contextAt(tab.sql, at, dialect).prefixStart.coerceIn(0, at)
         replaceRange(start, at, suggestion, EditKind.COMPLETION)
     }
 
@@ -709,10 +715,10 @@ class QueryEditorViewModel @Inject constructor(
         if (tab.hasSelection) {
             val start = tab.selectionStart.coerceIn(0, tab.sql.length)
             val end = tab.selectionEnd.coerceIn(start, tab.sql.length)
-            val formatted = SqlFormatter.format(tab.sql.substring(start, end))
+            val formatted = SqlFormatter.format(tab.sql.substring(start, end), dialect.grammar)
             setSql(tab.sql.substring(0, start) + formatted + tab.sql.substring(end), EditKind.FORMAT)
         } else {
-            setSql(SqlScript.split(tab.sql).joinToString(";\n\n") { SqlFormatter.format(it.sql) } + ";", EditKind.FORMAT)
+            setSql(SqlScript.split(tab.sql, dialect.grammar).joinToString(";\n\n") { SqlFormatter.format(it.sql, dialect.grammar) } + ";", EditKind.FORMAT)
         }
     }
 
@@ -746,7 +752,7 @@ class QueryEditorViewModel @Inject constructor(
     private fun refreshSuggestions() {
         val tab = _uiState.value.active
         val id = tab.id
-        val context = SqlCompletion.contextAt(tab.sql, tab.selectionStart)
+        val context = SqlCompletion.contextAt(tab.sql, tab.selectionStart, dialect)
         completionJob?.cancel()
 
         // Nothing at all inside a string or a comment: whatever is being written there is prose,
@@ -814,7 +820,7 @@ class QueryEditorViewModel @Inject constructor(
             tab.selectionEnd.coerceIn(0, tab.sql.length),
         )
         val text = selected.takeIf { it.isNotBlank() } ?: tab.sql
-        execute(SqlScript.split(text).map { it.sql }, parameters)
+        execute(SqlScript.split(text, dialect.grammar).map { it.sql }, parameters)
     }
 
     /**
@@ -844,7 +850,7 @@ class QueryEditorViewModel @Inject constructor(
         val id = connectionId.value
         if (statements.isEmpty() || id == 0L || state.running) return
 
-        val needed = statements.flatMap { SqlGuards.parameters(it) }.distinct()
+        val needed = statements.flatMap { dialect.parameters(it) }.distinct()
         if (needed.isNotEmpty() && !parameters.keys.containsAll(needed)) {
             updateTab(tabId) { it.copy(pendingParameters = needed) }
             return
@@ -853,7 +859,7 @@ class QueryEditorViewModel @Inject constructor(
         // A SELECT is never held up; a write typed by hand is, every time. Row editing goes through
         // its own path and is not affected. A read-only connection refuses the write on its own,
         // and being asked to confirm something that cannot run is worse than the refusal.
-        val writes = statements.filter { SqlGuards.classify(it) == StatementKind.WRITE }
+        val writes = statements.filter { dialect.classify(it) == StatementKind.WRITE }
         if (writes.isNotEmpty() && !confirmed && !state.readOnly) {
             askToConfirm(statements, parameters, writes)
             return
@@ -1094,19 +1100,30 @@ class QueryEditorViewModel @Inject constructor(
     override fun explain() {
         val sql = _uiState.value.active.sql.trim()
         if (sql.isBlank()) return
-        if (SqlGuards.classify(sql) != StatementKind.READ) {
+        // The menu entry is hidden where the engine has no plan to read; this is the guard for a
+        // stale tab or a shortcut, and it must not fall back to MySQL's wording on another engine.
+        val dialect = dialect
+        if (!dialect.supports(EngineFeature.EXPLAIN)) return
+        if (dialect.classify(sql) != StatementKind.READ) {
             updateActive { it.copy(error = context.getString(R.string.error_explain_read_only)) }
             return
         }
         // The editor keeps the query: rewriting it to "EXPLAIN ..." left the user to delete the
         // word again before running it for real.
+        val statements = SqlScript.split(sql, dialect.grammar).mapNotNull { dialect.explain(it.sql) }
+        if (statements.isEmpty()) return
         execute(
-            statements = SqlScript.split(sql).map { "$EXPLAIN_JSON${it.sql}" },
+            statements = statements,
             parameters = emptyMap(),
-            fallback = { statement, e ->
-                statement.takeIf { it.startsWith(EXPLAIN_JSON) }
-                    ?.takeIf { ExplainJson.isUnsupported(e.errorCode, e.message) }
-                    ?.let { "EXPLAIN ${it.removePrefix(EXPLAIN_JSON)}" }
+            // The plain-EXPLAIN retry is for MySQL servers older than 5.6 only.
+            fallback = if (dialect.engine != DatabaseEngine.MYSQL) {
+                null
+            } else {
+                { statement, e ->
+                    statement.takeIf { it.startsWith(EXPLAIN_JSON) }
+                        ?.takeIf { ExplainJson.isUnsupported(e.errorCode, e.message) }
+                        ?.let { "EXPLAIN ${it.removePrefix(EXPLAIN_JSON)}" }
+                }
             },
         )
     }
@@ -1127,7 +1144,7 @@ class QueryEditorViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
-                    shareIntent = exports.shareIntent(result, format, "query"),
+                    shareIntent = exports.shareIntent(result, format, "query", syntax = dialect),
                 )
             } catch (e: Exception) {
                 updateActive { it.copy(error = describe(e)) }

@@ -6,6 +6,7 @@ import hu.laurel.sqlpulse.data.sql.SqlFailure
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.StatementKind
 import hu.laurel.sqlpulse.data.sql.WritePreviewQuery
+import hu.laurel.sqlpulse.data.sql.dialect.keywords.SqlKeywords
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.sql.Connection
@@ -59,6 +60,22 @@ interface SqlSyntax {
 
     /** `LENGTH(c), SUBSTRING(c, 1, n)` — a BLOB's size and its first [maxBytes] bytes, as two columns. */
     fun blobLengthAndHead(quotedColumn: String, maxBytes: Int): String
+
+    // ---------------------------------------------------------------- the editor's vocabulary
+    // Defaults derive from [engine], so an engine's own file does not have to say anything for
+    // the editor (highlighting, key bar) to be right; override one only to differ.
+
+    /** The words the editor colours as keywords (lower case). Cosmetic: see [SqlKeywords]. */
+    val keywords: Set<String> get() = SqlKeywords.forEngine(engine)
+
+    /** The row-limiting word on the key bar: `LIMIT`, or `TOP` where T-SQL has no LIMIT. */
+    val limitKeyword: String get() = if (engine == DatabaseEngine.SQLSERVER) "TOP" else "LIMIT"
+
+    /**
+     * The character that opens a quoted name (`` ` ``, `"` or `[`), for the key bar. Read off
+     * [quoteIdentifier] so it can never disagree with the quoting the app actually writes.
+     */
+    val identifierQuoteChar: Char get() = quoteIdentifier("x").first()
 }
 
 /**

@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.query
 
 import hu.laurel.sqlpulse.data.backup.JsonException
 import hu.laurel.sqlpulse.data.backup.JsonValue
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 
 /**
  * A piece of SQL to drop into the editor.
@@ -26,31 +27,100 @@ data class SnippetInsertion(val text: String, val selectionStart: Int, val selec
  * Read-only statements, and the three writes that carry a WHERE of their own. No DDL: the spec
  * (§2) keeps ALTER, CREATE and DROP out of the app, and a template is the easiest way to put one
  * back in. A snippet only fills the editor; nothing here ever runs by itself.
+ *
+ * Each template is tagged with the engines it is valid on and spells its row limit the way the
+ * engine does (`LIMIT 100`, or `TOP (100)` in T-SQL); the sheet shows [forEngine] of the live
+ * session. [ALL] is the MySQL set, which is what every install had before engines existed.
  */
 object BuiltInSnippets {
-    val ALL: List<Snippet> = listOf(
-        snippet("select_where", "SELECT … WHERE", "SELECT *\nFROM {{table}}\nWHERE {{condition}}\nLIMIT 100"),
-        snippet(
-            "select_join",
-            "SELECT … JOIN",
-            "SELECT a.*, b.*\nFROM {{table}} a\nJOIN {{other_table}} b ON b.{{column}} = a.{{column}}\nWHERE {{condition}}\nLIMIT 100",
-        ),
-        snippet(
-            "select_group",
-            "SELECT … GROUP BY",
-            "SELECT {{column}}, COUNT(*) AS n\nFROM {{table}}\nGROUP BY {{column}}\nHAVING COUNT(*) > 1\nORDER BY n DESC\nLIMIT 100",
-        ),
-        snippet("select_count", "SELECT COUNT(*)", "SELECT COUNT(*)\nFROM {{table}}\nWHERE {{condition}}"),
-        snippet("update_where", "UPDATE … WHERE", "UPDATE {{table}}\nSET {{column}} = {{value}}\nWHERE {{condition}}"),
-        snippet("insert_values", "INSERT … VALUES", "INSERT INTO {{table}} ({{columns}})\nVALUES ({{values}})"),
-        snippet("delete_where", "DELETE … WHERE", "DELETE FROM {{table}}\nWHERE {{condition}}"),
-        snippet("explain", "EXPLAIN SELECT", "EXPLAIN\nSELECT *\nFROM {{table}}\nWHERE {{condition}}"),
-        snippet("describe", "DESCRIBE", "DESCRIBE {{table}}"),
-        snippet("show_index", "SHOW INDEX", "SHOW INDEX FROM {{table}}"),
+
+    private class Template(
+        val id: String,
+        val name: String,
+        /** Null: valid everywhere. */
+        val engines: Set<DatabaseEngine>?,
+        val body: (DatabaseEngine) -> String,
     )
 
-    private fun snippet(id: String, name: String, body: String) =
-        Snippet(id = "builtin:$id", name = name, body = body, builtIn = true)
+    private val MYSQL_ONLY = setOf(DatabaseEngine.MYSQL)
+    private val NOT_SQLSERVER = DatabaseEngine.entries.toSet() - DatabaseEngine.SQLSERVER
+
+    /** `SELECT <columns> FROM …` with the first 100 rows asked for in the engine's own words. */
+    private fun limited(engine: DatabaseEngine, columns: String, rest: String): String =
+        if (engine == DatabaseEngine.SQLSERVER) {
+            "SELECT TOP (100) $columns\n$rest"
+        } else {
+            "SELECT $columns\n$rest\nLIMIT 100"
+        }
+
+    private val TEMPLATES: List<Template> = listOf(
+        Template("select_where", "SELECT … WHERE", null) {
+            limited(it, "*", "FROM {{table}}\nWHERE {{condition}}")
+        },
+        Template("select_join", "SELECT … JOIN", null) {
+            limited(
+                it,
+                "a.*, b.*",
+                "FROM {{table}} a\nJOIN {{other_table}} b ON b.{{column}} = a.{{column}}\nWHERE {{condition}}",
+            )
+        },
+        Template("select_group", "SELECT … GROUP BY", null) {
+            limited(
+                it,
+                "{{column}}, COUNT(*) AS n",
+                "FROM {{table}}\nGROUP BY {{column}}\nHAVING COUNT(*) > 1\nORDER BY n DESC",
+            )
+        },
+        Template("select_count", "SELECT COUNT(*)", null) {
+            "SELECT COUNT(*)\nFROM {{table}}\nWHERE {{condition}}"
+        },
+        Template("update_where", "UPDATE … WHERE", null) {
+            "UPDATE {{table}}\nSET {{column}} = {{value}}\nWHERE {{condition}}"
+        },
+        Template("insert_values", "INSERT … VALUES", null) {
+            "INSERT INTO {{table}} ({{columns}})\nVALUES ({{values}})"
+        },
+        Template("delete_where", "DELETE … WHERE", null) {
+            "DELETE FROM {{table}}\nWHERE {{condition}}"
+        },
+        // T-SQL has no EXPLAIN; its plan comes from SET SHOWPLAN, which is a session setting.
+        Template("explain", "EXPLAIN SELECT", NOT_SQLSERVER) {
+            val prefix = if (it == DatabaseEngine.SQLITE) "EXPLAIN QUERY PLAN" else "EXPLAIN"
+            "$prefix\nSELECT *\nFROM {{table}}\nWHERE {{condition}}"
+        },
+        // The structure peeks: MySQL's two statements have no equivalent by name elsewhere, so
+        // each engine gets what it actually answers the question with.
+        Template("describe", "DESCRIBE", MYSQL_ONLY) { "DESCRIBE {{table}}" },
+        Template("show_index", "SHOW INDEX", MYSQL_ONLY) { "SHOW INDEX FROM {{table}}" },
+        Template(
+            "columns_catalog",
+            "Table columns",
+            setOf(DatabaseEngine.POSTGRESQL, DatabaseEngine.SQLSERVER),
+        ) {
+            "SELECT column_name, data_type, is_nullable\nFROM information_schema.columns\n" +
+                "WHERE table_name = '{{table}}'\nORDER BY ordinal_position"
+        },
+        Template("indexes_pg", "Table indexes", setOf(DatabaseEngine.POSTGRESQL)) {
+            "SELECT indexname, indexdef\nFROM pg_indexes\nWHERE tablename = '{{table}}'"
+        },
+        Template("indexes_mssql", "Table indexes", setOf(DatabaseEngine.SQLSERVER)) {
+            "EXEC sp_helpindex '{{table}}'"
+        },
+        Template("pragma_table_info", "PRAGMA table_info", setOf(DatabaseEngine.SQLITE)) {
+            "PRAGMA table_info({{table}})"
+        },
+        Template("pragma_index_list", "PRAGMA index_list", setOf(DatabaseEngine.SQLITE)) {
+            "PRAGMA index_list({{table}})"
+        },
+    )
+
+    /** The MySQL set, as it has always been. */
+    val ALL: List<Snippet> = forEngine(DatabaseEngine.MYSQL)
+
+    /** The templates valid on [engine], bodies spelled for it. */
+    fun forEngine(engine: DatabaseEngine): List<Snippet> =
+        TEMPLATES.filter { it.engines == null || engine in it.engines }
+            .map { Snippet(id = "builtin:${it.id}", name = it.name, body = it.body(engine), builtIn = true) }
 }
 
 object SnippetEngine {
@@ -60,6 +130,7 @@ object SnippetEngine {
     /** Words that begin a statement: a snippet starting with one goes on a line of its own. */
     private val STATEMENT_STARTERS = setOf(
         "SELECT", "UPDATE", "INSERT", "DELETE", "REPLACE", "EXPLAIN", "DESCRIBE", "SHOW", "WITH",
+        "PRAGMA", "EXEC",
     )
 
     /** The body without the `{{ }}` marks, and where the first marked word sits in it. */

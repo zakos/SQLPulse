@@ -15,6 +15,7 @@ import hu.laurel.sqlpulse.data.sql.RowEdit
 import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.WritesLockedException
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
 import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.schema.EditConflict
@@ -135,7 +136,11 @@ class QueryResultEditing(
     private suspend fun evaluate(key: ResultEditKey?): ResultEditStatus {
         // On a read-only connection every result is read-only; saying so under each of them is noise.
         if (key == null || key.readOnly) return ResultEditStatus.None
-        val editable = when (val analysis = ResultEditabilities.analyse(key.sql)) {
+        // Asked of the live engine: its quoting decides what a table name in the SELECT is, and an
+        // engine that cannot edit results in place says nothing rather than something wrong.
+        val dialect = sessions.dialect()
+        if (!dialect.supports(EngineFeature.EDITABLE_RESULTS)) return ResultEditStatus.None
+        val editable = when (val analysis = dialect.resultEditability(key.sql)) {
             is ResultEditability.NotEditable ->
                 return if (analysis.reason == NotEditableReason.NOT_SELECT) {
                     ResultEditStatus.None

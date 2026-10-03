@@ -39,6 +39,9 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.query.BuiltInSnippets
 import hu.laurel.sqlpulse.data.query.Snippet
 import hu.laurel.sqlpulse.data.query.SnippetEngine
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
+import hu.laurel.sqlpulse.ui.engine.labelRes
 import hu.laurel.sqlpulse.ui.components.DialogButtons
 import hu.laurel.sqlpulse.ui.components.LabeledField
 import hu.laurel.sqlpulse.ui.components.SectionCaption
@@ -119,7 +122,9 @@ fun SnippetSheetContent(
     }
 
     val mine = SnippetEngine.search(snippets, query)
-    val builtIn = SnippetEngine.search(BuiltInSnippets.ALL, query)
+    // The templates of the live engine; a screenshot or a preview has none and shows MySQL's.
+    val engine = LocalEngineFeatures.current.engine ?: DatabaseEngine.MYSQL
+    val builtIn = SnippetEngine.search(BuiltInSnippets.forEngine(engine), query)
     val semantic = LocalSemanticColors.current
     Column(
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
@@ -192,7 +197,12 @@ fun SnippetSheetContent(
             }
             item {
                 Text(
-                    stringResource(R.string.snippets_builtin_note),
+                    // Where the list is not MySQL's, say whose it is; MySQL's note stays as it was.
+                    if (engine == DatabaseEngine.MYSQL) {
+                        stringResource(R.string.snippets_builtin_note)
+                    } else {
+                        stringResource(R.string.snippets_builtin_note_engine, stringResource(engine.labelRes()))
+                    },
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = semantic.textSecondary,
                     modifier = Modifier.padding(top = Spacing.m),

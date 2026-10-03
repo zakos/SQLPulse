@@ -1,8 +1,10 @@
 package hu.laurel.sqlpulse.data.export
 
-import hu.laurel.sqlpulse.data.schema.quoteIdentifier
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 enum class ExportFormat(val extension: String, val mimeType: String) {
     CSV("csv", "text/csv"),
@@ -23,13 +25,18 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
  */
 object ResultSerializer {
 
-    fun serialize(table: ResultTable, format: ExportFormat, tableName: String? = null): String =
+    fun serialize(
+        table: ResultTable,
+        format: ExportFormat,
+        tableName: String? = null,
+        syntax: SqlSyntax = MySqlDialect,
+    ): String =
         when (format) {
             ExportFormat.CSV -> toCsv(table)
             ExportFormat.TSV -> toTsv(table)
             ExportFormat.JSON -> toJson(table)
             ExportFormat.MARKDOWN -> toMarkdown(table)
-            ExportFormat.SQL -> toSqlInserts(table, tableName)
+            ExportFormat.SQL -> toSqlInserts(table, tableName, syntax)
         }
 
     /** RFC 4180: comma separated, quotes doubled, CRLF line endings. */
@@ -64,19 +71,19 @@ object ResultSerializer {
      * The table name comes from the caller — a query result can come from several tables or none,
      * and guessing would produce statements that look right and are not. Values are written as
      * literals, because a file of prepared statements would need the parameters beside it;
-     * everything is escaped for MySQL, and a BLOB is refused rather than exported as its size,
+     * everything is quoted and escaped for [syntax]'s engine (MySQL by default), and a BLOB is refused rather than exported as its size,
      * which would insert nonsense.
      */
-    fun toSqlInserts(table: ResultTable, tableName: String?): String {
+    fun toSqlInserts(table: ResultTable, tableName: String?, syntax: SqlSyntax = MySqlDialect): String {
         val target = tableName?.takeIf { it.isNotBlank() }
             ?: table.columns.firstNotNullOfOrNull { it.table }
             ?: "table_name"
-        val columns = table.columns.joinToString(", ") { quoteIdentifier(it.label) }
+        val columns = table.columns.joinToString(", ") { syntax.quoteIdentifier(it.label) }
         return table.rows.joinToString("\n") { row ->
             val values = table.columns.indices.joinToString(", ") { index ->
-                sqlLiteral(row.getOrNull(index))
+                sqlLiteral(row.getOrNull(index), syntax)
             }
-            "INSERT INTO ${quoteIdentifier(target)} ($columns) VALUES ($values);"
+            "INSERT INTO ${syntax.quoteIdentifier(target)} ($columns) VALUES ($values);"
         }
     }
 
@@ -166,20 +173,37 @@ object ResultSerializer {
             .replace("\r", "\\r")
     }
 
-    /** MySQL string literal. A BLOB has no contents here, so it becomes NULL rather than a lie. */
-    private fun sqlLiteral(value: CellValue?): String = when (value) {
+    /** A literal in [syntax]'s dialect. A BLOB has no contents here, so it becomes NULL rather than a lie. */
+    private fun sqlLiteral(value: CellValue?, syntax: SqlSyntax): String = when (value) {
         null, is CellValue.Null, is CellValue.Blob -> "NULL"
-        is CellValue.Number -> value.value.takeIf { it.isFiniteNumber() } ?: quote(value.value)
-        is CellValue.Bool -> if (value.value) "1" else "0"
-        else -> quote(plainText(value).orEmpty())
+        is CellValue.Number -> value.value.takeIf { it.isFiniteNumber() } ?: quote(value.value, syntax)
+        // PostgreSQL's boolean does not take 1 and 0; everywhere else a bit or an integer does.
+        is CellValue.Bool ->
+            if (syntax.engine == DatabaseEngine.POSTGRESQL) {
+                if (value.value) "TRUE" else "FALSE"
+            } else {
+                if (value.value) "1" else "0"
+            }
+        else -> quote(plainText(value).orEmpty(), syntax)
     }
 
-    private fun quote(value: String): String = "'" + value
-        .replace("\\", "\\\\")
-        .replace("'", "\\'")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\u0000", "\\0") + "'"
+    /**
+     * MySQL escapes with backslashes; the other engines read a backslash literally and escape
+     * only the quote itself (so doubling backslashes there would corrupt the value). A string
+     * with non-ASCII text gets T-SQL's `N` prefix, or SQL Server would store it in a code page.
+     */
+    private fun quote(value: String, syntax: SqlSyntax): String {
+        if (syntax.grammar.backslashEscapes) {
+            return "'" + value
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\u0000", "\\0") + "'"
+        }
+        val literal = "'" + value.replace("'", "''") + "'"
+        return if (syntax.engine == DatabaseEngine.SQLSERVER && value.any { it.code > 127 }) "N$literal" else literal
+    }
 
     private fun csvField(value: String?): String {
         if (value == null) return ""

@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.io.File
 import javax.inject.Inject
@@ -34,10 +36,12 @@ class ExportManager @Inject constructor(
         format: ExportFormat,
         baseName: String,
         tableName: String? = null,
+        /** The engine the rows came from: INSERT exports quote names and values the way it reads them. */
+        syntax: SqlSyntax = MySqlDialect,
     ): Intent = withContext(io) {
         val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
         val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
-        file.writeText(ResultSerializer.serialize(table, format, tableName))
+        file.writeText(ResultSerializer.serialize(table, format, tableName, syntax))
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
         Intent(Intent.ACTION_SEND).apply {

@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.query
 
 import hu.laurel.sqlpulse.data.backup.JsonException
 import hu.laurel.sqlpulse.data.backup.JsonValue
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /** What a key on the editor's key bar does when tapped. */
 sealed interface KeyAction {
@@ -71,6 +72,40 @@ object KeyBar {
     /** The keys the bar draws. */
     fun visible(config: KeyBarConfig): List<KeyBarItem> =
         entries(config).filter { it.second }.map { it.first }
+
+    /** The id of the key that is a backtick in MySQL: stored as such, so it must never change. */
+    const val QUOTE_KEY = "`"
+
+    /** The id of the row-limit key (`LIMIT` in MySQL). */
+    const val LIMIT_KEY = "LIMIT"
+
+    /**
+     * The bar for [syntax]'s engine. Two keys are engine words under a fixed id: the backtick key
+     * types the engine's identifier quote (`"` in PostgreSQL and SQLite; hidden in T-SQL, whose
+     * `[` and `]` keys already are its quotes), and the LIMIT key types `TOP` in T-SQL. Whether a
+     * key is shown stays the user's choice, stored by id — switching engine neither loses nor
+     * resurrects anything. MySQL's bar comes back unchanged.
+     */
+    fun forEngine(items: List<KeyBarItem>, syntax: SqlSyntax): List<KeyBarItem> =
+        items.mapNotNull { item ->
+            when (item.id) {
+                QUOTE_KEY -> {
+                    val quote = syntax.identifierQuoteChar.toString()
+                    when (quote) {
+                        QUOTE_KEY -> item
+                        "[" -> null
+                        else -> KeyBarItem(item.id, KeyAction.Insert(quote))
+                    }
+                }
+
+                LIMIT_KEY -> {
+                    val word = syntax.limitKeyword
+                    if (word == LIMIT_KEY) item else KeyBarItem(item.id, KeyAction.Insert(word))
+                }
+
+                else -> item
+            }
+        }
 
     /** Moves a key [delta] places (negative is towards the start); out of range stops at the end. */
     fun move(config: KeyBarConfig, id: String, delta: Int): KeyBarConfig {
