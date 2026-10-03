@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adatbázismotorok (docs/tobb-motor-terv.md). A terméknevek nem fordítandók. -->
+    <string name="engine_section">Adatbázismotor</string>
+    <string name="engine_mysql_note">MySQL és MariaDB.</string>
+    <string name="engine_sqlserver_note">Microsoft SQL Server és Azure SQL.</string>
+    <string name="engine_sqlite_note">Adatbázisfájl ezen a telefonon. Nincs szerver, nincs alagút.</string>
+    <string name="engine_coming_soon">A(z) %1$s támogatás egy későbbi verzióban érkezik. Ez a kapcsolat még nem menthető.</string>
+
+    <string name="engine_section_server">Adatbázis-szerver</string>
+    <string name="engine_section_file">Adatbázisfájl</string>
+    <string name="engine_file_none">Még nincs fájl kiválasztva.</string>
+    <string name="engine_file_choose">Fájl kiválasztása…</string>
+    <string name="engine_file_note">Az app a fájl saját másolatán dolgozik, így az eredetit sosem módosítja a háta mögött.</string>
+
+    <string name="engine_unavailable_title">%1$s kapcsolaton nem érhető el</string>
+    <string name="engine_unavailable_body">Ez a képernyő olyan adatokat olvas, amelyeket csak a MySQL és a MariaDB ad meg. Az app többi része működik ezzel a kapcsolattal.</string>
+    <string name="engine_unavailable_back">Vissza</string>
+</resources>

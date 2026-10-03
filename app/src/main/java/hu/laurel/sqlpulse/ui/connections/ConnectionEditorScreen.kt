@@ -69,6 +69,9 @@ import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.LabeledField
 import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.components.SegmentedChoice
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
+import hu.laurel.sqlpulse.ui.engine.labelRes
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -161,6 +164,9 @@ fun ConnectionEditorScreenContent(
                 .padding(Spacing.l),
             verticalArrangement = Arrangement.spacedBy(Spacing.l),
         ) {
+            // First, because it decides which of the fields below exist at all.
+            EngineSection(engine = form.engine, onSelect = viewModel::setEngine)
+
             Section(stringResource(R.string.connections_title)) {
                 LabeledField(
                     value = form.name,
@@ -228,6 +234,8 @@ fun ConnectionEditorScreenContent(
                 }
             }
 
+            // A file on the phone has no network path, so no tunnel and no server fields.
+            if (form.engine.hasServer) {
             Section(stringResource(R.string.section_ssh)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -448,7 +456,15 @@ fun ConnectionEditorScreenContent(
                 }
             }
 
-            Section(stringResource(R.string.section_mysql)) {
+            }
+
+            if (!form.engine.hasServer) {
+                FileSection(fileName = form.fileName)
+            } else Section(
+                stringResource(
+                    if (form.engine == DatabaseEngine.MYSQL) R.string.section_mysql else R.string.engine_section_server,
+                ),
+            ) {
                 LabeledField(
                     value = form.dbHost,
                     onValueChange = { value -> viewModel.update { it.copy(dbHost = value) } },
@@ -592,6 +608,64 @@ fun ConnectionEditorScreenContent(
                 },
             )
         }
+    }
+}
+
+/**
+ * Which database product the connection talks to. Every engine is listed; one whose
+ * implementation has not landed yet (SqlDialect.connectable) says so here, and the form cannot be
+ * saved while it is selected — phase 2 of docs/tobb-motor-terv.md flips that per engine.
+ */
+@Composable
+private fun EngineSection(engine: DatabaseEngine, onSelect: (DatabaseEngine) -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Section(stringResource(R.string.engine_section)) {
+        SegmentedChoice(
+            options = DatabaseEngine.ORDER,
+            selected = engine,
+            label = { stringResource(it.labelRes()) },
+            onSelect = onSelect,
+        )
+        val note = when (engine) {
+            DatabaseEngine.MYSQL -> R.string.engine_mysql_note
+            DatabaseEngine.SQLSERVER -> R.string.engine_sqlserver_note
+            DatabaseEngine.SQLITE -> R.string.engine_sqlite_note
+            DatabaseEngine.POSTGRESQL -> null
+        }
+        note?.let {
+            Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+        }
+        if (!SqlDialects.forEngine(engine).connectable) {
+            Text(
+                stringResource(R.string.engine_coming_soon, stringResource(engine.labelRes())),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
+    }
+}
+
+/**
+ * The database file of a SQLite connection. The picker itself arrives with the SQLite engine
+ * (phase 2): it copies the chosen file into LocalDatabaseFiles and fills fileUri/fileName.
+ */
+@Composable
+private fun FileSection(fileName: String?) {
+    val semantic = LocalSemanticColors.current
+    Section(stringResource(R.string.engine_section_file)) {
+        Text(
+            fileName ?: stringResource(R.string.engine_file_none),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (fileName == null) semantic.textSecondary else MaterialTheme.colorScheme.onSurface,
+        )
+        OutlinedButton(onClick = {}, enabled = false, shape = Shapes.button) {
+            Text(stringResource(R.string.engine_file_choose))
+        }
+        Text(
+            stringResource(R.string.engine_file_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
     }
 }
 

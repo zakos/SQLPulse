@@ -3,6 +3,7 @@ package hu.laurel.sqlpulse.ui.connections
 import android.net.Uri
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelState
 import kotlinx.coroutines.flow.StateFlow
@@ -31,4 +32,7 @@ interface ConnectionEditorController {
     fun test()
     val tunnel: StateFlow<TunnelState>
     fun update(transform: (ConnectionForm) -> ConnectionForm)
+
+    /** Switches the database engine; the port follows while it is still the old default. */
+    fun setEngine(engine: DatabaseEngine) = update { it.withEngine(engine) }
 }

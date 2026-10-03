@@ -83,6 +83,8 @@ import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.schema.CacheAgeUnit
 import hu.laurel.sqlpulse.data.schema.ObjectKind
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
 import hu.laurel.sqlpulse.data.schema.SchemaCache
 import hu.laurel.sqlpulse.data.schema.SchemaCacheRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRoutine
@@ -194,6 +196,8 @@ fun SchemaBrowserContent(
     actions: SchemaBrowserActions,
 ) {
     val semantic = LocalSemanticColors.current
+    // Screens the live engine cannot back are not offered at all (MySQL has them all).
+    val engine = LocalEngineFeatures.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -219,36 +223,44 @@ fun SchemaBrowserContent(
                     }
                 },
                 actions = {
-                    IconButton(onClick = actions.onOpenSearch) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = stringResource(R.string.dbsearch_open),
-                        )
+                    if (engine.has(EngineFeature.DATABASE_SEARCH)) {
+                        IconButton(onClick = actions.onOpenSearch) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.dbsearch_open),
+                            )
+                        }
                     }
-                    IconButton(onClick = actions.onOpenMap) {
-                        Icon(
-                            Icons.Default.AccountTree,
-                            contentDescription = stringResource(R.string.map_title),
-                        )
+                    if (engine.has(EngineFeature.SCHEMA_MAP)) {
+                        IconButton(onClick = actions.onOpenMap) {
+                            Icon(
+                                Icons.Default.AccountTree,
+                                contentDescription = stringResource(R.string.map_title),
+                            )
+                        }
                     }
-                    IconButton(onClick = actions.onOpenPulse) {
-                        Icon(
-                            Icons.Default.MonitorHeart,
-                            contentDescription = stringResource(R.string.pulse_title),
-                        )
+                    if (engine.has(EngineFeature.PULSE)) {
+                        IconButton(onClick = actions.onOpenPulse) {
+                            Icon(
+                                Icons.Default.MonitorHeart,
+                                contentDescription = stringResource(R.string.pulse_title),
+                            )
+                        }
                     }
-                    IconButton(onClick = actions.onOpenServer) {
-                        Icon(
-                            Icons.Default.Dns,
-                            contentDescription = stringResource(R.string.server_title),
-                        )
+                    if (engine.has(EngineFeature.SERVER_ACTIVITY)) {
+                        IconButton(onClick = actions.onOpenServer) {
+                            Icon(
+                                Icons.Default.Dns,
+                                contentDescription = stringResource(R.string.server_title),
+                            )
+                        }
                     }
                     IconButton(onClick = actions.onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
                     // The bar is full; less-used screens go behind the overflow.
                     var overflowOpen by remember { mutableStateOf(false) }
-                    Box {
+                    if (engine.has(EngineFeature.STORAGE)) Box {
                         IconButton(onClick = { overflowOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.storage_more))
                         }
@@ -327,7 +339,7 @@ fun SchemaBrowserContent(
                             contentPadding = PaddingValues(start = Spacing.l, end = Spacing.l, top = Spacing.m, bottom = Spacing.m),
                             horizontalArrangement = Arrangement.spacedBy(Spacing.s),
                         ) {
-                            items(ObjectKind.entries) { kind ->
+                            items(ObjectKind.entries.filter { engine.offers(it) }) { kind ->
                                 FilterChip(
                                     selected = kind == state.objectKind,
                                     onClick = { actions.onSelectObjectKind(kind) },

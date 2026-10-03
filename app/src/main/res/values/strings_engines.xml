@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Database engines (docs/tobb-motor-terv.md). Product names are not translated. -->
+    <string name="engine_section">Database engine</string>
+    <string name="engine_mysql" translatable="false">MySQL</string>
+    <string name="engine_postgresql" translatable="false">PostgreSQL</string>
+    <string name="engine_sqlserver" translatable="false">SQL Server</string>
+    <string name="engine_sqlite" translatable="false">SQLite</string>
+    <string name="engine_mysql_note">MySQL and MariaDB.</string>
+    <string name="engine_sqlserver_note">Microsoft SQL Server and Azure SQL.</string>
+    <string name="engine_sqlite_note">A database file on this phone. No server, no tunnel.</string>
+    <string name="engine_coming_soon">%1$s support is coming in a later version. This connection cannot be saved yet.</string>
+
+    <string name="engine_section_server">Database server</string>
+    <string name="engine_section_file">Database file</string>
+    <string name="engine_file_none">No file chosen yet.</string>
+    <string name="engine_file_choose">Choose file…</string>
+    <string name="engine_file_note">The app works on its own copy of the file, so the original is never changed behind your back.</string>
+
+    <string name="engine_unavailable_title">Not available for %1$s</string>
+    <string name="engine_unavailable_body">This screen reads things only MySQL and MariaDB report. The rest of the app works with this connection.</string>
+    <string name="engine_unavailable_back">Back</string>
+</resources>
