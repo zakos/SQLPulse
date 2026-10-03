@@ -25,16 +25,6 @@ class EngineShots {
     val paparazzi = app.cash.paparazzi.Paparazzi(deviceConfig = DesignPhone.copy(screenHeight = 1700), showSystemUi = false)
 
     @Test
-    fun editorPostgresComingSoon() = paparazzi.screen {
-        Editor(
-            ConnectionForm(
-                name = "Riportok", environment = ConnectionEnvironment.DEVELOPMENT, useSsh = false,
-                dbHost = "pg.test.local", database = "reports", dbUser = "report_ro",
-            ).withEngine(DatabaseEngine.POSTGRESQL),
-        )
-    }
-
-    @Test
     fun notAvailableForEngine() = paparazzi.screen {
         EngineUnavailableContent(engineName = "PostgreSQL", onBack = {})
     }
