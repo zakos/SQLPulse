@@ -204,6 +204,10 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   időgép-sor kapcsolatneve, magyar szám/időformátum, DML előnézet allekérdezés-szűrés.
   911 unit teszt + lint zöld, integrációs csomag (82) zöld MySQL 8.0.46-on és MariaDB 10.11-en.
 
+- 2026-10-03: Egy freemium mobil SQL-kliens funkciólistája összevetve: `docs/funkcio-osszevetes.md`.
+  Javasolt: szerkesztő undo/redo, snippetek, szkript megosztása, kiugró értékek, bővebb gombsor,
+  SQLite fájl. Döntésre vár: más motorok (PostgreSQL stb.). Nem: DDL-varázsló, AI, hirdetés.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
@@ -230,7 +234,11 @@ D. Kényelem:
 - [x] Indítóikon-parancsikonok (Beállítások, alapból ki; a 3 legutóbbi nem éles kapcsolat).
 - [ ] Parancsikonok készüléken kipróbálva még nincsenek (hidegindítás, `onNewIntent`).
 - [ ] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”.
-- [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v10) kell.
+- [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v11) kell.
+E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`), döntésre vár:
+- [ ] Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · kiugró értékek · bővebb gombsor.
+- [ ] SQLite fájl megnyitása a telefonról (közepes).
+- [ ] Más motorok (PostgreSQL, SQL Server, Oracle) — nagy; csak valós igény esetén.
 
 ## Teendők / nyitott pontok
 
