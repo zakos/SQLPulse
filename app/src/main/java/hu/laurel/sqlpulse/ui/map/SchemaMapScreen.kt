@@ -167,14 +167,18 @@ fun SchemaMapScreenContent(
                         // drawing: a draw pass that writes state redraws itself for ever.
                         LaunchedEffect(state.graph, widthPx, heightPx, fitRequest) {
                             val bounds = state.graph.bounds()
-                            scale = min(
-                                widthPx / (bounds.width + NODE_WIDTH),
+                            val fit = min(
+                                widthPx / (bounds.width + GAP_X),
                                 heightPx / (bounds.height + NODE_HEIGHT),
                             // The graph is laid out in dp-sized units, so at most one unit per dp:
                             // capped at 1 px the boxes came out half size on a dense screen.
                             ).coerceIn(MIN_SCALE, density.density)
+                            // A big schema is not squeezed until the names vanish: below the
+                            // readable size the map keeps that size and is panned instead.
+                            scale = max(fit, READABLE_SCALE * density.density)
+                                .coerceAtMost(density.density)
                             offset = Offset(
-                                (widthPx - bounds.width * scale) / 2f - bounds.left * scale,
+                                ((widthPx - bounds.width * scale) / 2f).coerceAtLeast(0f) - bounds.left * scale,
                                 with(density) { Spacing.l.toPx() },
                             )
                         }
@@ -201,7 +205,7 @@ fun SchemaMapScreenContent(
                                     detectTapGestures { tap ->
                                         val point = (tap - offset) / scale
                                         val hit = state.graph.nodes.lastOrNull { node ->
-                                            node.bounds().contains(point)
+                                            node.bounds(state.graph.firstLooseRow()).contains(point)
                                         }
                                         viewModel.select(hit?.table)
                                     }
@@ -368,6 +372,7 @@ private fun DrawScope.drawGraph(
     textColour: Color,
 ) {
     val positions = graph.nodes.associateBy { it.table }
+    val loose = graph.firstLooseRow()
     graph.edges.forEach { edge ->
         val from = positions[edge.from] ?: return@forEach
         val to = positions[edge.to] ?: return@forEach
@@ -383,14 +388,14 @@ private fun DrawScope.drawGraph(
         }
         val shade = if (edge.guessed && !touched) colour.copy(alpha = 0.55f) else colour
         if (edge.isSelfReference) {
-            drawSelfLink(from, shade, width, effect)
+            drawSelfLink(from, loose, shade, width, effect)
         } else {
-            drawLink(from, to, shade, width, effect)
+            drawLink(from, to, loose, shade, width, effect)
         }
     }
 
     graph.nodes.forEach { node ->
-        val rect = node.bounds()
+        val rect = node.bounds(loose)
         val isSelected = node.table == selected
         drawRoundRect(
             color = if (node.connected) nodeColour else nodeColour.copy(alpha = 0.6f),
@@ -411,8 +416,10 @@ private fun DrawScope.drawGraph(
             text = node.table,
             // In graph units rather than sp: the canvas is scaled already, and sp would scale twice.
             style = TextStyle(fontFamily = Mono, fontSize = (11f / density).sp, color = textColour),
-            maxLines = 1,
-            softWrap = false,
+            // Two lines before the ellipsis: table names are long, and the end of the name
+            // (`..._table`, `..._text`) is usually what tells two of them apart.
+            maxLines = 2,
+            softWrap = true,
             overflow = TextOverflow.Ellipsis,
             constraints = Constraints(maxWidth = (NODE_WIDTH - 2 * LABEL_PADDING).toInt()),
         )
@@ -430,12 +437,15 @@ private fun DrawScope.drawGraph(
 private fun DrawScope.drawLink(
     from: GraphNode,
     to: GraphNode,
+    loose: Int,
     colour: Color,
     width: Float,
     effect: PathEffect?,
 ) {
-    val start = Offset(from.bounds().center.x, from.bounds().top)
-    val end = Offset(to.bounds().center.x, to.bounds().bottom)
+    val fromRect = from.bounds(loose)
+    val toRect = to.bounds(loose)
+    val start = Offset(fromRect.center.x, fromRect.top)
+    val end = Offset(toRect.center.x, toRect.bottom)
     val midY = (start.y + end.y) / 2f
     val path = Path().apply {
         moveTo(start.x, start.y)
@@ -450,11 +460,12 @@ private fun DrawScope.drawLink(
 /** A loop out of the top of the box and back into it: a table referencing itself. */
 private fun DrawScope.drawSelfLink(
     node: GraphNode,
+    loose: Int,
     colour: Color,
     width: Float,
     effect: PathEffect?,
 ) {
-    val rect = node.bounds()
+    val rect = node.bounds(loose)
     val path = Path().apply {
         moveTo(rect.right - 12f, rect.top)
         cubicTo(
@@ -478,17 +489,31 @@ private fun DrawScope.drawArrowHead(tip: Offset, colour: Color) {
 }
 
 /** Where a table's box sits, in the map's own coordinates. */
-private fun GraphNode.bounds(): Rect = Rect(
+private fun GraphNode.bounds(firstLoose: Int = Int.MAX_VALUE): Rect = Rect(
     offset = Offset(
         x = order * (NODE_WIDTH + GAP_X),
-        y = level * (NODE_HEIGHT + GAP_Y),
+        y = rowTop(level, firstLoose),
     ),
     size = Size(NODE_WIDTH, NODE_HEIGHT),
 )
 
+/**
+ * The top of a row. Rows of connected tables are spaced widely, so the arrows between them have
+ * room; the block of unconnected tables below has no arrows and sits close together.
+ */
+private fun rowTop(level: Int, firstLoose: Int): Float {
+    val spaced = min(level, firstLoose)
+    return spaced * (NODE_HEIGHT + GAP_Y) + (level - spaced) * (NODE_HEIGHT + GAP_LOOSE_Y)
+}
+
+/** The first row that holds an unconnected table; none when every table has a link. */
+private fun SchemaGraph.firstLooseRow(): Int =
+    nodes.filterNot { it.connected }.minOfOrNull { it.level } ?: Int.MAX_VALUE
+
 private fun SchemaGraph.bounds(): Rect {
     if (nodes.isEmpty()) return Rect(0f, 0f, NODE_WIDTH, NODE_HEIGHT)
-    val rects = nodes.map { it.bounds() }
+    val loose = firstLooseRow()
+    val rects = nodes.map { it.bounds(loose) }
     return Rect(
         left = rects.minOf { it.left },
         top = rects.minOf { it.top },
@@ -497,10 +522,14 @@ private fun SchemaGraph.bounds(): Rect {
     )
 }
 
-private const val NODE_WIDTH = 112f
-private const val NODE_HEIGHT = 36f
+// Wide enough for about twenty-three monospace characters at 11 dp, two lines of them.
+private const val NODE_WIDTH = 176f
+private const val NODE_HEIGHT = 40f
 private const val GAP_X = 12f
-private const val GAP_Y = 72f
+private const val GAP_Y = 64f
+private const val GAP_LOOSE_Y = 10f
+// The smallest scale a fit will pick, as a share of one unit per dp (text then ~8 dp).
+private const val READABLE_SCALE = 0.75f
 private const val CORNER = 10f
 private const val ARROW = 6f
 private const val LABEL_PADDING = 10f

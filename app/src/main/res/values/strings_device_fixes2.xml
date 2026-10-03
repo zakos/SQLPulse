@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sql_error_unique_columns">This collides with the key of an existing row (%1$s).</string>
+</resources>

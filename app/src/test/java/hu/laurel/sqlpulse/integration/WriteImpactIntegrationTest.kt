@@ -105,6 +105,12 @@ class WriteImpactIntegrationTest {
     }
 
     @Test
+    fun `double quoted strings are strings in the default mode`() {
+        // The shape typed on a phone: lower-case keywords and "..." for every string.
+        verifyUpdate("UPDATE ${q(items)} set note=\"x\" where name like \"a%\"", expectedRows = 3)
+    }
+
+    @Test
     fun `an update of NULLs to values and values to NULL`() {
         verifyUpdate("UPDATE ${q(items)} SET qty = IFNULL(qty, 100), note = NULL WHERE id IN (4, 5)", expectedRows = 2)
     }

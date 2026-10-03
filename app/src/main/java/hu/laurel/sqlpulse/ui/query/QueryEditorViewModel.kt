@@ -338,6 +338,14 @@ class QueryEditorViewModel @Inject constructor(
         acceptHandedOverSql()
         editing.track(_uiState.map { it.resultEditKey() }.distinctUntilChanged())
 
+        // The hint and the auto-LIMIT both read uiState.rowLimit, so following the setting here
+        // keeps them in step — and live, because the flow re-emits when the slider moves.
+        settings.settings
+            .map { it.defaultRowLimit }
+            .distinctUntilChanged()
+            .onEach { setRowLimit(it) }
+            .launchIn(viewModelScope)
+
         // The draft is written after the typing stops, not during it: a keystroke costs nothing
         // here, and the file is rewritten whole. Half a second is short enough that the only way
         // to lose anything is to be killed mid-word.
@@ -733,7 +741,7 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     fun setRowLimit(limit: Int) {
-        _uiState.value = _uiState.value.copy(rowLimit = limit.coerceIn(1, MAX_ROW_LIMIT))
+        _uiState.value = _uiState.value.copy(rowLimit = EditorRowLimit.clamp(limit))
     }
 
     // --- Completion -------------------------------------------------------------------------
@@ -1461,8 +1469,6 @@ class QueryEditorViewModel @Inject constructor(
         /** The prefix the plan is asked for with, and the one the retry strips off again. */
         const val EXPLAIN_JSON = "EXPLAIN FORMAT=JSON "
 
-        const val MAX_ROW_LIMIT = 10_000
-
         /** Three tables on a phone card is already a lot to read before pressing the button. */
         const val MAX_PREVIEWED_STATEMENTS = 3
         const val MAX_SUGGESTIONS = 8
@@ -1479,4 +1485,11 @@ class QueryEditorViewModel @Inject constructor(
          */
         const val COLUMN_TABLES_PER_STATEMENT = 4
     }
+}
+
+/** The editor row limit, which follows Settings -> default row limit. */
+object EditorRowLimit {
+    const val MAX = 10_000
+
+    fun clamp(limit: Int): Int = limit.coerceIn(1, MAX)
 }
