@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.connection
 
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.sql.SslMode
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 
 /**
  * The saved row as a header. Kept apart from [SessionHeader] itself so that the model and its
@@ -14,6 +15,7 @@ fun ConnectionEntity.toSessionHeader(currentDatabase: String? = null): SessionHe
     sshHost = sshHost,
     dbHost = dbHost,
     dbPort = dbPort,
+    file = fileName.takeUnless { DatabaseEngine.fromName(engine).hasServer },
     database = database,
     currentDatabase = currentDatabase,
     dbUser = dbUser,
@@ -28,4 +30,5 @@ fun ConnectionEntity.productionShape(): ProductionShape = ProductionShape(
     sslMode = SslMode.fromName(sslMode),
     readOnly = readOnly,
     queryTimeoutSeconds = queryTimeoutSeconds,
+    local = !DatabaseEngine.fromName(engine).hasServer,
 )

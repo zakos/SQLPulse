@@ -12,11 +12,14 @@ import hu.laurel.sqlpulse.data.connection.CertificateStore
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
 import hu.laurel.sqlpulse.data.connection.ConnectionTimeouts
+import hu.laurel.sqlpulse.data.connection.DatabaseFileInfo
 import hu.laurel.sqlpulse.data.connection.JumpCredential
 import hu.laurel.sqlpulse.data.connection.JumpHostCredentials
+import hu.laurel.sqlpulse.data.connection.LocalDatabaseFiles
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.ProductionShape
 import hu.laurel.sqlpulse.data.connection.SaveRefusal
+import hu.laurel.sqlpulse.data.connection.SqliteFile
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
 import hu.laurel.sqlpulse.data.keys.SshKeyRepository
@@ -24,19 +27,23 @@ import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.data.sql.SslProperties
 import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
+import hu.laurel.sqlpulse.di.IoDispatcher
 import hu.laurel.sqlpulse.security.UnlockCancelledException
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
+import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ConnectionForm(
     val id: Long = 0,
@@ -45,6 +52,17 @@ data class ConnectionForm(
     /** SQLite: where the file was picked from, and its name. Unused by server engines. */
     val fileUri: String? = null,
     val fileName: String? = null,
+    /** Size and time of the app's copy, from the saved copy or the one just made. */
+    val fileSize: Long? = null,
+    val fileCopiedAt: Long? = null,
+    /** The file is in WAL mode, so changes still in its `-wal` file are not in the copy. */
+    val fileWal: Boolean = false,
+    /** A copy made in this editor and not yet attached to a saved connection (its path). */
+    val fileStaged: String? = null,
+    /** Whether the original can still be read without the picker, so the copy can be refreshed. */
+    val fileCanRefresh: Boolean = false,
+    /** A copy is being made. */
+    val fileBusy: Boolean = false,
     val name: String = "",
     val color: ConnectionColor = ConnectionColor.Blue,
     /** On by default: a tunnel is the safe shape, and the spec's original rule (§4). */
@@ -94,7 +112,14 @@ data class ConnectionForm(
         get() = name.isNotBlank() &&
             // An engine whose implementation has not landed is shown, but cannot be saved.
             SqlDialects.forEngine(engine).connectable &&
-            (if (engine.hasServer) canSaveServer else fileName != null)
+            (if (engine.hasServer) canSaveServer else hasFile)
+
+    /**
+     * A file connection needs a copy to open: one saved earlier or one made now. A connection
+     * restored from a backup has a name but no copy, and cannot be saved until the file is chosen.
+     */
+    val hasFile: Boolean
+        get() = fileName != null && (fileStaged != null || fileSize != null) && !fileBusy
 
     /** The server half of [canSave]: host, port, TLS, timeouts and, with a tunnel, the SSH host. */
     private val canSaveServer: Boolean
@@ -154,6 +179,7 @@ data class ConnectionForm(
             readOnly = readOnly,
             queryTimeoutSeconds = ConnectionTimeouts.parse(queryTimeout)
                 ?: ConnectionTimeouts.DEFAULT_QUERY_SECONDS,
+            local = !engine.hasServer,
         )
 
     /** Why this form may not be saved as it stands, or null. */
@@ -174,6 +200,8 @@ class ConnectionEditorViewModel @Inject constructor(
     private val connections: ConnectionRepository,
     private val keyRepository: SshKeyRepository,
     private val tunnelManager: TunnelManager,
+    private val localFiles: LocalDatabaseFiles,
+    @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel(), ConnectionEditorController {
 
     private val connectionId: Long = savedStateHandle.get<Long>("connectionId") ?: 0L
@@ -195,7 +223,10 @@ class ConnectionEditorViewModel @Inject constructor(
         if (connectionId != 0L) {
             viewModelScope.launch {
                 connections.byId(connectionId)?.let { entity ->
+                    val info = withContext(io) { localFiles.info(entity.id) }
                     _form.value = entity.toForm(
+                        info = info,
+                        canRefresh = localFiles.canRefresh(entity.fileUri),
                         hasPassword = connections.hasPassword(entity.id),
                         hasSshPassword = connections.hasSshPassword(entity.id),
                         hasJumpSshPassword = connections.hasJumpSshPassword(entity.id),
@@ -272,6 +303,58 @@ class ConnectionEditorViewModel @Inject constructor(
     /** CA files already imported, so a second connection can reuse one. */
     val availableCertificates: List<String> get() = certificateStore.list()
 
+    /** The copy made in this editor that nothing has claimed yet; deleted if the editor is left. */
+    private var staged: File? = null
+
+    /** A file picked in the system picker: kept in the app, and its permission remembered. */
+    override fun chooseFile(uri: Uri) = stageFrom(uri, remember = true)
+
+    /** The same file again, from where it was first picked, while Android still lets us read it. */
+    override fun refreshFile() {
+        val uri = _form.value.fileUri ?: return
+        stageFrom(Uri.parse(uri), remember = false)
+    }
+
+    private fun stageFrom(uri: Uri, remember: Boolean) {
+        if (_form.value.fileBusy) return
+        _form.value = _form.value.copy(fileBusy = true)
+        _error.value = null
+        viewModelScope.launch {
+            try {
+                val copy = withContext(io) { localFiles.stage(uri) }
+                if (remember) localFiles.rememberAccess(uri)
+                staged?.let(localFiles::discard)
+                staged = copy.file
+                val current = _form.value
+                _form.value = current.copy(
+                    fileBusy = false,
+                    fileUri = uri.toString(),
+                    fileName = copy.name ?: current.fileName ?: DEFAULT_FILE_NAME,
+                    fileSize = copy.info.sizeBytes,
+                    fileCopiedAt = copy.info.copiedAt,
+                    fileWal = copy.info.walMode,
+                    fileStaged = copy.file.path,
+                    fileCanRefresh = localFiles.canRefresh(uri.toString()),
+                    // A connection with no name yet is named after the file, which is what the
+                    // user would type anyway.
+                    name = current.name.ifBlank { (copy.name ?: "").substringBeforeLast('.') },
+                )
+            } catch (e: SqliteFile.NotSqliteException) {
+                _form.value = _form.value.copy(fileBusy = false)
+                _error.value = context.getString(
+                    if (e.empty) R.string.sqlite_error_empty else R.string.sqlite_error_not_database,
+                )
+            } catch (e: Exception) {
+                _form.value = _form.value.copy(fileBusy = false)
+                _error.value = context.getString(R.string.sqlite_error_copy, e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        staged?.let(localFiles::discard)
+    }
+
     override fun save(onSaved: (Long) -> Unit) {
         val form = _form.value
         if (!form.canSave) return
@@ -294,6 +377,18 @@ class ConnectionEditorViewModel @Inject constructor(
                             form.jumpAuthMethod == SshAuthMethod.PASSWORD
                     },
                 )
+                val pending = staged
+                if (pending != null && !form.engine.hasServer) {
+                    try {
+                        withContext(io) { localFiles.commit(pending, saved.id) }
+                        staged = null
+                    } catch (e: Exception) {
+                        // The row exists now; the next save must update it, not add a second one.
+                        _form.value = _form.value.copy(id = saved.id)
+                        _error.value = context.getString(R.string.sqlite_error_copy, e.message ?: e.javaClass.simpleName)
+                        return@launch
+                    }
+                }
                 onSaved(saved.id)
             } catch (e: UnlockCancelledException) {
                 _error.value = null
@@ -377,6 +472,8 @@ class ConnectionEditorViewModel @Inject constructor(
     )
 
     private fun ConnectionEntity.toForm(
+        info: DatabaseFileInfo?,
+        canRefresh: Boolean,
         hasPassword: Boolean,
         hasSshPassword: Boolean,
         hasJumpSshPassword: Boolean,
@@ -385,6 +482,10 @@ class ConnectionEditorViewModel @Inject constructor(
         engine = DatabaseEngine.fromName(engine),
         fileUri = fileUri,
         fileName = fileName,
+        fileSize = info?.sizeBytes,
+        fileCopiedAt = info?.copiedAt,
+        fileWal = info?.walMode == true,
+        fileCanRefresh = canRefresh,
         name = name,
         color = ConnectionColor.fromName(color),
         useSsh = useSshTunnel,
@@ -423,5 +524,8 @@ class ConnectionEditorViewModel @Inject constructor(
     private companion object {
         /** Stands in for a stored password so the field is not blank; never sent anywhere. */
         const val PLACEHOLDER_PASSWORD = "••••••••"
+
+        /** A provider that does not name the file still gets a connection that can be recognised. */
+        const val DEFAULT_FILE_NAME = "database.db"
     }
 }

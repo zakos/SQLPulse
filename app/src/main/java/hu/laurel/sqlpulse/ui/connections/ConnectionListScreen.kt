@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Settings
@@ -59,6 +60,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.schema.formatByteSize
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.WriteAccess
@@ -260,6 +263,7 @@ fun ConnectionListContent(
                                 connection = connection,
                                 tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
                                 writeAccess = state.writeAccess(connection, now),
+                                fileSize = state.fileSizes[connection.id],
                                 now = now,
                                 onUnlockWrites = { actions.onUnlockWrites(connection) },
                                 onLockWrites = { actions.onLockWrites(connection) },
@@ -311,6 +315,7 @@ private fun ConnectionCard(
     connection: ConnectionEntity,
     tunnel: TunnelState?,
     writeAccess: WriteAccess,
+    fileSize: Long?,
     now: Long,
     onUnlockWrites: () -> Unit,
     onLockWrites: () -> Unit,
@@ -377,19 +382,27 @@ private fun ConnectionCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    // A file on the phone has no host, port or tunnel to show: its name and size
+                    // take their place.
+                    val isFile = !DatabaseEngine.fromName(connection.engine).hasServer
                     Icon(
-                        if (connection.useSshTunnel) Icons.Default.Terminal else Icons.Default.Lan,
+                        when {
+                            isFile -> Icons.Default.Description
+                            connection.useSshTunnel -> Icons.Default.Terminal
+                            else -> Icons.Default.Lan
+                        },
                         contentDescription = null,
                         tint = semantic.textSecondary,
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
-                        // Without a tunnel there is no SSH host to name.
-                        if (connection.useSshTunnel) {
-                            "${connection.sshUser}@${connection.sshHost} → " +
-                                "${connection.dbHost}:${connection.dbPort}/${connection.database}"
-                        } else {
-                            "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                        when {
+                            isFile -> fileLine(connection.fileName.orEmpty(), fileSize)
+                            // Without a tunnel there is no SSH host to name.
+                            connection.useSshTunnel ->
+                                "${connection.sshUser}@${connection.sshHost} → " +
+                                    "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                            else -> "${connection.dbHost}:${connection.dbPort}/${connection.database}"
                         },
                         style = MonoStyles.cell.copy(fontSize = 12.sp),
                         color = semantic.textSecondary,
@@ -645,7 +658,11 @@ private fun ProductionConfirmDialog(
                 stringResource(
                     R.string.production_confirm_body,
                     connection.name,
-                    "${connection.dbHost}:${connection.dbPort}/${connection.database}",
+                    if (DatabaseEngine.fromName(connection.engine).hasServer) {
+                        "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                    } else {
+                        connection.fileName.orEmpty()
+                    },
                 ),
             )
         },
@@ -659,6 +676,15 @@ private fun ProductionConfirmDialog(
         },
     )
 }
+
+/** `name · 1.2 MB`, or `name · copy missing` when the app has no copy of the file. */
+@Composable
+private fun fileLine(name: String, size: Long?): String =
+    if (size == null) {
+        stringResource(R.string.sqlite_card_missing, name)
+    } else {
+        stringResource(R.string.sqlite_card_size, name, formatByteSize(size))
+    }
 
 @Composable
 fun HostKeyDialog(prompt: HostKeyPrompt, onAccept: () -> Unit, onReject: () -> Unit) {
