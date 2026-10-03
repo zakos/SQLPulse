@@ -304,8 +304,8 @@ fun QueryEditorContent(
                     }
                 },
                 actions = {
-                    // Slightly closer together than the default 48dp: with undo and redo the bar
-                    // carries five actions, and the connection's name still has to be readable.
+                    // Undo and redo stay one tap away; the rest is behind the overflow so the
+                    // connection name stays readable.
                     IconButton(
                         onClick = viewModel::undo,
                         enabled = state.canUndo,
@@ -326,28 +326,41 @@ fun QueryEditorContent(
                             contentDescription = stringResource(R.string.editor_redo),
                         )
                     }
-                    IconButton(
-                        onClick = { viewModel.format() },
-                        enabled = state.sql.isNotBlank(),
-                        modifier = Modifier.size(42.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.FormatAlignLeft,
-                            contentDescription = stringResource(R.string.query_format),
-                        )
-                    }
-                    IconButton(onClick = { findOpen = !findOpen }, modifier = Modifier.size(42.dp)) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = stringResource(R.string.query_find),
-                        )
-                    }
-                    IconButton(
-                        onClick = { favouriteDialogOpen = true },
-                        enabled = state.sql.isNotBlank(),
-                        modifier = Modifier.size(42.dp),
-                    ) {
-                        Icon(Icons.Default.Star, contentDescription = stringResource(R.string.query_favourite_add))
+                    // Format, find and favourite live behind the overflow: five icons left the
+                    // connection's name no room on a 390dp phone.
+                    var overflowOpen by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { overflowOpen = true }, modifier = Modifier.size(42.dp)) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.storage_more))
+                        }
+                        DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.query_format)) },
+                                leadingIcon = { Icon(Icons.Default.FormatAlignLeft, contentDescription = null) },
+                                enabled = state.sql.isNotBlank(),
+                                onClick = {
+                                    overflowOpen = false
+                                    viewModel.format()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.query_find)) },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                onClick = {
+                                    overflowOpen = false
+                                    findOpen = !findOpen
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.query_favourite_add)) },
+                                leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
+                                enabled = state.sql.isNotBlank(),
+                                onClick = {
+                                    overflowOpen = false
+                                    favouriteDialogOpen = true
+                                },
+                            )
+                        }
                     }
                 },
             )

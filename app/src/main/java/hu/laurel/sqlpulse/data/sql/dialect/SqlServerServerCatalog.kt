@@ -1,6 +1,5 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
-import hu.laurel.sqlpulse.data.schema.MetricFormat
 import hu.laurel.sqlpulse.data.schema.PulseProfile
 import hu.laurel.sqlpulse.data.schema.ReplicationReport
 import hu.laurel.sqlpulse.data.schema.ReplicationStatus
@@ -446,7 +445,7 @@ object SqlServerServerCatalog : ServerCatalog {
             connection.createStatement().use { statement ->
                 statement.executeQuery(
                     "SELECT DATEDIFF(SECOND, sqlserver_start_time, SYSDATETIME()) FROM sys.dm_os_sys_info",
-                ).use { rows -> if (rows.next()) facts += ServerFact("uptime", MetricFormat.duration(rows.getLong(1))) }
+                ).use { rows -> if (rows.next()) facts += ServerFact("uptime", rows.getLong(1).toString()) }
                 statement.executeQuery(
                     "SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE is_user_process = 1",
                 ).use { rows -> if (rows.next()) facts += ServerFact("connections", rows.getString(1)) }

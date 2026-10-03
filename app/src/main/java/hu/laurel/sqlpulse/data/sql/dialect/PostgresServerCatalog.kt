@@ -1,6 +1,5 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
-import hu.laurel.sqlpulse.data.schema.MetricFormat
 import hu.laurel.sqlpulse.data.schema.PostgresPulse
 import hu.laurel.sqlpulse.data.schema.PostgresReplication
 import hu.laurel.sqlpulse.data.schema.PostgresRoles
@@ -427,7 +426,7 @@ object PostgresServerCatalog : ServerCatalog {
         ServerFact("role", if (rows.getBoolean("in_recovery")) "standby" else "primary"),
         ServerFact("max_connections", rows.getString("max_connections").orEmpty()),
         ServerFact("connections", rows.getString("connections").orEmpty()),
-        ServerFact("uptime", MetricFormat.duration(rows.getLong("uptime"))),
+        ServerFact("uptime", rows.getLong("uptime").toString()),
         ServerFact("time_zone", rows.getString("time_zone").orEmpty()),
         ServerFact("charset", rows.getString("charset").orEmpty()),
     )

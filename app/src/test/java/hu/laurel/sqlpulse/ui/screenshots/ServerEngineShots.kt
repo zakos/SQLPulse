@@ -82,7 +82,7 @@ class ServerEngineShots {
         ServerFact("database", "shop"),
         ServerFact("role", "primary"),
         ServerFact("connections", "42"),
-        ServerFact("uptime", "41d 6h"),
+        ServerFact("uptime", "3564000"),
     )
 
     private val msFacts = listOf(
@@ -90,7 +90,7 @@ class ServerEngineShots {
         ServerFact("edition", "Developer Edition (64-bit)"),
         ServerFact("database", "Sales"),
         ServerFact("connections", "27"),
-        ServerFact("uptime", "12d 3h"),
+        ServerFact("uptime", "1047600"),
     )
 
     // ------------------------------------------------------------------ PostgreSQL

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,6 +70,8 @@ fun ConnectionTitle(
             Text(
                 name,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                // fill = false: the name takes what it needs but yields to the bar's icons.
+                modifier = Modifier.weight(1f, fill = false),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -76,6 +79,7 @@ fun ConnectionTitle(
         Box {
             Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(6.dp))
                     .clickable(enabled = databases.isNotEmpty(), role = Role.DropdownList) { open = true },
                 verticalAlignment = Alignment.CenterVertically,
@@ -84,6 +88,10 @@ fun ConnectionTitle(
                     database ?: placeholder,
                     style = MonoStyles.cell.copy(fontSize = 12.sp),
                     color = semantic.textSecondary,
+                    // One line: in a crowded bar a wrapped name is unreadable, an ellipsis is not.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (databases.isNotEmpty()) {
                     Icon(

@@ -61,6 +61,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.schema.FactKind
+import hu.laurel.sqlpulse.data.schema.PresentedFact
+import hu.laurel.sqlpulse.data.schema.ServerFactView
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.ui.components.EmptyState
@@ -173,23 +176,25 @@ fun ServerScreenContent(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = Spacing.s),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        state.facts.forEach { fact ->
+                        ServerFactView.present(state.facts).forEach { fact ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    fact.label,
+                                    factLabel(fact),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = semantic.textSecondary,
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f, fill = false),
                                 )
+                                // Two lines: a TLS version with its cipher is longer than the card is wide.
                                 Text(
-                                    fact.value,
+                                    factValue(fact),
                                     style = MonoStyles.cell,
                                     textAlign = TextAlign.End,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1.4f, fill = false).padding(start = Spacing.m),
                                 )
                             }
                         }
@@ -590,4 +595,50 @@ private fun ServerPanel.emptyRes(): Int = when (this) {
     ServerPanel.REPLICATION -> R.string.server_no_replication
     ServerPanel.SLOW -> R.string.slow_empty_title
     ServerPanel.USERS -> R.string.server_no_users
+}
+
+/** The localized name of an overview row; a variable nobody mapped keeps its raw name. */
+@Composable
+private fun factLabel(fact: PresentedFact): String = when (fact.kind) {
+    FactKind.VERSION -> stringResource(R.string.fact_version)
+    FactKind.BUILD -> stringResource(R.string.fact_build)
+    FactKind.EDITION -> stringResource(R.string.fact_edition)
+    FactKind.LEVEL -> stringResource(R.string.fact_level)
+    FactKind.HOST -> stringResource(R.string.fact_host)
+    FactKind.USER -> stringResource(R.string.fact_user)
+    FactKind.DATABASE -> stringResource(R.string.fact_database)
+    FactKind.ROLE -> stringResource(R.string.fact_role)
+    FactKind.UPTIME -> stringResource(R.string.fact_uptime)
+    FactKind.CONNECTIONS -> stringResource(R.string.fact_connections)
+    FactKind.RUNNING -> stringResource(R.string.fact_running)
+    FactKind.MAX_CONNECTIONS -> stringResource(R.string.fact_max_connections)
+    FactKind.TLS -> stringResource(R.string.fact_tls)
+    FactKind.READ_ONLY -> stringResource(R.string.fact_read_only)
+    FactKind.TIME_ZONE -> stringResource(R.string.fact_time_zone)
+    FactKind.CHARSET -> stringResource(R.string.fact_charset)
+    FactKind.COLLATION -> stringResource(R.string.fact_collation)
+    FactKind.DRIVER -> stringResource(R.string.fact_driver)
+    null -> fact.label
+}
+
+@Composable
+private fun factValue(fact: PresentedFact): String = when (fact.kind) {
+    FactKind.UPTIME -> fact.value.toLongOrNull()?.let { seconds ->
+        val (days, hours, minutes) = ServerFactView.uptimeParts(seconds)
+        when {
+            days > 0 -> stringResource(R.string.fact_uptime_days, days, hours)
+            hours > 0 -> stringResource(R.string.fact_uptime_hours, hours, minutes)
+            else -> stringResource(R.string.fact_uptime_minutes, minutes)
+        }
+    } ?: fact.value
+    FactKind.READ_ONLY -> stringResource(if (fact.flag == true) R.string.fact_yes else R.string.fact_no)
+    FactKind.TLS -> when {
+        fact.value.isNotEmpty() -> fact.value
+        fact.flag == true -> stringResource(R.string.fact_tls_on)
+        else -> stringResource(R.string.fact_tls_none)
+    }
+    FactKind.DRIVER -> stringResource(
+        if (fact.value.equals("legacy", ignoreCase = true)) R.string.fact_driver_legacy else R.string.fact_driver_modern,
+    )
+    else -> fact.value
 }
