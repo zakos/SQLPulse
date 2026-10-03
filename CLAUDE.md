@@ -235,6 +235,13 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   (`SqlDialect.server: ServerCatalog`, `PulseProfile`). 1546 unit/integrációs teszt zöld (MySQL 8,
   MariaDB, PG 16 + pg_stat_statements-es PG a 5434-en, SQL Server 2022, SQLite) + lint.
 
+- 2026-10-03: A felhasználó készüléken kipróbálta (valódi MySQL 8.4 „mantis” SSH-n át + SQLite-fájl):
+  működik. Talált hibák (javítás folyamatban, 2 subagent): sémaböngésző fejléc levágja a nevet; DDL
+  sorok levágva; üres alapérték „alap:”; Szerver áttekintő nyers angol kulcsok/másodpercek; séma-
+  térkép 0 kitalált kapcsolat `mantis_*_table` nevekkel + apró dobozok; szerkesztő „500 sor” felirat
+  5000-es beállítás mellett; SQLite-fájlnál „éles kiszolgáló” szöveg + régi dialógus; kulcsimport
+  gomb betűnként tördel; SQLite UPDATE `"..."` szöveggel → nincs darabszám. Képek: scratchpad/device/.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
