@@ -630,7 +630,7 @@ private fun EngineSection(engine: DatabaseEngine, onSelect: (DatabaseEngine) -> 
             DatabaseEngine.MYSQL -> R.string.engine_mysql_note
             DatabaseEngine.SQLSERVER -> R.string.engine_sqlserver_note
             DatabaseEngine.SQLITE -> R.string.engine_sqlite_note
-            DatabaseEngine.POSTGRESQL -> null
+            DatabaseEngine.POSTGRESQL -> R.string.engine_postgresql_note
         }
         note?.let {
             Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)

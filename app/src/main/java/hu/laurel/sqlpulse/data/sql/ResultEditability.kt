@@ -1,6 +1,8 @@
 package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.schema.TableStructure
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /**
  * Why a query result cannot be edited in place.
@@ -94,9 +96,13 @@ data class ResultEditTarget(
 
 object ResultEditabilities {
 
-    /** Reads [sql] (one statement) and says whether its result maps onto a single table. */
-    fun analyse(sql: String): ResultEditability {
-        val tokens = tokenize(sql).dropLastWhile { it.isSymbol(';') }
+    /**
+     * Reads [sql] (one statement) and says whether its result maps onto a single table. [syntax]
+     * says how the engine quotes and comments: a `"name"` is a column in PostgreSQL and a string
+     * in MySQL, and `#` starts a comment only in MySQL.
+     */
+    fun analyse(sql: String, syntax: SqlSyntax = MySqlDialect): ResultEditability {
+        val tokens = tokenize(sql, syntax).dropLastWhile { it.isSymbol(';') }
         if (tokens.isEmpty()) return no(NotEditableReason.NOT_SELECT)
         if (tokens.any { it.isSymbol(';') }) return no(NotEditableReason.MULTIPLE_STATEMENTS)
         val first = tokens[0]
@@ -411,25 +417,33 @@ object ResultEditabilities {
      * Own tokenizer rather than WriteImpact's blanking helpers: those blank backquoted names along
      * with string contents, and the names are exactly what has to be read here.
      */
-    private fun tokenize(sql: String): List<Token> {
+    private fun tokenize(sql: String, syntax: SqlSyntax): List<Token> {
+        val grammar = syntax.grammar
+        // The character that quotes a name: a backtick in MySQL, a double quote in PostgreSQL.
+        val idQuote = syntax.quoteIdentifier("x").first()
         val out = mutableListOf<Token>()
         var i = 0
         while (i < sql.length) {
             val c = sql[i]
             when {
                 c.isWhitespace() -> i++
-                c == '#' || (sql.startsWith("--", i) && (i + 2 >= sql.length || sql[i + 2].isWhitespace())) ->
+                // MySQL wants a blank after `--`; the standard (PostgreSQL) does not.
+                grammar.opensLineComment(sql, i) &&
+                    (grammar.hashComments.not() || c == '#' || i + 2 >= sql.length || sql[i + 2].isWhitespace()) ->
                     i = sql.indexOf('\n', i).takeIf { it >= 0 } ?: sql.length
 
                 sql.startsWith("/*", i) -> i = sql.indexOf("*/", i + 2).takeIf { it >= 0 }?.plus(2) ?: sql.length
-                c == '`' -> {
-                    val end = minOf(SqlGuards.endOfLiteral(sql, i), sql.length)
-                    out += Token(Kind.QUOTED, sql.substring(i + 1, maxOf(i + 1, end - 1)).replace("``", "`"))
+                c == idQuote -> {
+                    val end = minOf(grammar.endOfQuoted(sql, i), sql.length)
+                    out += Token(
+                        Kind.QUOTED,
+                        sql.substring(i + 1, maxOf(i + 1, end - 1)).replace("$idQuote$idQuote", idQuote.toString()),
+                    )
                     i = end
                 }
 
-                c == '\'' || c == '"' -> {
-                    val end = minOf(SqlGuards.endOfLiteral(sql, i), sql.length)
+                grammar.opensQuote(sql, i) -> {
+                    val end = minOf(grammar.endOfQuoted(sql, i), sql.length)
                     out += Token(Kind.STRING, sql.substring(i, end))
                     i = end
                 }

@@ -1,5 +1,10 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlGrammar
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
+
 /**
  * Turns an UPDATE or a DELETE into the `SELECT COUNT(*)` that says how many rows it would touch.
  *
@@ -18,8 +23,8 @@ object WriteImpact {
      * CTE, a multi-table UPDATE or DELETE, a join, a subquery in the FROM, `DELETE ... USING`, a
      * LIMIT (it picks an arbitrary subset of what the WHERE matches) and more than one statement.
      */
-    fun countQuery(sql: String): String? =
-        parse(sql)?.let { "SELECT COUNT(*) FROM ${it.table}${it.tail}" }
+    fun countQuery(sql: String, syntax: SqlSyntax = MySqlDialect): String? =
+        parse(sql, syntax)?.let { "SELECT COUNT(*) FROM ${it.table}${it.tail}" }
 
     /**
      * The read-only SELECT that shows up to [limit] of the rows [sql] would change, or null when
@@ -34,22 +39,22 @@ object WriteImpact {
      * `FOR UPDATE`) that running it as a SELECT would trigger for real, anywhere in the SET list or
      * the WHERE, subqueries included.
      */
-    fun previewQuery(sql: String, limit: Int = PREVIEW_ROWS): WritePreviewQuery? {
+    fun previewQuery(sql: String, limit: Int = PREVIEW_ROWS, syntax: SqlSyntax = MySqlDialect): WritePreviewQuery? {
         if (limit <= 0) return null
-        val parsed = parse(sql) ?: return null
+        val parsed = parse(sql, syntax) ?: return null
         val suffix = " FROM ${parsed.table}${parsed.tail} LIMIT $limit"
         val set = parsed.set ?: return WritePreviewQuery("SELECT *$suffix", WriteKind.DELETE, emptyList())
-        val assignments = parseAssignments(set) ?: return null
+        val assignments = parseAssignments(set, syntax) ?: return null
         val columns = assignments.map { it.column }
         if (columns.map { it.lowercase() }.toSet().size != columns.size) return null
         assignments.forEachIndexed { index, assignment ->
             val earlier = columns.take(index).map { it.lowercase() }.toSet()
             if (assignment.expression.isBlank()) return null
-            if (hasSideEffect(assignment.expression)) return null
-            if (earlier.isNotEmpty() && referencedNames(assignment.expression).any { it in earlier }) return null
+            if (hasSideEffect(assignment.expression, syntax)) return null
+            if (earlier.isNotEmpty() && referencedNames(assignment.expression, syntax).any { it in earlier }) return null
         }
         val news = assignments.joinToString(", ") {
-            "(${it.expression}) AS ${quoteIdentifier(it.column + NEW_SUFFIX)}"
+            "(${it.expression}) AS ${syntax.quoteIdentifier(it.column + NEW_SUFFIX)}"
         }
         return WritePreviewQuery("SELECT *, $news$suffix", WriteKind.UPDATE, columns)
     }
@@ -58,11 +63,11 @@ object WriteImpact {
 
     private class Assignment(val column: String, val expression: String)
 
-    private fun parse(sql: String): Parsed? {
+    private fun parse(sql: String, syntax: SqlSyntax): Parsed? {
         // Comments go first so the derived query cannot carry half of one, and so the table
         // reference is read without a comment wedged into it.
-        val clean = blankComments(sql.trim().trimEnd(';'))
-        val masked = blankLiterals(clean)
+        val clean = blankComments(sql.trim().trimEnd(';'), syntax.grammar)
+        val masked = blankLiterals(clean, syntax.grammar)
         // Two statements in one string: whichever of them is the write, one count cannot speak for
         // both of them.
         if (masked.contains(';')) return null
@@ -71,32 +76,35 @@ object WriteImpact {
         val keyword = readWord(masked, start).lowercase()
         val after = skipSpace(clean, start + keyword.length)
         val parsed = when (keyword) {
-            "update" -> parseUpdate(clean, masked, after)
-            "delete" -> parseDelete(clean, masked, after)
+            "update" -> parseUpdate(clean, masked, after, syntax)
+            "delete" -> parseDelete(clean, masked, after, syntax)
             else -> null
         } ?: return null
         // The WHERE is copied into a SELECT that runs before the write does, so anything in it that
         // acts on the server (a lock, a sleep, a variable assignment, a locking read in a
         // subquery) would happen once more than the user agreed to.
-        if (hasSideEffect(parsed.tail)) return null
+        if (hasSideEffect(parsed.tail, syntax)) return null
         return parsed
     }
 
     /** `UPDATE [modifiers] table [alias] SET ... [WHERE ...]` and nothing more adventurous. */
-    private fun parseUpdate(clean: String, masked: String, from: Int): Parsed? {
+    private fun parseUpdate(clean: String, masked: String, from: Int, syntax: SqlSyntax): Parsed? {
         val start = skipModifiers(clean, from, UPDATE_MODIFIERS)
         val keywords = topLevelKeywords(masked, start)
         val setAt = keywords.firstOrNull { it.second == "set" }?.first ?: return null
         val table = clean.substring(start, setAt).trim()
         if (!TABLE_REFERENCE.matches(table)) return null
-        val tail = tail(clean, masked, setAt) ?: return null
+        // PostgreSQL's `UPDATE t SET ... FROM other WHERE ...` joins a second table: the rows it
+        // changes are not the rows the WHERE matches in `t` alone.
+        if (postgres(syntax) && keywords.any { it.first > setAt && it.second == "from" }) return null
+        val tail = tail(clean, masked, setAt, syntax) ?: return null
         // The SET list ends where the WHERE (or ORDER BY) begins; LIMIT is already refused.
-        val setEnd = keywords.firstOrNull { it.first > setAt && it.second in TAIL_STARTERS }?.first ?: clean.length
+        val setEnd = keywords.firstOrNull { it.first > setAt && it.second in tailStarters(syntax) }?.first ?: clean.length
         return Parsed(table, tail, clean.substring(setAt + "set".length, setEnd).trim())
     }
 
     /** `DELETE [modifiers] FROM table [alias] [WHERE ...]`, the single-table form only. */
-    private fun parseDelete(clean: String, masked: String, from: Int): Parsed? {
+    private fun parseDelete(clean: String, masked: String, from: Int, syntax: SqlSyntax): Parsed? {
         val start = skipModifiers(clean, from, DELETE_MODIFIERS)
         // `DELETE t1 FROM a JOIN b` and `DELETE FROM t USING ...` name more than one table, and the
         // rows they remove are not the rows a count over any one of them returns.
@@ -104,18 +112,19 @@ object WriteImpact {
         val tableStart = skipSpace(clean, start + "from".length)
         val keywords = topLevelKeywords(masked, tableStart)
         if (keywords.any { it.second == "using" }) return null
-        val stop = keywords.firstOrNull { it.second in TAIL_STARTERS }?.first ?: clean.length
+        val stop = keywords.firstOrNull { it.second in tailStarters(syntax) }?.first ?: clean.length
         val table = clean.substring(tableStart, stop).trim()
         if (!TABLE_REFERENCE.matches(table)) return null
-        return Parsed(table, tail(clean, masked, stop) ?: return null, null)
+        return Parsed(table, tail(clean, masked, stop, syntax) ?: return null, null)
     }
 
     /**
      * `col = expr, col2 = expr2` split at the top level, or null when an item is not that shape.
      * Commas inside parentheses (`CONCAT(a, b)`) or literals (`'a, b'`) do not split.
      */
-    private fun parseAssignments(set: String): List<Assignment>? {
-        val masked = blankLiterals(set)
+    private fun parseAssignments(set: String, syntax: SqlSyntax): List<Assignment>? {
+        val masked = blankLiterals(set, syntax.grammar)
+        val idQuote = identifierQuote(syntax)
         val parts = mutableListOf<String>()
         var depth = 0
         var from = 0
@@ -128,30 +137,42 @@ object WriteImpact {
         }
         parts += set.substring(from)
         val result = parts.map { part ->
-            val eq = blankLiterals(part).indexOf('=')
+            val eq = blankLiterals(part, syntax.grammar).indexOf('=')
             if (eq <= 0) return null
             val target = part.substring(0, eq).trim()
-            // The last group, not a split on '.': a backquoted name may contain one.
-            val last = TARGET_COLUMN.matchEntire(target)?.groupValues?.get(3) ?: return null
-            val column = if (last.startsWith("`")) last.substring(1, last.length - 1).replace("``", "`") else last
+            // The last group, not a split on '.': a quoted name may contain one.
+            val last = targetColumn(idQuote).matchEntire(target)?.groupValues?.get(3) ?: return null
+            val column = when {
+                last.startsWith(idQuote) ->
+                    last.substring(1, last.length - 1).replace("$idQuote$idQuote", idQuote.toString())
+                // PostgreSQL folds a bare name to lower case, and the column is looked up by name.
+                postgres(syntax) -> last.lowercase()
+                else -> last
+            }
             Assignment(column, part.substring(eq + 1).trim())
         }
         return result.takeIf { it.isNotEmpty() }
     }
 
     /** Lowercased names an expression mentions: bare words and backquoted identifiers. */
-    private fun referencedNames(expression: String): Set<String> {
+    private fun referencedNames(expression: String, syntax: SqlSyntax): Set<String> {
         val names = mutableSetOf<String>()
+        val grammar = syntax.grammar
+        val idQuote = identifierQuote(syntax)
         var i = 0
         while (i < expression.length) {
             val c = expression[i]
             when {
-                c == '\'' || c == '"' -> i = SqlGuards.endOfLiteral(expression, i)
-                c == '`' -> {
-                    val end = SqlGuards.endOfLiteral(expression, i)
-                    names += expression.substring(i + 1, (end - 1).coerceAtLeast(i + 1)).replace("``", "`").lowercase()
+                // Strings are skipped; the engine's quoted identifiers (backticks in MySQL, double
+                // quotes in PostgreSQL) are names.
+                grammar.opensQuote(expression, i) && c == idQuote -> {
+                    val end = grammar.endOfQuoted(expression, i)
+                    names += expression.substring(i + 1, (end - 1).coerceAtLeast(i + 1))
+                        .replace("$idQuote$idQuote", idQuote.toString()).lowercase()
                     i = end
                 }
+
+                grammar.opensQuote(expression, i) -> i = grammar.endOfQuoted(expression, i)
 
                 c.isLetter() || c == '_' || c == '$' -> {
                     val word = readWord(expression, i)
@@ -172,20 +193,33 @@ object WriteImpact {
      * `(SELECT ... FOR UPDATE)` hides from a check that only looks at the top level. Literals and
      * comments are masked first, so a string that merely mentions SLEEP does not refuse anything.
      */
-    private fun hasSideEffect(text: String): Boolean {
-        val masked = blankLiterals(blankComments(text))
+    private fun hasSideEffect(text: String, syntax: SqlSyntax): Boolean {
+        val masked = blankLiterals(blankComments(text, syntax.grammar), syntax.grammar)
+        val locking = if (postgres(syntax)) POSTGRES_LOCKING_OR_INTO else LOCKING_OR_INTO
         return masked.contains(":=") ||
-            LOCKING_OR_INTO.containsMatchIn(masked) ||
-            referencedNames(blankComments(text)).any { it in SIDE_EFFECT_WORDS }
+            locking.containsMatchIn(masked) ||
+            referencedNames(blankComments(text, syntax.grammar), syntax).any { name ->
+                name in SIDE_EFFECT_WORDS || (
+                    postgres(syntax) &&
+                        (name in POSTGRES_SIDE_EFFECT_WORDS || POSTGRES_SIDE_EFFECT_PREFIXES.any(name::startsWith))
+                    )
+            }
     }
 
-    private fun quoteIdentifier(name: String) = "`" + name.replace("`", "``") + "`"
+    private fun postgres(syntax: SqlSyntax) = syntax.engine == DatabaseEngine.POSTGRESQL
+
+    /** The character that opens this engine's quoted identifiers: a backtick, or a double quote. */
+    private fun identifierQuote(syntax: SqlSyntax): Char = syntax.quoteIdentifier("x").first()
+
+    /** What ends the SET list or the table reference; PostgreSQL's RETURNING comes after the WHERE. */
+    private fun tailStarters(syntax: SqlSyntax): Set<String> =
+        if (postgres(syntax)) TAIL_STARTERS + "returning" else TAIL_STARTERS
 
     /**
      * The `WHERE ...` to copy over, prefixed with a space; "" when the statement has none — that is
      * the whole table, which is a real answer — or null when what follows refuses a rewrite.
      */
-    private fun tail(clean: String, masked: String, from: Int): String? {
+    private fun tail(clean: String, masked: String, from: Int, syntax: SqlSyntax): String? {
         val keywords = topLevelKeywords(masked, from)
         // A LIMIT takes an arbitrary slice of the matching rows, so the count is not the number of
         // rows that would change.
@@ -194,7 +228,12 @@ object WriteImpact {
         // ORDER BY only matters together with a LIMIT, which is already refused; dropping it keeps
         // the count query valid.
         val order = keywords.firstOrNull { it.first > where.first && it.second == "order" }
-        return " " + clean.substring(where.first, order?.first ?: clean.length).trim()
+        // RETURNING is output, not selection: the count and the preview must not carry it along.
+        val returning = keywords.firstOrNull {
+            postgres(syntax) && it.first > where.first && it.second == "returning"
+        }
+        val end = listOfNotNull(order?.first, returning?.first).minOrNull() ?: clean.length
+        return " " + clean.substring(where.first, end).trim()
     }
 
     /**
@@ -254,19 +293,19 @@ object WriteImpact {
      * have to keep pointing at the same characters, because the table and the WHERE are copied out
      * of this text word for word.
      */
-    private fun blankComments(sql: String): String = blank(sql, literals = false)
+    private fun blankComments(sql: String, grammar: SqlGrammar): String = blank(sql, grammar, literals = false)
 
     /** The same, for the contents of strings and quoted identifiers. Comments are already gone. */
-    private fun blankLiterals(sql: String): String = blank(sql, literals = true)
+    private fun blankLiterals(sql: String, grammar: SqlGrammar): String = blank(sql, grammar, literals = true)
 
-    private fun blank(sql: String, literals: Boolean): String {
+    private fun blank(sql: String, grammar: SqlGrammar, literals: Boolean): String {
         val out = sql.toCharArray()
         var index = 0
         while (index < sql.length) {
             val c = sql[index]
             val end = when {
-                literals && (c == '\'' || c == '"' || c == '`') -> SqlGuards.endOfLiteral(sql, index)
-                !literals && (sql.startsWith("--", index) || c == '#') ->
+                literals && grammar.opensQuote(sql, index) -> grammar.endOfQuoted(sql, index)
+                !literals && grammar.opensLineComment(sql, index) ->
                     sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
 
                 !literals && sql.startsWith("/*", index) ->
@@ -300,9 +339,21 @@ object WriteImpact {
         "(?i)\\binto\\b|\\bfor\\s+(update|share)\\b|\\block\\s+in\\s+share\\s+mode\\b",
     )
 
-    /** `col`, `t.col` or `db.t.col`, each part bare or backquoted. */
-    private val TARGET_COLUMN = Regex(
-        "(?i)^((`(?:[^`]|``)+`|[a-z_\$][a-z0-9_\$]*)\\.){0,2}(`(?:[^`]|``)+`|[a-z_\$][a-z0-9_\$]*)$",
+    /** `col`, `t.col` or `db.t.col`, each part bare or quoted the way the engine quotes ([q]). */
+    private fun targetColumn(q: Char): Regex {
+        val quoted = "$q(?:[^$q]|$q$q)+$q"
+        return Regex("(?i)^(($quoted|[a-z_\\$][a-z0-9_\\$]*)\\.){0,2}($quoted|[a-z_\\$][a-z0-9_\\$]*)$")
+    }
+
+    /** PostgreSQL functions that act on the server or the session when a SELECT merely calls them. */
+    private val POSTGRES_SIDE_EFFECT_WORDS = setOf(
+        "pg_sleep", "pg_sleep_for", "pg_sleep_until", "set_config", "pg_terminate_backend",
+        "pg_cancel_backend", "pg_reload_conf", "lo_import", "lo_export", "lo_unlink", "lo_create",
+        "pg_notify", "pg_rotate_logfile", "pg_switch_wal", "pg_create_restore_point",
+    )
+    private val POSTGRES_SIDE_EFFECT_PREFIXES = listOf("pg_advisory_", "pg_try_advisory_", "dblink")
+    private val POSTGRES_LOCKING_OR_INTO = Regex(
+        "(?i)\\binto\\b|\\bfor\\s+(no\\s+key\\s+update|key\\s+share|update|share)\\b",
     )
 
     private val UPDATE_MODIFIERS = setOf("low_priority", "ignore")
