@@ -445,7 +445,8 @@ class SqlSessionManager @Inject constructor(
         } catch (e: SQLException) {
             // §11: the MySQL error is shown verbatim, with the likely cause beside it.
             _state.value = SqlSessionState.Failed(
-                message = "${e.errorCode}: ${e.message}",
+                // PostgreSQL reports no error number (0); its SQLSTATE rides in `failure`.
+                message = if (e.errorCode != 0) "${e.errorCode}: ${e.message}" else e.message.orEmpty(),
                 detail = e.toString(),
                 failure = dialect.failureOf(e),
             )

@@ -48,7 +48,7 @@ object TableQuery {
                 } else {
                     // The bound pattern escapes % and _ with a backslash; the engine is told so
                     // where backslash is not already LIKE's escape.
-                    "${syntax.quoteIdentifier(filter.column)} LIKE ?${syntax.likeEscape}"
+                    "${syntax.likeOperand(syntax.quoteIdentifier(filter.column))} LIKE ?${syntax.likeEscape}"
                 },
             ) + filter.also.map { "${syntax.quoteIdentifier(it.first)} = ?" }
             ).joinToString(" AND ")

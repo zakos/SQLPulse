@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PostgreSQL (docs/tobb-motor-terv.md). -->
+    <string name="engine_postgresql_note">PostgreSQL 12 vagy újabb. Az alább megadott adatbázisban dolgozik a kapcsolat; az app ennek a sémáit listázza, másik adatbázishoz külön kapcsolat kell.</string>
+
+    <!-- A kapcsolatszerkesztő MySQL-feliratai a MySQL-től eltérő motorokhoz. -->
+    <string name="db_user_generic">Adatbázis-felhasználó</string>
+    <string name="db_password_generic">Adatbázis-jelszó</string>
+    <string name="ssh_direct_note_generic">SSH nélkül a telefon közvetlenül az adatbázishoz kapcsolódik. Ez csak ott működik, ahol az adatbázis portja elérhető a telefon aktuális hálózatáról.</string>
+    <string name="tls_mode_generic">Az adatbázis-kapcsolat titkosítása</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PostgreSQL (docs/tobb-motor-terv.md). -->
+    <string name="engine_postgresql_note">PostgreSQL 12 or newer. The database below is the one this connection works in; its schemas are what the app lists, and another database is another connection.</string>
+
+    <!-- The connection editor's MySQL-worded labels, for every engine but MySQL. -->
+    <string name="db_user_generic">Database user</string>
+    <string name="db_password_generic">Database password</string>
+    <string name="ssh_direct_note_generic">Without SSH, this phone connects to the database directly. That only works where the database port is reachable from the phone\'s current network.</string>
+    <string name="tls_mode_generic">Database connection encryption</string>
+</resources>
