@@ -223,6 +223,8 @@ fun SchemaBrowserContent(
                     }
                 },
                 actions = {
+                    // Two icons at most: with more, the connection's name collapses to "m…" on a
+                    // phone. Everything else is one tap further, with a label.
                     if (engine.has(EngineFeature.DATABASE_SEARCH)) {
                         IconButton(onClick = actions.onOpenSearch) {
                             Icon(
@@ -231,48 +233,30 @@ fun SchemaBrowserContent(
                             )
                         }
                     }
-                    if (engine.has(EngineFeature.SCHEMA_MAP)) {
-                        IconButton(onClick = actions.onOpenMap) {
-                            Icon(
-                                Icons.Default.AccountTree,
-                                contentDescription = stringResource(R.string.map_title),
-                            )
-                        }
-                    }
-                    if (engine.has(EngineFeature.PULSE)) {
-                        IconButton(onClick = actions.onOpenPulse) {
-                            Icon(
-                                Icons.Default.MonitorHeart,
-                                contentDescription = stringResource(R.string.pulse_title),
-                            )
-                        }
-                    }
-                    if (engine.has(EngineFeature.SERVER_ACTIVITY)) {
-                        IconButton(onClick = actions.onOpenServer) {
-                            Icon(
-                                Icons.Default.Dns,
-                                contentDescription = stringResource(R.string.server_title),
-                            )
-                        }
-                    }
                     IconButton(onClick = actions.onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
-                    // The bar is full; less-used screens go behind the overflow.
                     var overflowOpen by remember { mutableStateOf(false) }
-                    if (engine.has(EngineFeature.STORAGE)) Box {
+                    Box {
                         IconButton(onClick = { overflowOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.storage_more))
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.storage_title)) },
-                                leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null) },
-                                onClick = {
-                                    overflowOpen = false
-                                    actions.onOpenStorage()
-                                },
-                            )
+                            @Composable
+                            fun item(label: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, go: () -> Unit) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(label)) },
+                                    leadingIcon = { Icon(icon, contentDescription = null) },
+                                    onClick = {
+                                        overflowOpen = false
+                                        go()
+                                    },
+                                )
+                            }
+                            if (engine.has(EngineFeature.SCHEMA_MAP)) item(R.string.map_title, Icons.Default.AccountTree, actions.onOpenMap)
+                            if (engine.has(EngineFeature.PULSE)) item(R.string.pulse_title, Icons.Default.MonitorHeart, actions.onOpenPulse)
+                            if (engine.has(EngineFeature.SERVER_ACTIVITY)) item(R.string.server_title, Icons.Default.Dns, actions.onOpenServer)
+                            if (engine.has(EngineFeature.STORAGE)) item(R.string.storage_title, Icons.Default.Storage, actions.onOpenStorage)
                         }
                     }
                 },

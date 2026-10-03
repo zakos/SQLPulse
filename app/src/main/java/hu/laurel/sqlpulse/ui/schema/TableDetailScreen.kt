@@ -62,8 +62,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -341,13 +344,32 @@ fun TableDetailScreenContent(
                                 )
                             }
                         }
+                        // Code is not wrapped: a wrapped CREATE TABLE stops being readable as one.
+                        // The scroll is horizontal, with a thumb so it is visible that there is more.
+                        val hScroll = rememberScrollState()
+                        val thumb = semantic.textSecondary.copy(alpha = 0.5f)
                         Text(
                             text = ddl,
                             style = MonoStyles.cell,
+                            softWrap = false,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .drawWithContent {
+                                    drawContent()
+                                    val total = hScroll.maxValue + size.width
+                                    if (hScroll.maxValue > 0) {
+                                        val w = size.width * size.width / total
+                                        val x = (size.width - w) * hScroll.value / hScroll.maxValue
+                                        drawRoundRect(
+                                            thumb,
+                                            topLeft = androidx.compose.ui.geometry.Offset(x, size.height - 6.dp.toPx()),
+                                            size = androidx.compose.ui.geometry.Size(w, 3.dp.toPx()),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                                        )
+                                    }
+                                }
                                 .verticalScroll(rememberScrollState())
-                                .horizontalScroll(rememberScrollState())
+                                .horizontalScroll(hScroll)
                                 .padding(Spacing.l),
                         )
                     }
@@ -652,11 +674,26 @@ private fun ColumnRow(column: SchemaColumn, tableCollation: String?, foreignKey:
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // The empty string must not read as "no default": it is shown as '' in mono, an explicit
+            // NULL default as NULL, and a column without any default says nothing about one.
+            val defaultLabel = stringResource(R.string.structure_default_label)
+            val monoDefault = MonoStyles.cell.toSpanStyle().copy(fontSize = 12.sp)
             Text(
-                text = buildList {
-                    add(if (column.nullable) "NULL" else "NOT NULL")
-                    column.defaultValue?.let { add(stringResource(R.string.structure_default, it)) }
-                }.joinToString(" · "),
+                text = buildAnnotatedString {
+                    append(if (column.nullable) "NULL" else "NOT NULL")
+                    column.defaultValue?.let { value ->
+                        append(" · $defaultLabel ")
+                        withStyle(monoDefault) {
+                            append(
+                                when {
+                                    value.isEmpty() -> "''"
+                                    value.equals("NULL", ignoreCase = true) -> "NULL"
+                                    else -> value
+                                },
+                            )
+                        }
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                 color = semantic.textSecondary,
             )

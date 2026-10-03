@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,6 +65,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.db.SshKeyAlgorithm
 import hu.laurel.sqlpulse.data.db.SshKeyEntity
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
@@ -302,8 +309,25 @@ private fun KeyCard(key: SshKeyEntity, onCopyPublicKey: (SshKeyEntity) -> Unit, 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ImportDialog(
+    state: KeyImportState,
+    keyText: String,
+    onKeyTextChanged: (String) -> Unit,
+    onPickFile: () -> Unit,
+    onImport: (String, CharArray?) -> Unit,
+    onGenerate: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        KeyImportCard(state, keyText, onKeyTextChanged, onPickFile, onImport, onGenerate, onDismiss)
+    }
+}
+
+/** The import form as a card, so a screenshot can draw it without a dialog window. */
+@Composable
+fun KeyImportCard(
     state: KeyImportState,
     keyText: String,
     onKeyTextChanged: (String) -> Unit,
@@ -316,60 +340,64 @@ private fun ImportDialog(
     var passphrase by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.keys_empty_action)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+    run {
+        DialogCard {
+            DialogHeading(title = stringResource(R.string.keys_empty_action))
+            Column(
+                modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.m),
+            ) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.key_name)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = keyText,
+                onValueChange = onKeyTextChanged,
+                label = { Text(stringResource(R.string.key_import_paste)) },
+                textStyle = MonoStyles.cell,
+                minLines = 3,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (state.needsPassphrase) {
                 OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.key_name)) },
+                    value = passphrase,
+                    onValueChange = { passphrase = it },
+                    label = { Text(stringResource(R.string.key_passphrase)) },
+                    visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
+                    enabled = state.lockedForSeconds == 0,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
-                    value = keyText,
-                    onValueChange = onKeyTextChanged,
-                    label = { Text(stringResource(R.string.key_import_paste)) },
-                    textStyle = MonoStyles.cell,
-                    minLines = 3,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (state.needsPassphrase) {
-                    OutlinedTextField(
-                        value = passphrase,
-                        onValueChange = { passphrase = it },
-                        label = { Text(stringResource(R.string.key_passphrase)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        enabled = state.lockedForSeconds == 0,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    OutlinedButton(onClick = onPickFile, shape = Shapes.button) {
-                        Text(stringResource(R.string.key_import_file))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            // Generating needs no key text; the pair is made on the device.
-                            onGenerate(name)
-                        },
-                        shape = Shapes.button,
-                    ) { Text(stringResource(R.string.key_generate)) }
-                }
-                state.error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-        },
-        confirmButton = {
-            Button(
-                enabled = keyText.isNotBlank() && !state.busy && state.lockedForSeconds == 0,
+            // Stacked and full width: side by side, the second label wrapped letter by letter on
+            // a phone.
+            OutlinedButton(onClick = onPickFile, shape = Shapes.button, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.key_import_file), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(
                 onClick = {
+                    // Generating needs no key text; the pair is made on the device.
+                    onGenerate(name)
+                },
+                shape = Shapes.button,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.key_generate), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            state.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            DialogButtons(
+                cancelLabel = stringResource(R.string.cancel),
+                onCancel = onDismiss,
+                actionLabel = stringResource(R.string.keys_empty_action),
+                enabled = keyText.isNotBlank() && !state.busy && state.lockedForSeconds == 0,
+                onAction = {
                     val secret = passphrase.takeIf { it.isNotEmpty() }?.toCharArray()
                     onImport(name, secret)
                     // §5, §6: the pasted key must not stay on the clipboard, and the user is told.
@@ -377,12 +405,9 @@ private fun ImportDialog(
                     Toast.makeText(context, R.string.key_clipboard_cleared, Toast.LENGTH_SHORT).show()
                     passphrase = ""
                 },
-            ) { Text(stringResource(R.string.keys_empty_action)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+            )
+        }
+    }
 }
 
 /**

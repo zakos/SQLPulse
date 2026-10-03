@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +72,9 @@ import hu.laurel.sqlpulse.ssh.ConnectStep
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.components.ColorRail
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
@@ -644,37 +648,60 @@ private fun StepProgress(tunnel: TunnelState, tunnelled: Boolean) {
  * Not a lock — the user can say yes — but the moment where "which database am I on" gets answered
  * before the first statement rather than after it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProductionConfirmDialog(
     connection: ConnectionEntity,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.production_confirm_title)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.production_confirm_body,
-                    connection.name,
-                    if (DatabaseEngine.fromName(connection.engine).hasServer) {
-                        "${connection.dbHost}:${connection.dbPort}/${connection.database}"
-                    } else {
-                        connection.fileName.orEmpty()
-                    },
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.production_confirm_open))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+    val server = DatabaseEngine.fromName(connection.engine).hasServer
+    BasicAlertDialog(onDismissRequest = onCancel) {
+        ProductionConfirmCard(
+            name = connection.name,
+            target = if (server) "${connection.dbHost}:${connection.dbPort}/${connection.database}" else connection.fileName.orEmpty(),
+            isFile = !server,
+            onConfirm = onConfirm,
+            onCancel = onCancel,
+        )
+    }
+}
+
+/**
+ * The card of the production confirmation. A file connection says "database file", not "server":
+ * a SQLite file does not point at anything, it is the thing itself.
+ */
+@Composable
+fun ProductionConfirmCard(
+    name: String,
+    target: String,
+    isFile: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    DialogCard(danger = true) {
+        DialogHeading(
+            title = stringResource(R.string.production_confirm_title),
+            subtitle = stringResource(R.string.environment_production_short).uppercase(),
+            danger = true,
+        )
+        Text(
+            stringResource(
+                if (isFile) R.string.production_confirm_body_file else R.string.production_confirm_body,
+                name,
+                target,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onCancel,
+            actionLabel = stringResource(R.string.production_confirm_open),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
 }
 
 /** `name · 1.2 MB`, or `name · copy missing` when the app has no copy of the file. */
