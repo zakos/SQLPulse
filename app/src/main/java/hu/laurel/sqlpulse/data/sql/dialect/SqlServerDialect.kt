@@ -146,6 +146,11 @@ object SqlServerFailures {
         byNumber(errorCode)?.let { return it }
         val text = message.lowercase()
         return when {
+            // A failed handshake carries SQLState 08S01, which the shared table would call a lost
+            // connection; the wording is what says it was the certificate or the encryption.
+            text.containsAny("secure sockets layer", "ssl", "tls", "pkix", "certificate") ->
+                SqlFailureKind.TLS
+
             // The driver's wording for a socket that never opened. Its SQLState is 08S01, which
             // the shared table would call a lost connection.
             text.contains("tcp/ip connection to the host") || text.contains("unknown host") ||
@@ -160,6 +165,8 @@ object SqlServerFailures {
             else -> SqlFailures.classify(0, sqlState, message)
         }
     }
+
+    private fun String.containsAny(vararg needles: String) = needles.any { contains(it) }
 
     private fun byNumber(code: Int): SqlFailureKind? = when (code) {
         // 18456: login failed. 18452/18451: login from an untrusted domain / login refused.

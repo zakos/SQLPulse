@@ -107,7 +107,7 @@
 -keep class com.microsoft.sqlserver.** { *; }
 -keep class microsoft.sql.** { *; }
 # The CA trust manager the driver loads by name (trustManagerClass) with one String argument.
--keep class hu.laurel.sqlpulse.data.sql.dialect.PemTrustManager { <init>(java.lang.String); }
+-keep class hu.laurel.sqlpulse.data.sql.dialect.VerifyingTrustManager { <init>(java.lang.String); }
 -dontwarn com.microsoft.sqlserver.**
 -dontwarn com.microsoft.aad.msal4j.**
 -dontwarn com.azure.**

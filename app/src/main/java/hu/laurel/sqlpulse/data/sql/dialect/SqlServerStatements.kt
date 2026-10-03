@@ -217,6 +217,8 @@ internal object TSql {
         val first = top.firstOrNull() ?: return null
         if (first.start != clean.indexOfFirst { !it.isWhitespace() }) return null
         if (scanned.words.any { it.text in SIDE_EFFECT_WORDS || it.text.startsWith("xp_") }) return null
+        // `NEXT VALUE FOR seq` advances a sequence every time it is evaluated, a SELECT's included.
+        if (scanned.words.zipWithNext().any { (a, b) -> a.text == "next" && b.text == "value" }) return null
         if (top.any { it.text == "join" || it.text == "top" }) return null
         val whereAt = top.firstOrNull { it.text == "where" }
         val tail = whereAt?.let { " " + clean.substring(it.start).trim() } ?: ""
