@@ -184,7 +184,7 @@ class MySqlDialectTest {
     @Test
     fun `the registry hands MySQL its dialect and the rest their stubs`() {
         assertSame(MySqlDialect, SqlDialects.forEngine(DatabaseEngine.MYSQL))
-        for (engine in DatabaseEngine.entries - DatabaseEngine.MYSQL) {
+        for (engine in DatabaseEngine.entries - DatabaseEngine.MYSQL - DatabaseEngine.POSTGRESQL) {
             val stub = SqlDialects.forEngine(engine)
             assertEquals(engine, stub.engine)
             assertFalse("$engine is not finished", stub.connectable)

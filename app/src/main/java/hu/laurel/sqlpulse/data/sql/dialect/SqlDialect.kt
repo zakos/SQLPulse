@@ -52,6 +52,12 @@ interface SqlSyntax {
     val likeEscape: String
 
     /**
+     * [quotedColumn] as the left side of a `LIKE`. MySQL and SQL Server compare any type with a
+     * pattern; PostgreSQL has no `LIKE` for numbers, dates, uuids or arrays and needs a cast.
+     */
+    fun likeOperand(quotedColumn: String): String = quotedColumn
+
+    /**
      * [select] limited to [limit] rows, skipping [offset] when given. [ordered] says whether it
      * already has an ORDER BY, which T-SQL's OFFSET … FETCH needs and has to invent otherwise.
      */

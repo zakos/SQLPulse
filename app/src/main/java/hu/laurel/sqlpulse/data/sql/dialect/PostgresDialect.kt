@@ -71,6 +71,8 @@ object PostgresDialect : SqlDialect {
     /** Backslash is LIKE's default escape in PostgreSQL. */
     override val likeEscape: String = ""
 
+    override fun likeOperand(quotedColumn: String): String = "CAST($quotedColumn AS text)"
+
     override fun limit(select: String, limit: Int, offset: Int?, ordered: Boolean): String =
         if (offset == null) "$select LIMIT $limit" else "$select LIMIT $limit OFFSET $offset"
 
@@ -79,16 +81,24 @@ object PostgresDialect : SqlDialect {
 
     // ---------------------------------------------------------------- statements
 
-    override fun classify(sql: String): StatementKind {
-        val stripped = SqlGuards.strip(sql, grammar).trim()
+    override fun classify(sql: String): StatementKind = classifyStripped(SqlGuards.strip(sql, grammar).trim())
+
+    /** [classify] on text whose comments and literals are already gone. */
+    private fun classifyStripped(stripped: String): StatementKind {
         explainedStatement(stripped)?.let { (analyzes, inner) ->
             // Plain EXPLAIN only plans. With ANALYZE the statement really runs, so an explained
             // write is a write.
-            if (analyzes && SqlGuards.classify(inner, grammar) == StatementKind.WRITE) return StatementKind.WRITE
+            if (analyzes && classifyStripped(inner.trim()) == StatementKind.WRITE) return StatementKind.WRITE
         }
-        val kind = SqlGuards.classify(sql, grammar)
+        val kind = SqlGuards.classify(stripped, grammar)
+        if (kind != StatementKind.READ) return kind
         // `SELECT … INTO new_table` creates a table: DDL in a SELECT's clothes (§2).
-        if (kind == StatementKind.READ && SELECT_INTO.containsMatchIn(stripped)) return StatementKind.OTHER
+        if (SELECT_INTO.containsMatchIn(stripped)) return StatementKind.OTHER
+        // PostgreSQL lets a WITH hold INSERT/UPDATE/DELETE and then select from them, so a
+        // `WITH … SELECT` is only a read when none of its bodies writes.
+        if (stripped.startsWith("with", ignoreCase = true) && dataModifyingBodies(stripped).isNotEmpty()) {
+            return StatementKind.WRITE
+        }
         return kind
     }
 
@@ -108,13 +118,41 @@ object PostgresDialect : SqlDialect {
         return limited
     }
 
-    override fun isUnguardedWrite(sql: String): Boolean {
-        val explained = explainedStatement(SqlGuards.strip(sql, grammar).trim())
-        if (explained != null) {
-            return explained.first && SqlGuards.isUnguardedWrite(explained.second, grammar)
-        }
-        return SqlGuards.isUnguardedWrite(sql, grammar)
+    override fun isUnguardedWrite(sql: String): Boolean = unguarded(SqlGuards.strip(sql, grammar).trim())
+
+    private fun unguarded(stripped: String): Boolean {
+        explainedStatement(stripped)?.let { (analyzes, inner) -> return analyzes && unguarded(inner.trim()) }
+        if (SqlGuards.isUnguardedWrite(stripped, grammar)) return true
+        // A DELETE or UPDATE inside a CTE body is guarded by its own WHERE, not by the SELECT after it.
+        return stripped.startsWith("with", ignoreCase = true) &&
+            dataModifyingBodies(stripped).any { (keyword, text) ->
+                (keyword == "update" || keyword == "delete") && !WHERE.containsMatchIn(text)
+            }
     }
+
+    /**
+     * The INSERT/UPDATE/DELETE/MERGE statements written inside a WITH of [stripped], each as its
+     * keyword and the text up to the parenthesis that closes it. A `FOR UPDATE` or
+     * `FOR NO KEY UPDATE` lock clause is not one.
+     */
+    private fun dataModifyingBodies(stripped: String): List<Pair<String, String>> =
+        DATA_MODIFYING.findAll(stripped).mapNotNull { match ->
+            val keyword = match.value.lowercase()
+            val before = stripped.substring(0, match.range.first).trimEnd()
+                .takeLastWhile { !it.isWhitespace() }.lowercase()
+            if (keyword == "update" && (before == "for" || before == "key")) return@mapNotNull null
+            var depth = 0
+            var end = stripped.length
+            for (index in match.range.last until stripped.length) {
+                val c = stripped[index]
+                if (c == '(') depth++
+                if (c == ')' && --depth < 0) {
+                    end = index
+                    break
+                }
+            }
+            keyword to stripped.substring(match.range.first, end)
+        }.toList()
 
     /**
      * `SET search_path TO s`, `SET SESSION search_path = "s"` and `SET SCHEMA 's'` with one name.
@@ -132,6 +170,12 @@ object PostgresDialect : SqlDialect {
         }
         return name.takeIf { it.isNotEmpty() }
     }
+
+    /**
+     * The placeholders that [bindParameters] actually binds. The shared regex would also read the
+     * cast in `a::text` as a parameter called `text`.
+     */
+    override fun parameters(sql: String): List<String> = bindParameters(sql).parameterOrder.distinct()
 
     override fun explain(sql: String): String = "EXPLAIN (FORMAT JSON) $sql"
 
@@ -243,6 +287,10 @@ object PostgresDialect : SqlDialect {
     private val EXPLAIN_PREFIX = Regex(
         "(?is)^explain\\b(\\s*(\\((?:[^()]|\\([^()]*\\))*\\)|\\b(?:analy[sz]e|verbose)\\b))*",
     )
+
+    private val DATA_MODIFYING = Regex("(?i)\\b(insert|update|delete|merge)\\b")
+
+    private val WHERE = Regex("(?i)\\bwhere\\b")
 
     private val SELECT_INTO = Regex("(?i)^\\s*(\\(?\\s*)*select\\b[^;]*\\binto\\b")
 

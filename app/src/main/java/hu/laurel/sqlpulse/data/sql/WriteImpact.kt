@@ -93,7 +93,7 @@ object WriteImpact {
         val keywords = topLevelKeywords(masked, start)
         val setAt = keywords.firstOrNull { it.second == "set" }?.first ?: return null
         val table = clean.substring(start, setAt).trim()
-        if (!TABLE_REFERENCE.matches(table)) return null
+        if (!TABLE_REFERENCE.matches(table) || onlyTable(table, syntax)) return null
         // PostgreSQL's `UPDATE t SET ... FROM other WHERE ...` joins a second table: the rows it
         // changes are not the rows the WHERE matches in `t` alone.
         if (postgres(syntax) && keywords.any { it.first > setAt && it.second == "from" }) return null
@@ -114,7 +114,7 @@ object WriteImpact {
         if (keywords.any { it.second == "using" }) return null
         val stop = keywords.firstOrNull { it.second in tailStarters(syntax) }?.first ?: clean.length
         val table = clean.substring(tableStart, stop).trim()
-        if (!TABLE_REFERENCE.matches(table)) return null
+        if (!TABLE_REFERENCE.matches(table) || onlyTable(table, syntax)) return null
         return Parsed(table, tail(clean, masked, stop, syntax) ?: return null, null)
     }
 
@@ -205,6 +205,10 @@ object WriteImpact {
                     )
             }
     }
+
+    /** PostgreSQL's `ONLY t` leaves out the table's children: not the rows a plain count would give. */
+    private fun onlyTable(table: String, syntax: SqlSyntax) =
+        postgres(syntax) && table.startsWith("only", ignoreCase = true) && table.getOrNull(4)?.isWhitespace() == true
 
     private fun postgres(syntax: SqlSyntax) = syntax.engine == DatabaseEngine.POSTGRESQL
 
