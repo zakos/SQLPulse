@@ -39,6 +39,7 @@ fun FullExportProgressCard(progress: FullExportProgress, onCancel: () -> Unit) {
             Text(
                 LocaleFormat.integer(progress.rows, locale),
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 stringResource(
