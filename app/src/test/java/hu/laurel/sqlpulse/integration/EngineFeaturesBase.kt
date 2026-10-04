@@ -63,6 +63,9 @@ abstract class EngineFeaturesBase {
     /** Both sides of the comparison; see [diffExpectations]. */
     protected abstract fun diffFixture(backend: EngineBackend)
 
+    /** Both sides of the objects comparison; the contract is in [SchemaObjectsSupport]. */
+    protected abstract fun objectsFixture(backend: EngineBackend)
+
     /** `big` (indexed, with rows), `counter` (an identity near the end of its type) and a view. */
     protected abstract fun storageFixture(side: EngineSide, backend: EngineBackend)
 
@@ -274,6 +277,16 @@ abstract class EngineFeaturesBase {
         assertEquals(DiffField.NULLABLE, name.field)
         assertEquals("NULL", name.a)
         assertEquals("NOT NULL", name.b)
+    }
+
+    @Test
+    fun `views, triggers, checks and foreign key rules are compared`() {
+        objectsFixture(backend)
+        val result = SchemaDiff.compare(
+            SchemaObjectsSupport.side(backend.a.manager, backend.a.namespace, dialect.engine),
+            SchemaObjectsSupport.side(backend.b.manager, backend.b.namespace, dialect.engine),
+        )
+        SchemaObjectsSupport.assertFixtureDifferences(result)
     }
 
     // ------------------------------------------------------------------ storage

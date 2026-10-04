@@ -81,6 +81,18 @@ interface SchemaCatalog {
 
     fun triggers(connection: Connection, namespace: String): List<SchemaTrigger> = emptyList()
 
+    /**
+     * The text of every view in [namespace], by view name, for the schema comparison. One
+     * statement per database rather than one per view: over a tunnel the round trips are the
+     * cost. A view whose text the user may not see (no SHOW VIEW, an encrypted module) is left
+     * out, which the comparison reads as "unknown", never as "different".
+     */
+    fun viewDefinitions(connection: Connection, namespace: String): Map<String, String> = emptyMap()
+
+    /** [triggers] with [SchemaTrigger.body] filled in, for the schema comparison. */
+    fun triggerDefinitions(connection: Connection, namespace: String): List<SchemaTrigger> =
+        triggers(connection, namespace)
+
     fun events(connection: Connection, namespace: String): List<SchemaEvent> = emptyList()
 }
 

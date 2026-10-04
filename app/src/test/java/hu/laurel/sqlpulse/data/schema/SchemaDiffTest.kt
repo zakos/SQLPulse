@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.schema
 
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -399,8 +400,8 @@ class SchemaDiffTest {
         val dev = "CREATE ALGORITHM=UNDEFINED DEFINER=`dev`@`%` SQL SECURITY DEFINER VIEW `shop_dev`.`v` AS select `shop_dev`.`t`.`id` AS `id` from `shop_dev`.`t`"
         val prod = "CREATE ALGORITHM=UNDEFINED DEFINER=`deploy`@`10.0.0.%` SQL SECURITY DEFINER VIEW `shop`.`v` AS  select `shop`.`t`.`id` AS `id`\n from `shop`.`t`"
         assertEquals(
-            SchemaDiff.normalizeViewDefinition(dev, "shop_dev"),
-            SchemaDiff.normalizeViewDefinition(prod, "shop"),
+            ObjectText.normalize(dev, "shop_dev", DatabaseEngine.MYSQL),
+            ObjectText.normalize(prod, "shop", DatabaseEngine.MYSQL),
         )
         val result = SchemaDiff.compare(
             side("shop_dev", table("v", kind = TableKind.VIEW, engine = null) to structure(), views = mapOf("v" to dev)),
@@ -423,12 +424,12 @@ class SchemaDiffTest {
     @Test
     fun `spaces inside string literals are kept`() {
         assertFalse(
-            SchemaDiff.normalizeViewDefinition("CREATE VIEW v AS select 'a  b'", "x") ==
-                SchemaDiff.normalizeViewDefinition("CREATE VIEW v AS select 'a b'", "x"),
+            ObjectText.normalize("CREATE VIEW v AS select 'a  b'", "x", DatabaseEngine.MYSQL) ==
+                ObjectText.normalize("CREATE VIEW v AS select 'a b'", "x", DatabaseEngine.MYSQL),
         )
         assertEquals(
-            "CREATE VIEW v AS select a+b",
-            SchemaDiff.normalizeViewDefinition("CREATE   VIEW v AS select a + b", "x"),
+            "create view v as select a+b",
+            ObjectText.normalize("CREATE   VIEW v AS select a + b", "x", DatabaseEngine.MYSQL),
         )
     }
 

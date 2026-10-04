@@ -443,6 +443,45 @@ object SqlServerCatalog : SchemaCatalog {
             }
         }
 
+    /** The trigger text from `sys.sql_modules`, which is the CREATE TRIGGER statement as written. */
+    override fun triggerDefinitions(connection: Connection, namespace: String): List<SchemaTrigger> {
+        val bodies = connection.prepareStatement(
+            """
+            SELECT tr.name AS name, t.name AS table_name, m.definition AS definition
+            FROM sys.triggers tr
+            JOIN sys.tables t ON t.object_id = tr.parent_id
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            JOIN sys.sql_modules m ON m.object_id = tr.object_id
+            WHERE s.name = ? AND tr.is_ms_shipped = 0
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().collect { rows ->
+                (rows.getString("table_name") to rows.getString("name")) to rows.getString("definition").orEmpty()
+            }.toMap()
+        }
+        // An encrypted trigger has no definition; it keeps its shape and an empty body.
+        return triggers(connection, namespace).map { it.copy(body = bodies[it.table to it.name].orEmpty()) }
+    }
+
+    /** `sys.sql_modules` text of every user view; an encrypted view has none and is left out. */
+    override fun viewDefinitions(connection: Connection, namespace: String): Map<String, String> =
+        connection.prepareStatement(
+            """
+            SELECT v.name AS name, m.definition AS definition
+            FROM sys.views v
+            JOIN sys.schemas s ON s.schema_id = v.schema_id
+            JOIN sys.sql_modules m ON m.object_id = v.object_id
+            WHERE s.name = ? AND v.is_ms_shipped = 0 AND m.definition IS NOT NULL
+            ORDER BY v.name
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().collect { rows ->
+                rows.getString("name") to rows.getString("definition")
+            }.toMap()
+        }
+
     private inline fun <T> ResultSet.collect(mapper: (ResultSet) -> T): List<T> = use { rows ->
         buildList {
             while (rows.next()) add(mapper(rows))

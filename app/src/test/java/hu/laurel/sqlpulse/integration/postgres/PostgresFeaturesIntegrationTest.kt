@@ -65,6 +65,30 @@ class PostgresFeaturesIntegrationTest : EngineFeaturesBase() {
         )
     }
 
+    override fun objectsFixture(backend: EngineBackend) {
+        for ((side, variant) in listOf(backend.a to "a", backend.b to "b")) {
+            val ns = PostgresDialect.quoteIdentifier(side.namespace)
+            val a = variant == "a"
+            backend.execute(
+                side,
+                "CREATE TABLE ${t(side, "parent")} (id integer PRIMARY KEY)",
+                "CREATE TABLE ${t(side, "child")} (id integer PRIMARY KEY, parent_id integer, qty integer, price integer, note text, " +
+                    "CONSTRAINT child_parent_fk FOREIGN KEY (parent_id) REFERENCES ${t(side, "parent")} (id) " +
+                    "ON DELETE ${if (a) "CASCADE" else "SET NULL"}, " +
+                    "CONSTRAINT qty_ok CHECK (qty ${if (a) ">" else ">="} 0), " +
+                    "CONSTRAINT price_ok CHECK (${if (a) "price >= 0" else "(price)>=0"}))",
+                "CREATE VIEW ${t(side, "v_child")} AS SELECT id, qty FROM ${t(side, "child")} WHERE qty > ${if (a) 0 else 1}",
+                if (a) "CREATE VIEW ${t(side, "v_same")} AS SELECT id FROM ${t(side, "child")} WHERE price > 5"
+                else "CREATE VIEW ${t(side, "v_same")} AS\n  SELECT   id\n FROM ${t(side, "child")}\n  WHERE price>5",
+                "CREATE FUNCTION $ns.touch() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN NEW.note := '${if (a) "a" else "b"}'; RETURN NEW; END \$\$",
+                "CREATE FUNCTION $ns.same_fn() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN NEW.price := " +
+                    (if (a) "1; RETURN NEW; END" else "1;\n  RETURN NEW;\n END") + " \$\$",
+                "CREATE TRIGGER trg_child BEFORE INSERT ON ${t(side, "child")} FOR EACH ROW EXECUTE FUNCTION $ns.touch()",
+                "CREATE TRIGGER trg_same BEFORE UPDATE ON ${t(side, "child")} FOR EACH ROW EXECUTE FUNCTION $ns.same_fn()",
+            )
+        }
+    }
+
     override fun storageFixture(side: EngineSide, backend: EngineBackend) {
         val big = t(side, "big")
         val counter = t(side, "counter")

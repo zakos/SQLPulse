@@ -35,8 +35,12 @@ class Converters {
         CachedIndexEntity::class,
         CachedForeignKeyEntity::class,
         WriteLogEntity::class,
+        CachedCheckEntity::class,
+        CachedViewEntity::class,
+        CachedTriggerEntity::class,
+        CachedObjectCaptureEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

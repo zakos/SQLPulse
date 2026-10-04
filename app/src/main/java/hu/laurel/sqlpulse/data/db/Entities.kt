@@ -319,6 +319,13 @@ data class CachedTableEntity(
      * page would then claim a freshness nothing measured.
      */
     val structureCapturedAt: Long?,
+    /**
+     * When this table's CHECK constraints were read, or null for a structure captured before
+     * they were kept (v12). The marker is what tells "no CHECK constraints" from "never read",
+     * so the schema comparison does not report every constraint of a fresh capture as missing
+     * from an old one.
+     */
+    val checksCapturedAt: Long?,
 )
 
 @Entity(
@@ -401,6 +408,111 @@ data class CachedForeignKeyEntity(
     val referencedDatabase: String,
     val referencedTable: String,
     val referencedColumn: String,
+    /** CASCADE, SET NULL, … as the server reports it; null in a row captured before v12. */
+    val onDelete: String?,
+    val onUpdate: String?,
+)
+
+/** A CHECK constraint of a cached table (v12). */
+@Entity(
+    tableName = "cached_check",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedCheckEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    val expression: String?,
+    val enforced: Boolean,
+)
+
+/**
+ * A view's text as the server gave it (v12). Raw, not normalised: the normalisation rules will
+ * improve and a stored row must be re-read through the better rule, not frozen at the old one.
+ */
+@Entity(
+    tableName = "cached_view",
+    primaryKeys = ["connectionId", "database", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedViewEntity(
+    val connectionId: Long,
+    val database: String,
+    val name: String,
+    val definition: String,
+)
+
+/**
+ * A trigger with its body (v12). The table is part of the key because PostgreSQL names triggers
+ * per table; MySQL, SQL Server and SQLite names are unique per schema, which the wider key
+ * merely tolerates.
+ */
+@Entity(
+    tableName = "cached_trigger",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedTriggerEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    /** BEFORE, AFTER or INSTEAD OF. */
+    val timing: String,
+    /** INSERT, UPDATE, DELETE, or several joined by " OR " / ", ". */
+    val event: String,
+    /** The trigger's text (body, or the whole CREATE statement where the engine has only that). */
+    val body: String,
+)
+
+/**
+ * When a database's views and triggers were last read (v12). Their own marker, because a
+ * database with no triggers and a database whose triggers were never read look the same in
+ * `cached_trigger`, and only one of them is a fact about the server.
+ */
+@Entity(
+    tableName = "cached_object_capture",
+    primaryKeys = ["connectionId", "database"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedObjectCaptureEntity(
+    val connectionId: Long,
+    val database: String,
+    val capturedAt: Long,
 )
 
 /**

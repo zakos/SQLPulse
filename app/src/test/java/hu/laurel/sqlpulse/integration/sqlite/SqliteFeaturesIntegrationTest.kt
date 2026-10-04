@@ -66,6 +66,26 @@ class SqliteFeaturesIntegrationTest : EngineFeaturesBase() {
         )
     }
 
+    override fun objectsFixture(backend: EngineBackend) {
+        for ((side, variant) in listOf(backend.a to "a", backend.b to "b")) {
+            val a = variant == "a"
+            backend.execute(
+                side,
+                "CREATE TABLE parent (id INTEGER PRIMARY KEY)",
+                "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER, qty INTEGER, price INTEGER, note TEXT, " +
+                    "FOREIGN KEY (parent_id) REFERENCES parent (id) ON DELETE ${if (a) "CASCADE" else "SET NULL"}, " +
+                    "CONSTRAINT qty_ok CHECK (qty ${if (a) ">" else ">="} 0), " +
+                    "CONSTRAINT price_ok CHECK (${if (a) "price >= 0" else "(price>=0)"}))",
+                "CREATE VIEW v_child AS SELECT id, qty FROM child WHERE qty > ${if (a) 0 else 1}",
+                if (a) "CREATE VIEW v_same AS SELECT id FROM child WHERE price > 5"
+                else "CREATE VIEW v_same AS\n  SELECT   id\n FROM \"child\"\n  WHERE price>5",
+                "CREATE TRIGGER trg_child AFTER INSERT ON child BEGIN UPDATE child SET note = '${if (a) "a" else "b"}' WHERE id = NEW.id; END",
+                if (a) "CREATE TRIGGER trg_same AFTER UPDATE ON child BEGIN UPDATE child SET price = 1 WHERE id = NEW.id; END"
+                else "CREATE TRIGGER trg_same AFTER UPDATE ON child\nBEGIN\n  UPDATE child SET price=1 WHERE id = NEW.id;\nEND",
+            )
+        }
+    }
+
     override fun manyRows(): Array<String> = Array(12) {
         "INSERT INTO docs (id, title) VALUES (${100 + it}, 'filler $it')"
     }

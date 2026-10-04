@@ -183,6 +183,18 @@ fun SchemaDiffScreenContent(
                     },
                 )
             }
+            if (result.triggers.isNotEmpty() || result.triggerGap != StructureGap.NONE) {
+                item(key = "triggers-caption") {
+                    SectionCaption(
+                        stringResource(R.string.schemadiff2_section_triggers),
+                        modifier = Modifier.padding(top = Spacing.s),
+                    )
+                }
+                if (result.triggers.isNotEmpty()) item(key = "triggers") { TriggerCard(result.triggers) }
+                if (result.triggerGap != StructureGap.NONE) {
+                    item(key = "triggers-gap") { Note(stringResource(result.triggerGap.triggerLabel())) }
+                }
+            }
             if (result.unchecked.isNotEmpty()) {
                 item(key = "unchecked-caption") {
                     SectionCaption(
@@ -193,7 +205,7 @@ fun SchemaDiffScreenContent(
                 item(key = "unchecked") { UncheckedCard(result.unchecked) }
                 item(key = "unchecked-note") { Note(stringResource(R.string.schemadiff_incomplete)) }
             }
-            item(key = "limits") { Note(stringResource(R.string.schemadiff_limits)) }
+            item(key = "limits") { Note(stringResource(R.string.schemadiff2_limits)) }
         }
     }
 }
@@ -500,6 +512,7 @@ private fun TableCard(table: TableDiff, expanded: Boolean, onToggle: () -> Unit)
                     ItemSection(R.string.schemadiff_section_columns, table.columns)
                     ItemSection(R.string.schemadiff_section_indexes, table.indexes)
                     ItemSection(R.string.schemadiff_section_keys, table.foreignKeys)
+                    ItemSection(R.string.schemadiff2_section_checks, table.checks)
                 }
             }
         }
@@ -544,12 +557,20 @@ private fun Change(change: FieldChange) {
             color = semantic.textSecondary,
             modifier = Modifier.width(76.dp),
         )
-        // A definition is too long to show twice; that it differs is the whole message.
-        if (change.field != DiffField.DEFINITION) {
-            Column(modifier = Modifier.weight(1f)) {
-                SideValue(DiffSide.A, change.a)
-                SideValue(DiffSide.B, change.b)
-            }
+        // A view or trigger body is long: only the stretch around the first difference arrives here.
+        Column(modifier = Modifier.weight(1f)) {
+            SideValue(DiffSide.A, change.a)
+            SideValue(DiffSide.B, change.b)
+        }
+    }
+}
+
+/** Triggers that differ, one row each: `table.name`, what it fires on, and what changed. */
+@Composable
+private fun TriggerCard(triggers: List<ItemDiff>) {
+    HairlineCard {
+        Column(modifier = Modifier.padding(Spacing.m), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            triggers.forEach { ItemRow(it) }
         }
     }
 }
@@ -646,6 +667,13 @@ private fun DiffSide.colour(): Color = when (this) {
 }
 
 @StringRes
+private fun StructureGap.triggerLabel(): Int = when (this) {
+    StructureGap.MISSING_A -> R.string.schemadiff2_triggers_gap_a
+    StructureGap.MISSING_B -> R.string.schemadiff2_triggers_gap_b
+    StructureGap.MISSING_BOTH, StructureGap.NONE -> R.string.schemadiff2_triggers_gap_both
+}
+
+@StringRes
 private fun StructureGap.label(): Int = when (this) {
     StructureGap.MISSING_A -> R.string.schemadiff_gap_a
     StructureGap.MISSING_B -> R.string.schemadiff_gap_b
@@ -668,4 +696,11 @@ private fun DiffField.label(): Int = when (this) {
     DiffField.COLUMNS -> R.string.schemadiff_field_columns
     DiffField.REFERENCES -> R.string.schemadiff_field_references
     DiffField.DEFINITION -> R.string.schemadiff_field_definition
+    DiffField.ON_DELETE -> R.string.schemadiff2_field_on_delete
+    DiffField.ON_UPDATE -> R.string.schemadiff2_field_on_update
+    DiffField.EXPRESSION -> R.string.schemadiff2_field_expression
+    DiffField.ENFORCED -> R.string.schemadiff2_field_enforced
+    DiffField.TIMING -> R.string.schemadiff2_field_timing
+    DiffField.EVENT -> R.string.schemadiff2_field_event
+    DiffField.TABLE -> R.string.schemadiff2_field_table
 }

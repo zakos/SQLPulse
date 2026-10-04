@@ -141,6 +141,59 @@ object MySqlCatalog : SchemaCatalog {
             }
         }
 
+    override fun triggerDefinitions(connection: Connection, namespace: String): List<SchemaTrigger> =
+        connection.prepareStatement(
+            """
+            SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, ACTION_TIMING, ACTION_STATEMENT
+            FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA = ?
+            ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().collect { rows ->
+                SchemaTrigger(
+                    name = rows.getString("TRIGGER_NAME"),
+                    table = rows.getString("EVENT_OBJECT_TABLE"),
+                    event = rows.getString("EVENT_MANIPULATION"),
+                    timing = rows.getString("ACTION_TIMING"),
+                    body = rows.getString("ACTION_STATEMENT").orEmpty(),
+                )
+            }
+        }
+
+    /**
+     * Every view's query from `information_schema.VIEWS`, written as a CREATE VIEW so the
+     * comparison's normaliser sees the same shape `SHOW CREATE VIEW` gives (and would be given
+     * if it were ever used instead). `SHOW CREATE VIEW` would be one round trip per view; this is
+     * one per database, and it carries no DEFINER or ALGORITHM to strip in the first place.
+     * `VIEW_DEFINITION` is NULL without the SHOW VIEW privilege, so such a view is left out.
+     */
+    override fun viewDefinitions(connection: Connection, namespace: String): Map<String, String> =
+        connection.prepareStatement(
+            """
+            SELECT TABLE_NAME, VIEW_DEFINITION, CHECK_OPTION
+            FROM information_schema.VIEWS
+            WHERE TABLE_SCHEMA = ?
+            ORDER BY TABLE_NAME
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            val views = LinkedHashMap<String, String>()
+            statement.executeQuery().use { rows ->
+                while (rows.next()) {
+                    val query = rows.getString("VIEW_DEFINITION")?.takeIf { it.isNotBlank() } ?: continue
+                    val option = rows.getString("CHECK_OPTION")?.takeIf { it != "NONE" }
+                    views[rows.getString("TABLE_NAME")] = buildString {
+                        append("CREATE VIEW ").append(quoteIdentifier(rows.getString("TABLE_NAME")))
+                        append(" AS ").append(query)
+                        if (option != null) append(" WITH ").append(option).append(" CHECK OPTION")
+                    }
+                }
+            }
+            views
+        }
+
     /**
      * Scheduled events. A server with the event scheduler switched off still lists them, which is
      * worth seeing: an event that never runs looks exactly like one that does.

@@ -29,7 +29,6 @@
     <string name="schemadiff_identical">A két séma minden összevetett pontban egyezik.</string>
     <string name="schemadiff_waiting">Válasszon kapcsolatot és adatbázist mindkét oldalra.</string>
     <string name="schemadiff_no_connections">Előbb mentsen el egy kapcsolatot: az összehasonlítás annak adatbázisait olvassa.</string>
-    <string name="schemadiff_limits">Összevetve: táblák, oszlopok (típus, NULL, alapérték, extra, sorrend), indexek és idegen kulcsok. A mentett séma nem tárolja a nézetek definícióját, a triggereket, a rutinokat, a CHECK feltételeket, az oszlopok illesztését és az idegen kulcsok szabályait, ezért ezek nincsenek összevetve.</string>
 
     <string name="schemadiff_section_table">Tábla</string>
     <string name="schemadiff_section_columns">Oszlopok</string>

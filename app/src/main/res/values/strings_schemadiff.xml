@@ -38,7 +38,6 @@
     <string name="schemadiff_identical">The two schemas match in everything that was compared.</string>
     <string name="schemadiff_waiting">Choose a connection and a database for both sides.</string>
     <string name="schemadiff_no_connections">Save a connection first: the comparison reads its databases.</string>
-    <string name="schemadiff_limits">Compared: tables, columns (type, NULL, default, extra, order), indexes and foreign keys. The stored schema does not keep view definitions, triggers, routines, CHECK constraints, column collations or foreign key rules, so those are not compared.</string>
 
     <string name="schemadiff_section_table">Table</string>
     <string name="schemadiff_section_columns">Columns</string>

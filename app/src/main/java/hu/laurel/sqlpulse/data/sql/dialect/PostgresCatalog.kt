@@ -534,6 +534,58 @@ object PostgresCatalog : SchemaCatalog {
             }
         }
 
+    /**
+     * The trigger definition as the server prints it, followed by the trigger function's own
+     * definition: the trigger line alone says `EXECUTE FUNCTION audit()`, and a changed function
+     * body is the change anybody comparing two databases is after. A function in another schema
+     * is included too; only triggers the user did not get from an extension are listed.
+     */
+    override fun triggerDefinitions(connection: Connection, namespace: String): List<SchemaTrigger> {
+        val shapes = triggers(connection, namespace).associateBy { it.table to it.name }
+        return connection.prepareStatement(
+            """
+            SELECT tg.tgname, t.relname, pg_get_triggerdef(tg.oid, true) AS definition,
+                   pg_get_functiondef(tg.tgfoid) AS function_definition
+            FROM pg_trigger tg
+            JOIN pg_class t ON t.oid = tg.tgrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE NOT tg.tgisinternal AND n.nspname = ?
+            ORDER BY t.relname, tg.tgname
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().collect { rows ->
+                val table = rows.getString("relname")
+                val name = rows.getString("tgname")
+                val shape = shapes[table to name]
+                SchemaTrigger(
+                    name = name,
+                    table = table,
+                    event = shape?.event.orEmpty(),
+                    timing = shape?.timing.orEmpty(),
+                    body = rows.getString("definition").orEmpty() + "\n" +
+                        rows.getString("function_definition").orEmpty(),
+                )
+            }
+        }
+    }
+
+    /** `pg_get_viewdef` for every view and materialised view of the schema, in one statement. */
+    override fun viewDefinitions(connection: Connection, namespace: String): Map<String, String> =
+        connection.prepareStatement(
+            """
+            SELECT c.relname, pg_get_viewdef(c.oid, true) AS definition
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = ? AND c.relkind IN ('v', 'm')
+            ORDER BY c.relname
+            """.trimIndent(),
+        ).use { statement ->
+            statement.setString(1, namespace)
+            statement.executeQuery().collect { rows ->
+                rows.getString("relname") to rows.getString("definition").orEmpty().trim()
+            }.filter { it.second.isNotEmpty() }.toMap()
+        }
+
     /** The server's own schemas: listed last in the picker rather than hidden. */
     val SYSTEM_SCHEMAS = setOf("pg_catalog", "information_schema", "pg_toast")
 

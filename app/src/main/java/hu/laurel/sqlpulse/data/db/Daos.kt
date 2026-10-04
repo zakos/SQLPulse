@@ -219,7 +219,8 @@ interface SchemaCacheDao {
     suspend fun deleteTables(connectionId: Long, database: String, names: List<String>)
 
     @Query(
-        "UPDATE cached_table SET structureCapturedAt = :capturedAt WHERE connectionId = :connectionId" +
+        "UPDATE cached_table SET structureCapturedAt = :capturedAt, checksCapturedAt = :capturedAt" +
+            " WHERE connectionId = :connectionId" +
             " AND `database` = :database AND name = :table",
     )
     suspend fun markStructureCaptured(
@@ -324,6 +325,74 @@ interface SchemaCacheDao {
 
     @Query("DELETE FROM cached_foreign_key WHERE connectionId = :connectionId")
     suspend fun deleteAllForeignKeys(connectionId: Long)
+
+    @Query("DELETE FROM cached_check WHERE connectionId = :connectionId")
+    suspend fun deleteAllChecks(connectionId: Long)
+
+    @Query("DELETE FROM cached_view WHERE connectionId = :connectionId")
+    suspend fun deleteAllViews(connectionId: Long)
+
+    @Query("DELETE FROM cached_trigger WHERE connectionId = :connectionId")
+    suspend fun deleteAllTriggers(connectionId: Long)
+
+    @Query("DELETE FROM cached_object_capture WHERE connectionId = :connectionId")
+    suspend fun deleteAllObjectCaptures(connectionId: Long)
+
+    // CHECK constraints: per table with the structure, and per database for the comparison.
+
+    @Query(
+        "SELECT * FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table ORDER BY name",
+    )
+    suspend fun checks(connectionId: Long, database: String, table: String): List<CachedCheckEntity>
+
+    @Query(
+        "SELECT * FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, name",
+    )
+    suspend fun checksOfDatabase(connectionId: Long, database: String): List<CachedCheckEntity>
+
+    @Upsert
+    suspend fun upsertChecks(checks: List<CachedCheckEntity>)
+
+    @Query(
+        "DELETE FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table",
+    )
+    suspend fun deleteChecks(connectionId: Long, database: String, table: String)
+
+    // Views and triggers are replaced as a set per database: they are read with one statement
+    // each, and an object the server no longer has must not linger.
+
+    @Query("SELECT * FROM cached_view WHERE connectionId = :connectionId AND `database` = :database ORDER BY name")
+    suspend fun views(connectionId: Long, database: String): List<CachedViewEntity>
+
+    @Upsert
+    suspend fun upsertViews(views: List<CachedViewEntity>)
+
+    @Query("DELETE FROM cached_view WHERE connectionId = :connectionId AND `database` = :database")
+    suspend fun deleteViews(connectionId: Long, database: String)
+
+    @Query(
+        "SELECT * FROM cached_trigger WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, name",
+    )
+    suspend fun triggers(connectionId: Long, database: String): List<CachedTriggerEntity>
+
+    @Upsert
+    suspend fun upsertTriggers(triggers: List<CachedTriggerEntity>)
+
+    @Query("DELETE FROM cached_trigger WHERE connectionId = :connectionId AND `database` = :database")
+    suspend fun deleteTriggers(connectionId: Long, database: String)
+
+    @Query(
+        "SELECT capturedAt FROM cached_object_capture WHERE connectionId = :connectionId" +
+            " AND `database` = :database",
+    )
+    suspend fun objectsCapturedAt(connectionId: Long, database: String): Long?
+
+    @Upsert
+    suspend fun upsertObjectCapture(capture: CachedObjectCaptureEntity)
 }
 
 /**
