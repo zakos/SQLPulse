@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="completion_list">Javaslatok</string>
+    <string name="import_map_for">Céloszlop a(z) %1$s oszlophoz</string>
+    <string name="import_preview_title">Az első sorok, ahogy beíródnak</string>
+    <string name="import_issue_more">+ %1$d további ellenőrizni való</string>
+    <string name="import_issue_duplicate">Több fájloszlop kerül a(z) %2$s oszlopba (%1$s). Csak egy lehet.</string>
+    <string name="import_issue_required">A(z) %1$s oszlopot a tábla megköveteli, de egyik fájloszlop sem tölti ki.</string>
+    <string name="import_issue_type">%1$s → %2$s (%3$s): %4$d érték nem illik ehhez a típushoz, pl. „%5$s”.</string>
+    <string name="import_issue_null">%1$s → %2$s NOT NULL, de %3$d sorban üres.</string>
 </resources>

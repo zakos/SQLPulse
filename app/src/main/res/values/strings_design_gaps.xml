@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="completion_list">Suggestions</string>
+    <string name="import_map_for">Table column for %1$s</string>
+    <string name="import_preview_title">First rows as they will be written</string>
+    <string name="import_issue_more">+ %1$d more to check</string>
+    <string name="import_issue_duplicate">More than one file column goes into %2$s (%1$s). Only one may.</string>
+    <string name="import_issue_required">%1$s is required by the table and no file column fills it.</string>
+    <string name="import_issue_type">%1$s → %2$s (%3$s): %4$d values do not look like that type, e.g. “%5$s”.</string>
+    <string name="import_issue_null">%1$s → %2$s is NOT NULL, but %3$d rows are empty there.</string>
 </resources>

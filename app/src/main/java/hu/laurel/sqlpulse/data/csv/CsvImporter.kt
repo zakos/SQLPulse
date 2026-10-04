@@ -30,8 +30,20 @@ data class ImportPlan(
     val table: CsvTable,
     val match: ColumnMatch,
     val separator: Char,
+    /**
+     * Entry `i` is the table column file column `i` is written into, or null when it is left out.
+     * Starts as the by-name match and is what the person edits on the mapping card.
+     */
+    val mapping: List<String?> = table.header.map { match.matched[it] },
+    /** The table's columns: what the mapping may point at, and what its values are checked against. */
+    val columns: List<SchemaColumn> = emptyList(),
 ) {
     val rowCount: Int get() = table.rows.size
+
+    /** Problems with the mapping; computed once per plan, because it reads every row. */
+    val issues: List<MappingIssue> by lazy { CsvMapping.check(this) }
+
+    val canImport: Boolean get() = match.canImport && issues.none { it.kind.blocking }
 }
 
 /**
@@ -78,7 +90,7 @@ class CsvImporter @Inject constructor(
             if (total > MAX_ROWS) throw ImportTooLargeException(total, MAX_ROWS)
 
             val table = CsvTable(header, rows, malformed)
-            ImportPlan(table, CsvImport.match(header, columns), separator)
+            ImportPlan(table, CsvImport.match(header, columns), separator, columns = columns)
         }
     }
 
@@ -89,11 +101,14 @@ class CsvImporter @Inject constructor(
      * key on row 400 — must not leave the table with 399 rows nobody asked for.
      */
     suspend fun execute(database: String, table: String, plan: ImportPlan): Int {
+        // Two file columns into one table column would silently keep only one of them.
+        require(plan.issues.none { it.kind == MappingIssueKind.DUPLICATE_TARGET }) {
+            "two file columns are mapped to the same table column"
+        }
         val statements = CsvImport.statements(
             database = database,
             table = table,
-            match = plan.match,
-            header = plan.table.header,
+            mapping = plan.mapping,
             rows = plan.table.rows,
             syntax = sessions.dialect(),
         )

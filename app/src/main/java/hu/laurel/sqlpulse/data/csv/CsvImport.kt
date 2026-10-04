@@ -68,9 +68,22 @@ object CsvImport {
         header: List<String>,
         rows: List<List<String?>>,
         syntax: SqlSyntax = MySqlDialect,
+    ): List<PreparedSql> = statements(database, table, header.map { match.matched[it] }, rows, syntax)
+
+    /**
+     * The same, from a per-file-column assignment: entry `i` is the table column file column `i`
+     * goes into, or null to leave it out. Index-based, so two file columns with the same header
+     * cannot be confused.
+     */
+    fun statements(
+        database: String,
+        table: String,
+        mapping: List<String?>,
+        rows: List<List<String?>>,
+        syntax: SqlSyntax = MySqlDialect,
     ): List<PreparedSql> {
-        val indexes = match.matched.keys.map { header.indexOf(it) }
-        val targets = match.matched.values.toList()
+        val indexes = mapping.indices.filter { mapping[it] != null }
+        val targets = indexes.map { mapping[it]!! }
         return rows.mapNotNull { row ->
             val values = indexes.map { index -> row.getOrNull(index) }
             if (values.all { it == null }) return@mapNotNull null
@@ -83,6 +96,8 @@ object CsvImport {
      * filled in by the server. An AUTO_INCREMENT key or a TIMESTAMP DEFAULT CURRENT_TIMESTAMP is
      * fine to leave out; a plain NOT NULL column is not.
      */
+    internal fun demandsValue(column: SchemaColumn): Boolean = column.demandsValue()
+
     private fun SchemaColumn.demandsValue(): Boolean {
         if (nullable) return false
         if (defaultValue != null) return false

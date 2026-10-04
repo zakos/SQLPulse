@@ -510,6 +510,7 @@ fun TableDetailScreenContent(
             table = state.table,
             onConfirm = viewModel::confirmImport,
             onDismiss = viewModel::dismissImport,
+            onMap = viewModel::setImportMapping,
         )
     }
 
@@ -884,124 +885,10 @@ private fun ImportDialog(
     table: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onMap: (Int, String?) -> Unit,
 ) {
     BasicAlertDialog(onDismissRequest = onDismiss) {
-        ImportPlanCard(plan = plan, table = table, onConfirm = onConfirm, onDismiss = onDismiss)
+        ImportPlanCard(plan = plan, table = table, onConfirm = onConfirm, onDismiss = onDismiss, onMap = onMap)
     }
 }
 
-/**
- * What a CSV import is about to do, before it does it: how many rows, and which column of the file
- * lands in which column of the table. Nothing is matched by position, so a column that has no
- * partner is shown as left out rather than quietly shifting its neighbours.
- */
-@Composable
-fun ImportPlanCard(
-    plan: ImportPlan,
-    table: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val semantic = LocalSemanticColors.current
-    val fileColumns = plan.match.matched.size + plan.match.unmatched.size
-    DialogCard {
-        DialogHeading(
-            title = stringResource(R.string.import_title, table),
-            subtitle = stringResource(R.string.import_file_summary, fileColumns).uppercase(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            ImportStat(LocaleFormat.integer(plan.rowCount.toLong(), appLocale()), stringResource(R.string.import_stat_rows), Modifier.weight(1f))
-            ImportStat("${plan.match.matched.size} / $fileColumns", stringResource(R.string.import_stat_columns), Modifier.weight(1f))
-        }
-        Column(
-            modifier = Modifier
-                .heightIn(max = 260.dp)
-                .verticalScroll(rememberScrollState())
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background, Shapes.button)
-                .border(1.dp, semantic.hairline, Shapes.button),
-        ) {
-            plan.match.matched.forEach { (fromFile, toTable) ->
-                ImportMappingRow(fromFile, toTable, ok = true)
-            }
-            plan.match.unmatched.forEach { fromFile ->
-                ImportMappingRow(fromFile, stringResource(R.string.import_left_out), ok = false)
-            }
-        }
-        if (plan.table.malformedRows > 0) {
-            DialogNote(stringResource(R.string.import_malformed, plan.table.malformedRows), Icons.Default.Warning, semantic.warning)
-        }
-        if (!plan.match.canImport) {
-            Text(
-                text = if (plan.match.blocking.isEmpty()) {
-                    stringResource(R.string.import_no_columns)
-                } else {
-                    stringResource(R.string.import_blocking, plan.match.blocking.joinToString(", "))
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else {
-            DialogNote(stringResource(R.string.import_transaction_note), Icons.Default.Shield, semantic.textSecondary)
-        }
-        DialogButtons(
-            cancelLabel = stringResource(R.string.cancel),
-            onCancel = onDismiss,
-            actionLabel = stringResource(R.string.import_run_rows, LocaleFormat.integer(plan.rowCount.toLong(), appLocale())),
-            onAction = onConfirm,
-            enabled = plan.match.canImport && plan.rowCount > 0,
-            actionIcon = Icons.Default.Upload,
-        )
-    }
-}
-
-@Composable
-private fun ImportStat(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.surface, Shapes.button)
-            .border(1.dp, LocalSemanticColors.current.hairline, Shapes.button)
-            .padding(Spacing.m),
-    ) {
-        Text(
-            value,
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = LocalSemanticColors.current.textSecondary)
-    }
-}
-
-@Composable
-private fun ImportMappingRow(fromFile: String, toTable: String, ok: Boolean) {
-    val semantic = LocalSemanticColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-    ) {
-        Text(
-            fromFile,
-            style = MonoStyles.cell,
-            color = if (ok) MaterialTheme.colorScheme.onSurface else semantic.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = semantic.textSecondary.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
-        Text(
-            toTable,
-            style = MonoStyles.cell,
-            color = if (ok) MaterialTheme.colorScheme.onSurface else semantic.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            if (ok) Icons.Default.Check else Icons.Default.Close,
-            contentDescription = null,
-            tint = if (ok) semantic.success else semantic.textSecondary,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
