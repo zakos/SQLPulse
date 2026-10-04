@@ -277,7 +277,7 @@ class QueryExecutor @Inject constructor(
     }
 
     /** Binds the values by the type the user gave each one (§7.4). */
-    private fun bind(
+    internal fun bind(
         statement: PreparedStatement,
         order: List<String>,
         parameters: Map<String, ParameterValue>,

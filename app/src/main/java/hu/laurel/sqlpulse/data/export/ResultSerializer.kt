@@ -87,6 +87,67 @@ object ResultSerializer {
         }
     }
 
+    /**
+     * The same formats one row at a time, for a result too big to hold: [header], then [row] for
+     * each row as it arrives, then [footer]. Concatenated they equal [serialize] of the whole
+     * table, except for Markdown, whose padded columns need every row before the first can be
+     * written; the streamed table is unpadded, which renders the same.
+     */
+    class RowWriter(
+        private val format: ExportFormat,
+        private val columns: List<hu.laurel.sqlpulse.data.sql.ColumnMeta>,
+        tableName: String? = null,
+        private val syntax: SqlSyntax = MySqlDialect,
+    ) {
+        private var written = 0L
+        private val target = tableName?.takeIf { it.isNotBlank() }
+            ?: columns.firstNotNullOfOrNull { it.table }
+            ?: "table_name"
+        private val quotedColumns = columns.joinToString(", ") { syntax.quoteIdentifier(it.label) }
+
+        fun header(): String = when (format) {
+            ExportFormat.CSV -> columns.joinToString(",") { csvField(it.label) } + "\r\n"
+            ExportFormat.TSV -> columns.joinToString("\t") { tsvField(it.label) } + "\n"
+            ExportFormat.JSON -> "["
+            ExportFormat.MARKDOWN -> if (columns.isEmpty()) {
+                ""
+            } else {
+                "| " + columns.joinToString(" | ") { markdownCell(it.label) } + " |\n" +
+                    "| " + columns.joinToString(" | ") { "--" } + " |\n"
+            }
+            ExportFormat.SQL -> ""
+        }
+
+        fun row(cells: List<CellValue>): String {
+            val first = written++ == 0L
+            return when (format) {
+                ExportFormat.CSV -> cells.joinToString(",") { csvField(plainText(it)) } + "\r\n"
+                ExportFormat.TSV -> cells.joinToString("\t") { tsvField(plainText(it)) } + "\n"
+                ExportFormat.JSON -> buildString {
+                    if (!first) append(",")
+                    append("{")
+                    columns.forEachIndexed { index, column ->
+                        if (index > 0) append(",")
+                        append(jsonString(column.label)).append(":")
+                        append(jsonValue(cells.getOrNull(index)))
+                    }
+                    append("}")
+                }
+                ExportFormat.MARKDOWN ->
+                    "| " + cells.joinToString(" | ") { markdownCell(plainText(it) ?: "NULL") } + " |\n"
+                ExportFormat.SQL -> {
+                    val values = columns.indices.joinToString(", ") { sqlLiteral(cells.getOrNull(it), syntax) }
+                    (if (first) "" else "\n") + "INSERT INTO ${syntax.quoteIdentifier(target)} ($quotedColumns) VALUES ($values);"
+                }
+            }
+        }
+
+        fun footer(): String = when (format) {
+            ExportFormat.JSON -> "]"
+            else -> ""
+        }
+    }
+
     fun toJson(table: ResultTable): String = buildString {
         append("[")
         table.rows.forEachIndexed { rowIndex, row ->

@@ -13,6 +13,8 @@ import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.export.FullExport
+import hu.laurel.sqlpulse.data.export.FullExporter
 import hu.laurel.sqlpulse.data.query.DraftBook
 import hu.laurel.sqlpulse.data.query.EditorPrefsRepository
 import hu.laurel.sqlpulse.data.query.KeyBar
@@ -66,6 +68,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +86,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -162,6 +166,10 @@ data class QueryEditorUiState(
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Set while a full-result export streams to its file. */
+    val fullExport: FullExportProgress? = null,
+    /** Set when the last full export hit a hard cap, until the person has read it. */
+    val exportNotice: ExportNotice? = null,
     /** Whether the active tab has an edit to take back, or one that was taken back. Set by the view model. */
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
@@ -252,6 +260,7 @@ class QueryEditorViewModel @Inject constructor(
     private val snapshotVault: SnapshotVault,
     private val editorHandoff: EditorHandoff,
     private val editorPrefs: EditorPrefsRepository,
+    private val fullExporter: FullExporter,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
@@ -1168,6 +1177,61 @@ class QueryEditorViewModel @Inject constructor(
                 updateActive { it.copy(error = describe(e)) }
             }
         }
+    }
+
+    /** The statement behind the result on screen, as the user typed it (no app-added limit). */
+    private fun shownStatement(): String? {
+        val tab = _uiState.value.active
+        return tab.statements.getOrNull(tab.selectedStatement)?.sql
+    }
+
+    override fun canExportFull(): Boolean {
+        val state = _uiState.value
+        val sql = shownStatement() ?: return false
+        return FullExport.canOffer(sql, dialect, state.active.result, state.rowLimit)
+    }
+
+    private var fullExportJob: Job? = null
+
+    /**
+     * Exports the whole result, not the rows on screen: the same statement again, without the
+     * limit the app added, streamed row by row into the file. Cancellable, and never for a write.
+     */
+    override fun exportFull(format: ExportFormat) {
+        val sql = shownStatement() ?: return
+        if (!canExportFull() || fullExportJob?.isActive == true) return
+        val parameters = _uiState.value.active.parameters
+        fullExportJob = viewModelScope.launch {
+            _uiState.update { it.copy(fullExport = FullExportProgress(), exportNotice = null) }
+            try {
+                val result = fullExporter.export(sql, parameters, format, "query") { rows, bytes ->
+                    _uiState.update { it.copy(fullExport = FullExportProgress(rows, bytes)) }
+                }
+                _uiState.update {
+                    it.copy(
+                        shareIntent = result.intent,
+                        fullExport = null,
+                        exportNotice = result.outcome.cap?.let { cap ->
+                            ExportNotice(cap, result.outcome.rows, result.outcome.bytes)
+                        },
+                    )
+                }
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(fullExport = null) }
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(fullExport = null) }
+                updateActive { it.copy(error = describe(e)) }
+            }
+        }
+    }
+
+    override fun cancelFullExport() {
+        fullExportJob?.cancel()
+    }
+
+    override fun dismissExportNotice() {
+        _uiState.update { it.copy(exportNotice = null) }
     }
 
     override fun shareIntentHandled() {

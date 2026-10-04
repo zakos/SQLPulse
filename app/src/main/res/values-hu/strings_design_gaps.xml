@@ -8,4 +8,12 @@
     <string name="import_issue_required">A(z) %1$s oszlopot a tábla megköveteli, de egyik fájloszlop sem tölti ki.</string>
     <string name="import_issue_type">%1$s → %2$s (%3$s): %4$d érték nem illik ehhez a típushoz, pl. „%5$s”.</string>
     <string name="import_issue_null">%1$s → %2$s NOT NULL, de %3$d sorban üres.</string>
+    <string name="export_scope_screen">Ami a képernyőn van (%1$d sor)</string>
+    <string name="export_scope_full">Teljes találat (újrafuttatás)</string>
+    <string name="export_scope_full_note">Ugyanazt a lekérdezést futtatja újra sorkorlát nélkül, és a sorokat közvetlenül a fájlba írja. Legfeljebb %1$s sor vagy %2$d MB.</string>
+    <string name="export_full_title">A teljes találat exportálása</string>
+    <string name="export_full_progress">sor a fájlban · %2$s MB · felső korlát %1$s sor</string>
+    <string name="export_cap_title">A fájl korlátnál megáll</string>
+    <string name="export_cap_rows">A találat több mint %2$s sor, ennél többet a telefonról nem lehet exportálni. A fájl az első %1$s sort tartalmazza, és eddig a pontig teljes. Szűkítsd a lekérdezést a többi sorhoz.</string>
+    <string name="export_cap_bytes">A fájl elérte a %2$d MB-ot, ennél többet a telefonról nem lehet exportálni. Az első %1$s sort tartalmazza, és eddig a pontig teljes. Szűkítsd a lekérdezést a többi sorhoz.</string>
 </resources>

@@ -44,6 +44,14 @@ interface QueryEditorController {
     fun duplicateTab(id: Long)
     fun explain()
     fun export(format: ExportFormat)
+
+    /** True when the active result may be exported in full: a plain read the app cut with its own limit. */
+    fun canExportFull(): Boolean = false
+
+    /** Re-runs the shown statement without the app's row limit and streams every row to the export file. */
+    fun exportFull(format: ExportFormat) = Unit
+    fun cancelFullExport() = Unit
+    fun dismissExportNotice() = Unit
     val favourites: StateFlow<List<SavedQueryEntity>>
     fun format()
     val history: StateFlow<List<QueryHistoryEntity>>

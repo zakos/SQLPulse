@@ -815,6 +815,8 @@ fun QueryEditorContent(
                                         rowCount = state.visibleResult?.rowCount ?: 0,
                                         onExport = viewModel::export,
                                         onDismiss = { exportMenuOpen = false },
+                                        fullAvailable = viewModel.canExportFull(),
+                                        onExportFull = viewModel::exportFull,
                                     )
                                 }
                             }
@@ -891,6 +893,24 @@ fun QueryEditorContent(
                 firstLine = tab.sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
                 onConfirm = { viewModel.closeTab(tab.id) },
                 onDismiss = viewModel::dismissCloseTab,
+            )
+        }
+    }
+
+    state.fullExport?.let { progress ->
+        // Dismissing the dialog is cancelling: a stream that nobody can see or stop is worse than none.
+        BasicAlertDialog(onDismissRequest = viewModel::cancelFullExport) {
+            FullExportProgressCard(progress = progress, onCancel = viewModel::cancelFullExport)
+        }
+    }
+
+    state.exportNotice?.let { notice ->
+        BasicAlertDialog(onDismissRequest = viewModel::dismissExportNotice) {
+            NoticeCard(
+                title = stringResource(R.string.export_cap_title),
+                body = exportNoticeText(notice),
+                closeLabel = stringResource(R.string.snapshot_close),
+                onClose = viewModel::dismissExportNotice,
             )
         }
     }
