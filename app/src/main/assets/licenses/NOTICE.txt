@@ -1,0 +1,11 @@
+SQLPulse
+Copyright 2026 Zimmermann Ákos
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes software and fonts developed by third parties, each under its own
+license. The full list, with licenses, is in THIRD_PARTY_NOTICES.md.
+
+Portions of the schema comparison, DML preview, result editability and data
+comparison logic were written after studying t8y2/dbx
+(https://github.com/t8y2/dbx), licensed under the Apache License, Version 2.0.

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="licenses_title">Licencek</string>
+    <string name="licenses_open">Licencek</string>
+    <string name="licenses_open_note">Az SQLPulse és a felhasznált könyvtárak licencei</string>
+    <string name="licenses_version">Verzió: %1$s (%2$d)</string>
+    <string name="licenses_read_text">teljes szöveg</string>
+    <string name="licenses_source_code">Forráskód</string>
+    <string name="licenses_source">Forrás</string>
+    <string name="licenses_libraries">Könyvtárak</string>
+    <string name="licenses_fonts">Betűk</string>
+    <string name="licenses_text_caption">Licencszöveg: %1$s</string>
+    <string name="licenses_dbx_note">A séma-összehasonlítás, a DML előnézet, a szerkeszthető eredmény és az adat-összehasonlítás egyes részei a dbx (Apache-2.0) tanulmányozása után készültek. Kód szó szerint nem került át.</string>
+    <string name="licenses_no_browser">Nincs alkalmazás a hivatkozás megnyitásához</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="licenses_title">Licenses</string>
+    <string name="licenses_open">Licenses</string>
+    <string name="licenses_open_note">The licenses of SQLPulse and the libraries it uses</string>
+    <string name="licenses_version">Version %1$s (%2$d)</string>
+    <string name="licenses_read_text">full text</string>
+    <string name="licenses_source_code">Source code</string>
+    <string name="licenses_source">Source</string>
+    <string name="licenses_libraries">Libraries</string>
+    <string name="licenses_fonts">Fonts</string>
+    <string name="licenses_text_caption">License text: %1$s</string>
+    <string name="licenses_dbx_note">Parts of the schema comparison, DML preview, result editability and data comparison were written after studying dbx (Apache-2.0). No code was copied verbatim.</string>
+    <string name="licenses_no_browser">No app found to open the link</string>
+</resources>

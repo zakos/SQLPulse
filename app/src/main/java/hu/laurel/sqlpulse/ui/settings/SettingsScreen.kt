@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +58,7 @@ fun SettingsScreen(
     onOpenBackup: () -> Unit = {},
     onOpenWriteLog: () -> Unit = {},
     onOpenKeyBar: () -> Unit = {},
+    onOpenLicenses: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     SettingsScreenContent(
@@ -65,6 +67,7 @@ fun SettingsScreen(
         onOpenBackup = onOpenBackup,
         onOpenWriteLog = onOpenWriteLog,
         onOpenKeyBar = onOpenKeyBar,
+        onOpenLicenses = onOpenLicenses,
         viewModel = viewModel,
     )
 }
@@ -78,6 +81,7 @@ fun SettingsScreenContent(
     onOpenBackup: () -> Unit = {},
     onOpenWriteLog: () -> Unit = {},
     onOpenKeyBar: () -> Unit = {},
+    onOpenLicenses: () -> Unit = {},
     viewModel: SettingsController,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -235,11 +239,18 @@ fun SettingsScreenContent(
                 onClick = onOpenKeyBar,
             ) { RowChevron() }
 
+            ListRow(
+                title = stringResource(R.string.licenses_open),
+                subtitle = stringResource(R.string.licenses_open_note),
+                onClick = onOpenLicenses,
+            ) { RowChevron() }
+
+            // Tapping the version is the other way into the licenses, the habit from other apps.
             Text(
                 text = "SQLPulse ${BuildConfig.VERSION_NAME}",
                 style = MonoStyles.cell.copy(fontSize = 12.sp),
                 color = semantic.textSecondary.copy(alpha = 0.7f),
-                modifier = Modifier.padding(Spacing.l),
+                modifier = Modifier.clickable(onClick = onOpenLicenses).padding(Spacing.l),
             )
         }
     }

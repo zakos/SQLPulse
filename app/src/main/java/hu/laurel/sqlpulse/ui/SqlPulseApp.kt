@@ -24,6 +24,7 @@ import hu.laurel.sqlpulse.ui.connections.ConnectionEditorScreen
 import hu.laurel.sqlpulse.ui.connections.ConnectionListScreen
 import hu.laurel.sqlpulse.ui.backup.BackupScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
+import hu.laurel.sqlpulse.ui.licenses.LicensesScreen
 import hu.laurel.sqlpulse.ui.map.SchemaMapScreen
 import hu.laurel.sqlpulse.ui.pulse.PulseScreen
 import hu.laurel.sqlpulse.data.alerts.AlertRequests
@@ -55,6 +56,7 @@ object Routes {
     const val STORAGE = "storage"
     const val WRITE_LOG = "write_log"
     const val KEY_BAR = "key_bar"
+    const val LICENSES = "licenses"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -176,7 +178,12 @@ fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow(), alertRequ
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
                 onOpenWriteLog = { navController.navigate(Routes.WRITE_LOG) },
                 onOpenKeyBar = { navController.navigate(Routes.KEY_BAR) },
+                onOpenLicenses = { navController.navigate(Routes.LICENSES) },
             )
+        }
+
+        composable(Routes.LICENSES) {
+            LicensesScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.KEY_BAR) {
