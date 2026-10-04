@@ -26,7 +26,7 @@ közvetlenül megy, lehet sima vagy TLS-es. Motor-réteg: `data/sql/dialect/` (`
 | Build | AGP 8.7.3, Kotlin 2.0.21, KSP, compileSdk/targetSdk 35, minSdk 28, JDK 17 |
 | UI | Jetpack Compose (BOM 2024.12.01), Material3, Navigation Compose |
 | DI | Hilt 2.52 |
-| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **11** |
+| Helyi adatbázis | Room 2.6.1 + SQLCipher 4.6.1 (titkosított), séma verzió **12** |
 | Beállítások | DataStore Preferences |
 | SSH | sshj 0.38.0 (+ BouncyCastle, EdDSA) |
 | MySQL | MariaDB Connector/J 3.4.1; régi (< MySQL 5.5.3) szerverre automatikusan MySQL Connector/J 5.1.49 |
@@ -46,7 +46,7 @@ ssh/           TunnelManager (állapotgép), SshTunnel (port forward, jump host)
                (kulcs/jelszó/keyboard-interactive), MysqlProbe (handshake-csomag ellenőrzés)
 data/
   crypto/      KeystoreCrypto, Sealed blobok, DatabaseKeyProvider (SQLCipher jelmondat)
-  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→11)
+  db/          Room: Entities, Daos, SqlPulseDatabase, Migrations + MigrationStatements (1→12)
   keys/        KeyParsing (OpenSSH v1, PKCS#8, PEM; .ppk/DSA elutasítva), SshKeyRepository
   connection/  ConnectionRepository, környezet (dev/test/éles), ProductionPolicy, időkorlátok,
                CertificateStore (CA), JumpHostCredentials, WriteUnlockStore, SessionHeader(s)
@@ -64,6 +64,8 @@ data/
   query/       QueryRepository (előzmény, kedvencek), QueryDrafts/QueryDraftStore
   search/      DatabaseSearch(+Repository), SearchHitFilter (találat → tábla a sorra szűrve)
   writelog/    WriteLogger + retenció/export (írási napló; minden írási fojtópontból hívva)
+  alerts/      AlertRules(+Repository, DataStore JSON), AlertMonitor (30 mp, csak élő kapcsolat), AlertNotifier
+  format/      LocaleFormat (szám/dátum/méret explicit locale-lal; UI: appLocale())
   shortcuts/   ShortcutPlan, LauncherShortcuts, ShortcutRequests (indítóikon-parancsikonok)
   export/      ResultSerializer (CSV/TSV/JSON/INSERT), ExportManager (share sheet)
   csv/         CsvParser, CsvImport, CsvImporter
@@ -81,6 +83,7 @@ ui/            Compose képernyők; navigáció: ui/SqlPulseApp.kt
   server/      futó lekérdezések, KILL          pulse/ élő metrikák
   schemadiff/  séma-összehasonlítás            search/ keresés az adatbázisban
   storage/     Tárhely (méretek, indexek)      writelog/ írási napló
+  alerts/      riasztás-szabályok lapja (Pulzus fejléc harang)
   handoff/     EditorHandoff/TableFilterHandoff (SQL → szerkesztő új fül, szűrő → tábla; egyszer fogyasztva)
   explain/     terv fa nézet   chart/  diagram   snapshot/  pillanatfelvétel
   backup/ settings/ diagnostics/ components/ theme/
@@ -89,10 +92,11 @@ ui/            Compose képernyők; navigáció: ui/SqlPulseApp.kt
 ### Navigációs útvonalak (`ui/SqlPulseApp.kt`)
 CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG, SCHEMA_DIFF, QUERY, SCHEMA → TABLE, SEARCH, STORAGE
 
-### Helyi adatbázis táblák (Room, v11; `connection.engine/fileUri/fileName` a v11-ben)
+### Helyi adatbázis táblák (Room, v12; v11: `connection.engine/fileUri/fileName`; v12: séma-objektumok a cache-ben)
 `ssh_key`, `connection`, `db_credential`, `ssh_credential`, `ssh_jump_credential`, `known_host`,
 `query_history`, `saved_query`, `cached_database`, `cached_table`, `cached_column`,
-`cached_index`, `cached_foreign_key`, `write_log` (írási napló, FK nélkül, 90 nap / 5000 bejegyzés)
+`cached_index`, `cached_foreign_key` (+onDelete/onUpdate), `cached_check`, `cached_view`,
+`cached_trigger`, `cached_object_capture`, `write_log` (írási napló, FK nélkül, 90 nap / 5000 bejegyzés)
 
 ## Fő adatfolyam
 
@@ -247,6 +251,14 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   → user), olvasható térképdobozok; a szerkesztő sorlimitje a beállítást követi (eddig fix 500 volt!);
   SQLite egyedi-kulcs hiba magyarul. A „nincs darabszám” a sikertelen írások naplója volt, nem hiba.
 
+- 2026-10-04: Újabb kör (4 subagent): minden maradék `AlertDialog` → design-kártya (host key:
+  első/megváltozott, piros), magyar formátumok (`data/format/LocaleFormat.kt`); riasztások a
+  Pulzusból (`data/alerts/`, alapból ki, csak élő kapcsolat + feloldott app); mélyebb
+  séma-összehasonlítás (nézet, trigger, CHECK, FK-szabály; Room v12, `ObjectText` normalizáló);
+  terv-eltérések: felugró kiegészítő lista, CSV kézi oszlop-párosítás (`CsvMapping`), „teljes
+  találat” export (`FullExporter`, streamelve, 1M sor/200 MB plafon; MariaDB fetchSize hiba javítva).
+  1705 teszt zöld (MySQL 8, MariaDB, PG 16, SQL Server 2022, SQLite integrációval) + lint.
+
 ## Javasolt következő fejlesztések (2026-10-02)
 
 A. Megbízhatóság (ajánlott első):
@@ -254,8 +266,8 @@ A. Megbízhatóság (ajánlott első):
       MySQL 5.7 csak a CI-ban fut.
 - [x] Ismert korlátok javítása: keresési találat → szűrt tábla; időgép-sor kapcsolatneve; DML
       előnézet allekérdezés-szűrés; magyar szám/időformátum (Lassú panel, időgép).
-- [ ] Maradék locale: `SchemaBrowserScreen`, `TableDetailScreen`, `BackupScreen`, előzmény-időbélyeg
-      még a JVM alap-locale-t használja.
+- [x] Maradék locale (sémaböngésző, tábla, mentés, előzmény, diagram, EXPLAIN). Marad: írási napló
+      ISO dátuma (szándékos); `formatByteSize` a data rétegben (Pulzus/replikáció) még ponttal.
 B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
 - [x] Replikáció állapota (csatornánként kártya, késés, szálak, hiba; „Nyers” kapcsoló).
 - [x] Leglassabb lekérdezések („Lassú” panel; koppintás → vágólap, sosem futtat).
@@ -263,7 +275,8 @@ B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
 - [x] A „Lassú” lekérdezés és a futó lekérdezés megnyitása a szerkesztőben (`EditorHandoff`).
 - [ ] Döntésre vár: a keresés garantáljon-e ékezetfüggetlen egyezést („arviz” → „Árvíz”) a
       szerver collation-jétől függetlenül.
-- [ ] Riasztás a Pulzusból (pl. replikációs késés, futó lekérdezés > N mp) — csak amíg az alagút él.
+- [x] Riasztás a Pulzusból (harang a Pulzus fejlécben). Nincs még: „leghosszabb futó lekérdezés”,
+      „kapcsolatok %”; készüléken nem próbált: értesítés-koppintás zárolva, engedélykérés.
 C. Biztonság, elszámolhatóság:
 - [x] Írási napló (Beállítások → Írási napló): szűrés, keresés, CSV/JSON export, törlés.
 - [ ] Döntésre vár: az írási napló a beírt értékeket is tárolja (pl. jelszó-oszlop) — kell-e
@@ -272,8 +285,9 @@ D. Kényelem:
 - [x] Oszlop-összesítés (darab, nem NULL, különböző, összeg, átlag, min/max) — fejléc hosszan nyomva.
 - [x] Indítóikon-parancsikonok (Beállítások, alapból ki; a 3 legutóbbi nem éles kapcsolat).
 - [ ] Parancsikonok készüléken kipróbálva még nincsenek (hidegindítás, `onNewIntent`).
-- [ ] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”.
-- [ ] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room-vándorlás (v11) kell.
+- [x] Terv-eltérések: kiegészítés felugró listaként, CSV kézi oszloppárosítás, export „teljes találat”
+      (csak a szerkesztőből; a felugró ablakot a Paparazzi nem rögzíti → készüléken nézni).
+- [x] Séma-összehasonlítás mélyítése (nézet, trigger, CHECK, FK-szabály) — Room v12.
 E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a felhasználó jóváhagyta,
    a csapat PostgreSQL-t, MariaDB-t és MS SQL-t is használ:
 - [x] Undo/redo a SQL szerkesztőben · snippetek · szkript megosztása · bővebb gombsor.
@@ -309,10 +323,8 @@ A `docs/roadmap.md` „Ami ezután jön” szakasza alapján:
       van valódi szerveren kipróbálva.
 - [x] **Új ikon beépítése** — adaptív ikon (`mipmap-anydpi-v26`), monochrome réteg, értesítés ikon.
 - [x] Látványterv beépítése (ld. lent).
-- [ ] Terv és kód maradék eltérései: a kiegészítés chip-sor (a tervben felugró lista), az
-      export lap nem kínál „teljes találat” (újrafuttatás) opciót és a CSV import nem párosít kézzel
-      (a tervben igen — ehhez új funkció kell); a táblagépes nézet a meglévő kéthasábos elrendezés;
-      az olvasás-megerősítés/paraméter dialógusok és a kulcs-import lap nincs képernyőképpel összevetve.
+- [x] Terv és kód maradék eltérései (kiegészítés, CSV párosítás, teljes export, dialógusok).
+      Marad: a táblagépes nézet a meglévő kéthasábos elrendezés.
 - [ ] Készüléken megnézni: betűk, ikon a különböző launcherekben, világos téma kontrasztja.
 - [ ] (Megfigyelés) `ui/query/QueryEditorScreen.kt` (~1500 sor) és `QueryEditorViewModel.kt`
       (~1200 sor) nagyok — esetleges szétbontás jelölt, ha hozzányúlunk.

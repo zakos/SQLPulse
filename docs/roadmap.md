@@ -152,6 +152,15 @@ A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-ele
 | Szerkesztő: undo/redo, kódminták, testreszabható gombsor, megosztás; motorfüggő kulcsszavak | `ui/query/`, `data/query/` |
 | Kiugró értékek (IQR + robusztus z) az oszlop-összesítőben, a rácsban és a diagramon | `data/grid/Outliers.kt` |
 
+### Kényelem és mélyítés (2026-10-04)
+
+| Funkció | Hol |
+| --- | --- |
+| Riasztások a Pulzusból (kapcsolatonként, alapból ki, csak élő kapcsolat alatt) | `data/alerts/`, `ui/alerts/` |
+| Séma-összehasonlítás: nézetek, triggerek, CHECK-feltételek, FK-szabályok (Room v12) | `data/schema/ObjectText.kt`, `ui/schemadiff/` |
+| Felugró kiegészítő lista, CSV kézi oszlop-párosítás, „teljes találat” export | `ui/query/CompletionPopup.kt`, `data/csv/CsvMapping.kt`, `data/export/FullExporter.kt` |
+| Minden dialógus a tervhez igazítva (host key: megváltozott kulcs piros kártya), magyar formátumok | `ui/components/Dialogs.kt`, `data/format/LocaleFormat.kt` |
+
 ## Ami hiányzik
 
 A kutatási összefoglalóban 2.0-ig felsorolt tételek megvannak; ami alább marad, az
