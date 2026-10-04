@@ -10,6 +10,15 @@ import kotlinx.coroutines.flow.StateFlow
  * the screen be drawn from a fixed state in the screenshot tests that hold it against the design.
  */
 interface TableDetailController {
+    /**
+     * Leaving the table: runs [onLeave] straight away, or after the user has answered the question
+     * about writing a SQLite copy's changes back to the original.
+     */
+    fun requestLeave(onLeave: () -> Unit) = onLeave()
+    fun writeBackConfirm() = Unit
+    fun writeBackOverwrite() = Unit
+    fun writeBackKeepLocal() = Unit
+    fun writeBackDismiss() = Unit
     fun closeWalk()
     fun confirmEdit()
     fun confirmImport()

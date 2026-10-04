@@ -6,7 +6,7 @@ import hu.laurel.sqlpulse.data.db.WriteLogEntity
 import hu.laurel.sqlpulse.data.sql.ParameterValue
 
 /** Which part of the app sent the write. */
-enum class WriteSource { SQL_EDITOR, ROW_EDIT, RESULT_EDIT, CSV_IMPORT, UNDO }
+enum class WriteSource { SQL_EDITOR, ROW_EDIT, RESULT_EDIT, CSV_IMPORT, UNDO, WRITE_BACK }
 
 enum class WriteOutcome { OK, FAILED }
 

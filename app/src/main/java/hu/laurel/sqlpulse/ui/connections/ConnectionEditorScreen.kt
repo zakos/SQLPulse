@@ -116,6 +116,7 @@ fun ConnectionEditorScreenContent(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val readOnlyOffer by viewModel.readOnlyOffer.collectAsStateWithLifecycle()
     val hostKeyPrompt by viewModel.hostKeyPrompt.collectAsStateWithLifecycle()
+    val writeBackPrompt by viewModel.writeBackPrompt.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
 
     Scaffold(
@@ -481,6 +482,7 @@ fun ConnectionEditorScreenContent(
                     form = form,
                     onChoose = viewModel::chooseFile,
                     onRefresh = viewModel::refreshFile,
+                    onWriteBack = viewModel::writeBackToOriginal,
                     onReadOnly = { value -> viewModel.update { it.copy(readOnly = value) } },
                 )
             } else Section(
@@ -649,6 +651,16 @@ fun ConnectionEditorScreenContent(
             )
         }
 
+        writeBackPrompt?.let { prompt ->
+            WriteBackDialog(
+                prompt = prompt,
+                onWrite = viewModel::writeBackToOriginal,
+                onOverwrite = viewModel::writeBackOverwrite,
+                onKeepLocal = viewModel::writeBackDismiss,
+                onDismiss = viewModel::writeBackDismiss,
+            )
+        }
+
         // Offered, not done: the switch stays the user's, and saying no leaves the connection
         // writable — it will simply ask for an unlock before the first write.
         if (readOnlyOffer) {
@@ -713,13 +725,14 @@ private fun FileSection(
     form: ConnectionForm,
     onChoose: (Uri) -> Unit,
     onRefresh: () -> Unit,
+    onWriteBack: () -> Unit,
     onReadOnly: (Boolean) -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
     var confirmRefresh by rememberSaveable { mutableStateOf(false) }
     // The picker filters by MIME type, and databases have no reliable one, so `*/*` is the real
     // filter and the specific types only put the likely files first on providers that know them.
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val picker = rememberLauncherForActivityResult(OpenWritableDocument()) { uri ->
         uri?.let(onChoose)
     }
     val fileName = form.fileName
@@ -777,10 +790,30 @@ private fun FileSection(
             OutlinedButton(
                 // A writable copy may hold changes of the user's own, which a refresh would throw
                 // away: that one asks first.
-                onClick = { if (form.readOnly || form.id == 0L) onRefresh() else confirmRefresh = true },
+                onClick = { if (!form.fileDirty) onRefresh() else confirmRefresh = true },
                 enabled = form.fileCanRefresh && !form.fileBusy,
                 shape = Shapes.button,
             ) { Text(stringResource(R.string.sqlite_file_refresh)) }
+        }
+        if (form.fileDirty) {
+            Text(
+                stringResource(R.string.writeback_dirty_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+            OutlinedButton(
+                onClick = onWriteBack,
+                // A copy chosen in this editor and not saved yet is not the one that holds the changes.
+                enabled = form.fileCanWrite && form.fileStaged == null && !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.writeback_button)) }
+            if (!form.fileCanWrite) {
+                Text(
+                    stringResource(R.string.writeback_no_permission_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
         }
         if (fileName != null && !form.fileCanRefresh) {
             Text(
@@ -853,6 +886,19 @@ fun RefreshCopyCard(onCancel: () -> Unit, onConfirm: () -> Unit) {
             danger = true,
         )
     }
+}
+
+/**
+ * The system picker, asking for write access as well as read: without it the app could copy the
+ * file in but never write the changes back. Providers that cannot grant it still hand the file over
+ * and the connection simply stays copy-only (LocalDatabaseFiles.rememberAccess).
+ */
+class OpenWritableDocument : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: android.content.Context, input: Array<String>): android.content.Intent =
+        super.createIntent(context, input).addFlags(
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+        )
 }
 
 private val SQLITE_MIME_TYPES = arrayOf(

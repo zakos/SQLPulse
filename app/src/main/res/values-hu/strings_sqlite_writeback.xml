@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="writeback_title">Kiírod a változásokat az eredeti fájlba?</string>
+    <string name="writeback_body">A(z) %1$s fájlban olyan változások vannak, amelyek csak az app másolatában léteznek. Ha nem írod ki őket, az app másolatában maradnak, az eredeti fájl pedig érintetlen.</string>
+    <string name="writeback_production">ÉLES KAPCSOLAT</string>
+    <string name="writeback_confirm">Kiírás</string>
+    <string name="writeback_keep_local">Csak a másolatban</string>
+    <string name="writeback_changed_title">Az eredeti fájl közben megváltozott — felülírod?</string>
+    <string name="writeback_changed_body">A(z) %1$s fájlt azután módosították, hogy az app lemásolta. Ha most kiírod, az app másolata felváltja ezeket a módosításokat.</string>
+    <string name="writeback_unknown_body">Az app nem tudja megállapítani, módosult-e a(z) %1$s fájl a másolás óta. Ha most kiírod, az app másolata felváltja azt, ami ott van.</string>
+    <string name="writeback_overwrite">Felülírás</string>
+    <string name="writeback_working">%1$s kiírása…</string>
+    <string name="writeback_done">A változások kiírva ide: %1$s.</string>
+    <string name="writeback_failed_title">A kiírás nem sikerült</string>
+    <string name="writeback_failed">Nem sikerült írni ide: %1$s (%2$s). A változások az app másolatában maradtak; próbáld újra, vagy nézd meg az eredeti fájlt.</string>
+    <string name="writeback_close">Rendben</string>
+    <string name="writeback_refused_title">Még nem írható ki</string>
+    <string name="writeback_refused_transaction">Nyitva van egy tranzakció. Előbb véglegesítsd vagy told vissza, utána írd ki a változásokat.</string>
+    <string name="writeback_refused_permission">Az appnak már nincs írási joga az eredeti fájlhoz. Válaszd ki újra a fájlt a kapcsolat szerkesztőjében.</string>
+    <string name="writeback_refused_nothing">Nincs mit kiírni: a másolat megegyezik az eredetivel.</string>
+    <string name="writeback_refused_baseline">Ez a másolat a kiírás megjelenése előtt készült, ezért az app nem tudja, mi változott. Előbb frissítsd a másolatot az eredetiből.</string>
+    <string name="writeback_button">Kiírás az eredetibe</string>
+    <string name="writeback_dirty_note">A másolatban olyan változások vannak, amelyek az eredeti fájlban még nincsenek.</string>
+    <string name="writeback_no_permission_note">Az appnak nincs írási joga az eredeti fájlhoz, ezért a változások a másolatban maradnak. A fájl újbóli kiválasztásával engedélyezhető az írás.</string>
+    <string name="writelog_source_write_back">Kiírás</string>
+</resources>

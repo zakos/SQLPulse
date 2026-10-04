@@ -176,9 +176,35 @@ fájl mellé írja. A SAF content URI-nak nincs útvonala, nincs „mellette” 
 (Drive, USB) tranzakció közben eltűnhet — ez fájlsérülés. A `/proc/self/fd/N` trükk csak olvasásra
 és napló nélkül működik.
 
+#### Kiírás az eredeti fájlba (`data/connection/WriteBack.kt`, `SqliteWriteBack.kt`)
+
+- **Szennyezettség (dirty)**: nincs számláló, az írási fojtópontokba nem kell horog. A másolat
+  mellé (`<id>.sqlite.baseline`) a másoláskor/kiíráskor egy rekord kerül: az eredeti mérete és
+  `LAST_MODIFIED` ideje, valamint a másolat saját mérete és mtime-ja. A másolat akkor szennyezett,
+  ha a mérete vagy mtime-ja eltér ettől, vagy nem üres `-wal` fájl van mellette. Újraindítás után
+  is helyes, és bármilyen jövőbeli írási hely is lefedi. Baseline nélküli (a funkció előtti)
+  másolat soha nem szennyezett; egy „Másolat frissítése” létrehozza.
+- **Jog**: a választó (`OpenWritableDocument`) írási jogot is kér és tartósít; ha a szolgáltató nem
+  adja, a kapcsolat csak olvasható marad az eredeti felé (a másolat és a frissítés működik).
+- **Kilépés a táblanézetből** (vissza gomb, rendszer-vissza): csak SQLite-kapcsolatnál és csak ha
+  van szennyezett másolat és megvan az írási jog, kérdés jön: „Kiírod a változásokat az eredeti
+  fájlba?” — *Kiírás* / *Csak a másolatban* (kilép, a másolat szennyezett marad, a szerkesztőben
+  később kiírható) / *Mégse* (marad). Éles kapcsolatnál piros kártya.
+- **Biztonságos kiírás** (`WriteBackPolicy`, `WriteBack.perform`): nyitott kézi tranzakciónál
+  megtagadja (előbb commit/rollback); WAL esetén `PRAGMA wal_checkpoint(TRUNCATE)`; az eredeti
+  mostani méretét/idejét a baseline-hoz hasonlítja — ha megváltozott vagy nem ellenőrizhető, második
+  figyelmeztetés („Az eredeti fájl közben megváltozott — felülírod?”); a kiírás
+  `openOutputStream(uri, "wt")`-vel streamelve megy (a SAF-nak nincs ideiglenes-fájl + átnevezés
+  művelete), utána méret- és SQLite-fejléc-ellenőrzés; siker esetén új baseline + írási napló
+  bejegyzés (`WRITE_BACK`); hiba esetén üzenet, a másolat szennyezett marad. **Korlát**: a helyben
+  felülírás félúton megszakadva megsérthet(i) az eredetit — erre való az utólagos ellenőrzés és az,
+  hogy a másolat megmarad az újrapróbához.
+- **Kapcsolatszerkesztő**: a fájl szakaszban „Kiírás az eredetibe” gomb (szennyezettnél), és a
+  „Másolat frissítése” csak szennyezett másolatnál kérdez rá (az elvesző változásokra).
+
 Következmények: alapból csak olvasás (a `readOnly` kapcsoló a SQLite megnyitási módját is
-állítsa); írás a másolatba megy; „Frissítés a forrásból” és „Másolat megosztása” a 2. fázisban vagy
-később. A mentésbe a fájl nem kerül (adat, és nagy lehet), és a `fileUri` sem (a SAF-engedély
+állítsa); írás a másolatba megy; a változások a lenti módon kiírhatók az eredetibe; „Másolat
+megosztása” később. A mentésbe a fájl nem kerül (adat, és nagy lehet), és a `fileUri` sem (a SAF-engedély
 eszközhöz kötött): visszatöltés után a SQLite-kapcsolat újra fájlt kér.
 
 ### 3.3 Room v11 és a mentés

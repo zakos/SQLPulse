@@ -22,6 +22,12 @@ interface ConnectionEditorController {
 
     /** SQLite: copy the original again, where Android still lets the app read it. */
     fun refreshFile() = Unit
+
+    /** SQLite: write the copy's changes over the original file (docs/tobb-motor-terv.md §3.2). */
+    fun writeBackToOriginal() = Unit
+    fun writeBackOverwrite() = Unit
+    fun writeBackDismiss() = Unit
+    val writeBackPrompt: StateFlow<WriteBackPrompt?> get() = kotlinx.coroutines.flow.MutableStateFlow(null)
     fun dismissReadOnlyOffer()
     val error: StateFlow<String?>
     val form: StateFlow<ConnectionForm>

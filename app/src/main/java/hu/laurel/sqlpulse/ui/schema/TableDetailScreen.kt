@@ -164,6 +164,11 @@ fun TableDetailScreenContent(
         if (result == SnackbarResult.ActionPerformed) viewModel.undo()
     }
 
+    // Every way out of the table goes through the write-back check; it only intercepts a SQLite
+    // file connection, and the check itself decides whether there is anything to ask.
+    val leave = { viewModel.requestLeave(onBack) }
+    androidx.activity.compose.BackHandler(enabled = state.isFileConnection) { leave() }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
@@ -180,7 +185,7 @@ fun TableDetailScreenContent(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { leave() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cancel))
                     }
                 },
@@ -511,6 +516,16 @@ fun TableDetailScreenContent(
             onConfirm = viewModel::confirmImport,
             onDismiss = viewModel::dismissImport,
             onMap = viewModel::setImportMapping,
+        )
+    }
+
+    state.writeBackPrompt?.let { prompt ->
+        hu.laurel.sqlpulse.ui.connections.WriteBackDialog(
+            prompt = prompt,
+            onWrite = viewModel::writeBackConfirm,
+            onOverwrite = viewModel::writeBackOverwrite,
+            onKeepLocal = viewModel::writeBackKeepLocal,
+            onDismiss = viewModel::writeBackDismiss,
         )
     }
 

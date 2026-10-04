@@ -3,6 +3,12 @@ package hu.laurel.sqlpulse.ui.schema
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.OriginalState
+import hu.laurel.sqlpulse.data.connection.SqliteWriteBack
+import hu.laurel.sqlpulse.data.connection.WriteBackResult
+import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.ui.connections.WriteBackPrompt
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -101,6 +107,10 @@ data class TableDetailUiState(
     val parentLinks: List<RowLink> = emptyList(),
     /** Set while the walk along the relationships is open; null when it is not. */
     val walk: WalkState? = null,
+    /** A SQLite file connection: leaving the table may first ask to write changes back. */
+    val isFileConnection: Boolean = false,
+    /** The write-back question or its outcome, while one is on screen. */
+    val writeBackPrompt: WriteBackPrompt? = null,
 )
 
 /** One table pointing at the row being looked at, and how many of its rows match. */
@@ -140,6 +150,7 @@ class TableDetailViewModel @Inject constructor(
     private val exports: ExportManager,
     private val sessions: SqlSessionManager,
     tableFilters: TableFilterHandoff,
+    private val writeBack: SqliteWriteBack,
 ) : ViewModel(), TableDetailController {
 
     private val database: String = Uri.decode(savedStateHandle["database"] ?: "")
@@ -150,6 +161,69 @@ class TableDetailViewModel @Inject constructor(
 
     private var undoJob: Job? = null
 
+    /** What to do once the write-back question is settled: leave the table. */
+    private var pendingLeave: (() -> Unit)? = null
+
+    override fun requestLeave(onLeave: () -> Unit) {
+        val connection = sessions.currentConnection()
+        // A question already on screen owns the back press until it is answered.
+        if (_uiState.value.writeBackPrompt != null) return
+        if (!writeBack.isSqliteFile(connection)) {
+            onLeave()
+            return
+        }
+        viewModelScope.launch {
+            if (!writeBack.status(connection).offer) {
+                onLeave()
+                return@launch
+            }
+            pendingLeave = onLeave
+            _uiState.value = _uiState.value.copy(
+                writeBackPrompt = WriteBackPrompt.Ask(fileLabel(connection), environmentIsProduction(connection)),
+            )
+        }
+    }
+
+    override fun writeBackConfirm() = runWriteBack(confirmedOverwrite = false)
+
+    override fun writeBackOverwrite() = runWriteBack(confirmedOverwrite = true)
+
+    override fun writeBackKeepLocal() {
+        _uiState.value = _uiState.value.copy(writeBackPrompt = null)
+        pendingLeave?.invoke()
+        pendingLeave = null
+    }
+
+    override fun writeBackDismiss() {
+        pendingLeave = null
+        _uiState.value = _uiState.value.copy(writeBackPrompt = null)
+    }
+
+    private fun runWriteBack(confirmedOverwrite: Boolean) {
+        val connection = sessions.currentConnection() ?: return
+        val file = fileLabel(connection)
+        _uiState.value = _uiState.value.copy(writeBackPrompt = WriteBackPrompt.Working(file))
+        viewModelScope.launch {
+            val prompt = when (val result = writeBack.write(connection, confirmedOverwrite)) {
+                is WriteBackResult.Done -> null
+                is WriteBackResult.NeedsConfirmation ->
+                    WriteBackPrompt.Changed(file, environmentIsProduction(connection), result.state == OriginalState.UNKNOWN)
+                is WriteBackResult.Refused -> WriteBackPrompt.Refused(result.reason)
+                is WriteBackResult.Failed -> WriteBackPrompt.Failed(file, result.message)
+            }
+            _uiState.value = _uiState.value.copy(writeBackPrompt = prompt)
+            if (prompt == null) {
+                pendingLeave?.invoke()
+                pendingLeave = null
+            }
+        }
+    }
+
+    private fun fileLabel(connection: ConnectionEntity?) = connection?.fileName ?: connection?.name.orEmpty()
+
+    private fun environmentIsProduction(connection: ConnectionEntity?) =
+        ConnectionEnvironment.fromName(connection?.environment).isProduction
+
     init {
         val connection = sessions.currentConnection()
         _uiState.value = _uiState.value.copy(
@@ -157,6 +231,7 @@ class TableDetailViewModel @Inject constructor(
             // in the bar so it can be cleared.
             filter = tableFilters.take(database, table),
             isProduction = ConnectionColor.fromName(connection?.color) == ConnectionColor.Production,
+            isFileConnection = writeBack.isSqliteFile(connection),
         )
         select(TableTab.DATA)
         // The structure is needed for the primary key even before the Structure tab is opened.

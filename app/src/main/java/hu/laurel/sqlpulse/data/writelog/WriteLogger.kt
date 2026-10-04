@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.writelog
 
+import hu.laurel.sqlpulse.data.db.ConnectionEntity
 import hu.laurel.sqlpulse.data.db.WriteLogDao
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -39,11 +40,13 @@ class WriteLogger @Inject constructor(
         startedAt: Long,
         durationMs: Long,
         inTransaction: Boolean,
+        /** For writes outside a live session (the connection editor); otherwise the session's. */
+        connection: ConnectionEntity? = null,
     ) {
         try {
             val entry = WriteLogEntries.build(
                 time = startedAt,
-                connection = sessions.currentConnection(),
+                connection = connection ?: sessions.currentConnection(),
                 database = sessions.database.value,
                 source = source,
                 statement = statement,

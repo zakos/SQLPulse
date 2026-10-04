@@ -426,6 +426,7 @@ private fun WriteSource.label(): Int = when (this) {
     WriteSource.RESULT_EDIT -> R.string.writelog_source_result_edit
     WriteSource.CSV_IMPORT -> R.string.writelog_source_csv_import
     WriteSource.UNDO -> R.string.writelog_source_undo
+    WriteSource.WRITE_BACK -> R.string.writelog_source_write_back
 }
 
 @Composable

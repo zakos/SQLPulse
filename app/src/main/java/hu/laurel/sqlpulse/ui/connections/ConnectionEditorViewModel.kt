@@ -16,6 +16,10 @@ import hu.laurel.sqlpulse.data.connection.DatabaseFileInfo
 import hu.laurel.sqlpulse.data.connection.JumpCredential
 import hu.laurel.sqlpulse.data.connection.JumpHostCredentials
 import hu.laurel.sqlpulse.data.connection.LocalDatabaseFiles
+import hu.laurel.sqlpulse.data.connection.OriginalState
+import hu.laurel.sqlpulse.data.connection.SourceStat
+import hu.laurel.sqlpulse.data.connection.SqliteWriteBack
+import hu.laurel.sqlpulse.data.connection.WriteBackResult
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.ProductionShape
 import hu.laurel.sqlpulse.data.connection.SaveRefusal
@@ -61,6 +65,10 @@ data class ConnectionForm(
     val fileStaged: String? = null,
     /** Whether the original can still be read without the picker, so the copy can be refreshed. */
     val fileCanRefresh: Boolean = false,
+    /** The copy has changes that the original file does not (see WriteBackPolicy). */
+    val fileDirty: Boolean = false,
+    /** The app still holds write permission to the original, so [fileDirty] changes can go back. */
+    val fileCanWrite: Boolean = false,
     /** A copy is being made. */
     val fileBusy: Boolean = false,
     val name: String = "",
@@ -203,6 +211,7 @@ class ConnectionEditorViewModel @Inject constructor(
     private val keyRepository: SshKeyRepository,
     private val tunnelManager: TunnelManager,
     private val localFiles: LocalDatabaseFiles,
+    private val writeBack: SqliteWriteBack,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel(), ConnectionEditorController {
 
@@ -229,6 +238,8 @@ class ConnectionEditorViewModel @Inject constructor(
                     _form.value = entity.toForm(
                         info = info,
                         canRefresh = localFiles.canRefresh(entity.fileUri),
+                        dirty = withContext(io) { localFiles.isDirty(entity.id) },
+                        canWrite = localFiles.canWriteBack(entity.fileUri),
                         hasPassword = connections.hasPassword(entity.id),
                         hasSshPassword = connections.hasSshPassword(entity.id),
                         hasJumpSshPassword = connections.hasJumpSshPassword(entity.id),
@@ -308,6 +319,45 @@ class ConnectionEditorViewModel @Inject constructor(
     /** The copy made in this editor that nothing has claimed yet; deleted if the editor is left. */
     private var staged: File? = null
 
+    /** What the original looked like when [staged] was copied; becomes the write-back baseline. */
+    private var stagedSource: SourceStat? = null
+
+    private val _writeBackPrompt = MutableStateFlow<WriteBackPrompt?>(null)
+    override val writeBackPrompt: StateFlow<WriteBackPrompt?> = _writeBackPrompt.asStateFlow()
+
+    override fun writeBackToOriginal() = runWriteBack(confirmedOverwrite = false)
+
+    override fun writeBackOverwrite() = runWriteBack(confirmedOverwrite = true)
+
+    override fun writeBackDismiss() {
+        _writeBackPrompt.value = null
+    }
+
+    private fun runWriteBack(confirmedOverwrite: Boolean) {
+        val current = _form.value
+        if (current.id == 0L || current.fileStaged != null) return
+        val file = current.fileName.orEmpty()
+        _writeBackPrompt.value = WriteBackPrompt.Working(file)
+        viewModelScope.launch {
+            val entity = connections.byId(current.id)
+            if (entity == null) {
+                _writeBackPrompt.value = null
+                return@launch
+            }
+            val production = ConnectionEnvironment.fromName(entity.environment).isProduction
+            _writeBackPrompt.value = when (val result = writeBack.write(entity, confirmedOverwrite)) {
+                is WriteBackResult.Done -> {
+                    _form.value = _form.value.copy(fileDirty = false)
+                    WriteBackPrompt.Done(file)
+                }
+                is WriteBackResult.NeedsConfirmation ->
+                    WriteBackPrompt.Changed(file, production, result.state == OriginalState.UNKNOWN)
+                is WriteBackResult.Refused -> WriteBackPrompt.Refused(result.reason)
+                is WriteBackResult.Failed -> WriteBackPrompt.Failed(file, result.message)
+            }
+        }
+    }
+
     /** A file picked in the system picker: kept in the app, and its permission remembered. */
     override fun chooseFile(uri: Uri) = stageFrom(uri, remember = true)
 
@@ -327,6 +377,7 @@ class ConnectionEditorViewModel @Inject constructor(
                 if (remember) localFiles.rememberAccess(uri)
                 staged?.let(localFiles::discard)
                 staged = copy.file
+                stagedSource = copy.source
                 val current = _form.value
                 _form.value = current.copy(
                     fileBusy = false,
@@ -337,6 +388,7 @@ class ConnectionEditorViewModel @Inject constructor(
                     fileWal = copy.info.walMode,
                     fileStaged = copy.file.path,
                     fileCanRefresh = localFiles.canRefresh(uri.toString()),
+                    fileCanWrite = localFiles.canWriteBack(uri.toString()),
                     // A connection with no name yet is named after the file, which is what the
                     // user would type anyway.
                     name = current.name.ifBlank { (copy.name ?: "").substringBeforeLast('.') },
@@ -382,8 +434,10 @@ class ConnectionEditorViewModel @Inject constructor(
                 val pending = staged
                 if (pending != null && !form.engine.hasServer) {
                     try {
-                        withContext(io) { localFiles.commit(pending, saved.id) }
+                        withContext(io) { localFiles.commit(pending, saved.id, stagedSource) }
                         staged = null
+                        // The new copy matches the original it was made from.
+                        _form.value = _form.value.copy(fileDirty = false, fileStaged = null)
                     } catch (e: Exception) {
                         // The row exists now; the next save must update it, not add a second one.
                         _form.value = _form.value.copy(id = saved.id)
@@ -476,6 +530,8 @@ class ConnectionEditorViewModel @Inject constructor(
     private fun ConnectionEntity.toForm(
         info: DatabaseFileInfo?,
         canRefresh: Boolean,
+        dirty: Boolean,
+        canWrite: Boolean,
         hasPassword: Boolean,
         hasSshPassword: Boolean,
         hasJumpSshPassword: Boolean,
@@ -488,6 +544,8 @@ class ConnectionEditorViewModel @Inject constructor(
         fileCopiedAt = info?.copiedAt,
         fileWal = info?.walMode == true,
         fileCanRefresh = canRefresh,
+        fileDirty = dirty,
+        fileCanWrite = canWrite,
         name = name,
         color = ConnectionColor.fromName(color),
         useSsh = useSshTunnel,
