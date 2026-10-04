@@ -273,14 +273,13 @@ B. Üzemeltetés telefonról (csak olvasó, §2-vel összefér):
 - [x] Leglassabb lekérdezések („Lassú” panel; koppintás → vágólap, sosem futtat).
 - [x] Tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt/redundáns indexek (Tárhely).
 - [x] A „Lassú” lekérdezés és a futó lekérdezés megnyitása a szerkesztőben (`EditorHandoff`).
-- [ ] Döntésre vár: a keresés garantáljon-e ékezetfüggetlen egyezést („arviz” → „Árvíz”) a
-      szerver collation-jétől függetlenül.
+- [x] Döntés (2026-10-04): a keresés arra keres, amit a felhasználó beírt — az app nem végez
+      ékezet-összevonást (MySQL `*_ci` collation magától ékezetfüggetlen lehet; ezt nem írjuk felül).
 - [x] Riasztás a Pulzusból (harang a Pulzus fejlécben). Nincs még: „leghosszabb futó lekérdezés”,
       „kapcsolatok %”; készüléken nem próbált: értesítés-koppintás zárolva, engedélykérés.
 C. Biztonság, elszámolhatóság:
 - [x] Írási napló (Beállítások → Írási napló): szűrés, keresés, CSV/JSON export, törlés.
-- [ ] Döntésre vár: az írási napló a beírt értékeket is tárolja (pl. jelszó-oszlop) — kell-e
-      oszlopnév szerinti kitakarás? A mentésbe nem kerül bele.
+- [x] Döntés (2026-10-04): az írási napló NEM takar ki semmit (a beírt értékeket is tárolja).
 D. Kényelem:
 - [x] Oszlop-összesítés (darab, nem NULL, különböző, összeg, átlag, min/max) — fejléc hosszan nyomva.
 - [x] Indítóikon-parancsikonok (Beállítások, alapból ki; a 3 legutóbbi nem éles kapcsolat).
@@ -295,14 +294,14 @@ E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a 
 - [x] Több motor 1–2. szakasz: PostgreSQL · SQL Server/Azure SQL · SQLite fájl.
 - [x] EXPLAIN-fa, keresés, séma-összehasonlítás, Tárhely mindhárom motoron; Szerver/Pulzus PG-n és
       SQL Serveren; SQLite-on eredmény-szerkesztés. (SQLite-on Szerver/Pulzus értelemszerűen nincs.)
-- [ ] Döntésre vár: éles kapcsolaton a munkamenet leállítása (KILL / pg_terminate_backend) kérjen-e
-      erősebb megerősítést (ma ugyanaz a sima megerősítés, mint MySQL-en).
+- [x] Döntés (2026-10-04): a munkamenet leállítása éles kapcsolaton sem kér erősebb megerősítést.
 - [ ] Nincs élőben kipróbálva: PG standby (replika), SQL Server availability group; redundáns
       index csak MySQL-en; SQLite keresés kis/nagybetű-független csak ASCII-re.
 - [ ] Készüléken kipróbálni: pgjdbc/mssql-jdbc TLS Androidon, SQLite fájlválasztó, SSH-alagút PG/MSSQL-lel.
 - [ ] SQL Server: `GO` elválasztó nem támogatott; varbinary/text/ntext/xml cellaszerkesztés hibázhat;
       Azure AD nincs. PostgreSQL: a jsonb `?` operátort a driver paraméternek veszi.
-- [ ] SQLite: kulcs nélküli tábla csak olvasható; visszaírás az eredeti fájlba nincs; WAL-fájlok nem másolódnak.
+- [ ] (folyamatban) SQLite visszaírás: döntés (2026-10-04) — a tábla nézetből kilépéskor, ha volt írás,
+      az app kérdezze meg, kiírja-e az eredeti fájlba. Marad: kulcs nélküli tábla csak olvasható; WAL-fájlok nem másolódnak.
 - [ ] Döntésre vár: a diagram csak IQR-kiugrókat jelöl (a lap a z-szabályt is listázza).
 - [ ] Oracle: nem kérték.
 
