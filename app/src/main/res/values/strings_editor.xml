@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_undo">Undo</string>
+    <string name="editor_redo">Redo</string>
+    <string name="editor_snippets">Snippets</string>
+    <string name="editor_share_query">Share query text</string>
+
+    <string name="snippets_title">Snippets</string>
+    <string name="snippets_search">Search snippets</string>
+    <string name="snippets_mine">Mine</string>
+    <string name="snippets_builtin">Built in</string>
+    <string name="snippets_empty_mine">Nothing saved yet. Save the selected text, or the whole editor, as a snippet to reuse it.</string>
+    <string name="snippets_none_found">No snippet matches.</string>
+    <string name="snippets_save_current">Save the editor text as a snippet</string>
+    <string name="snippets_save_selection">Save the selection as a snippet</string>
+    <string name="snippets_name">Name</string>
+    <string name="snippets_text">SQL</string>
+    <string name="snippets_placeholder_hint">Mark a word to fill in as {{word}}: the snippet selects the first one when inserted.</string>
+    <string name="snippets_save">Save</string>
+    <string name="snippets_edit">Edit snippet</string>
+    <string name="snippets_delete">Delete snippet</string>
+    <string name="snippets_delete_confirm">Delete “%1$s”?</string>
+    <string name="snippets_delete_yes">Delete</string>
+    <string name="snippets_builtin_note">Templates only: nothing is run until you run it, and no snippet changes the structure of a table.</string>
+
+    <string name="keybar_title">Editor key bar</string>
+    <string name="keybar_note">The keys above the keyboard in the SQL editor. Reorder them, hide the ones you do not use, or start over.</string>
+    <string name="keybar_open_note">Reorder, hide or show the keys above the keyboard</string>
+    <string name="keybar_reset">Reset to default</string>
+    <string name="keybar_move_up">Move %1$s up</string>
+    <string name="keybar_move_down">Move %1$s down</string>
+</resources>

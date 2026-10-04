@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.SqlGrammar
+import hu.laurel.sqlpulse.data.sql.dialect.keywords.MySqlKeywords
+
 /** What a stretch of SQL text is, for colouring purposes (§7.4). */
 enum class TokenRole { KEYWORD, STRING, NUMBER, COMMENT, QUOTED_IDENTIFIER, PARAMETER }
 
@@ -14,37 +17,30 @@ data class SqlToken(val start: Int, val end: Int, val role: TokenRole)
  */
 object SqlHighlighter {
 
-    private val KEYWORDS = setOf(
-        "select", "from", "where", "and", "or", "not", "null", "is", "in", "like", "between",
-        "join", "inner", "left", "right", "outer", "full", "cross", "on", "using",
-        "group", "by", "having", "order", "asc", "desc", "limit", "offset",
-        "insert", "into", "values", "update", "set", "delete", "replace",
-        "create", "alter", "drop", "table", "index", "view", "database", "schema",
-        "as", "distinct", "union", "all", "case", "when", "then", "else", "end",
-        "with", "show", "describe", "explain", "count", "sum", "avg", "min", "max",
-        "true", "false", "primary", "key", "foreign", "references", "default", "exists",
-    )
-
-    fun tokenize(sql: String): List<SqlToken> {
+    /**
+     * @param grammar which characters open a quote and a comment: MySQL's by default, which is what
+     *   the editor assumed before engines existed. `[x]` and `"x"` are names, `$$…$$` a string.
+     * @param keywords the lower-case words to colour; see SqlKeywords for the per-engine sets.
+     */
+    fun tokenize(
+        sql: String,
+        grammar: SqlGrammar = SqlGrammar.MYSQL,
+        keywords: Set<String> = MySqlKeywords.ALL,
+    ): List<SqlToken> {
         val tokens = mutableListOf<SqlToken>()
         var index = 0
 
         while (index < sql.length) {
             val c = sql[index]
             when {
-                c == '\'' || c == '"' -> {
-                    val end = skipLiteral(sql, index)
-                    tokens += SqlToken(index, end, TokenRole.STRING)
+                grammar.opensQuote(sql, index) -> {
+                    val end = grammar.endOfQuoted(sql, index)
+                    val role = if (grammar.isIdentifierQuote(c)) TokenRole.QUOTED_IDENTIFIER else TokenRole.STRING
+                    tokens += SqlToken(index, end, role)
                     index = end
                 }
 
-                c == '`' -> {
-                    val end = skipLiteral(sql, index)
-                    tokens += SqlToken(index, end, TokenRole.QUOTED_IDENTIFIER)
-                    index = end
-                }
-
-                sql.startsWith("--", index) || c == '#' -> {
+                grammar.opensLineComment(sql, index) -> {
                     val end = sql.indexOf('\n', index).takeIf { it >= 0 } ?: sql.length
                     tokens += SqlToken(index, end, TokenRole.COMMENT)
                     index = end
@@ -78,7 +74,7 @@ object SqlHighlighter {
                     var end = index
                     while (end < sql.length && isWordCharacter(sql[end])) end++
                     val word = sql.substring(index, end)
-                    if (word.lowercase() in KEYWORDS) {
+                    if (word.lowercase() in keywords) {
                         tokens += SqlToken(index, end, TokenRole.KEYWORD)
                     }
                     index = end
@@ -92,22 +88,4 @@ object SqlHighlighter {
 
     private fun isWordCharacter(c: Char?): Boolean =
         c != null && (c.isLetterOrDigit() || c == '_')
-
-    /** @return the index just past the closing quote, or the end of the text if it never closes. */
-    private fun skipLiteral(sql: String, start: Int): Int {
-        val closing = sql[start]
-        var index = start + 1
-        while (index < sql.length) {
-            val current = sql[index]
-            if (current == '\\' && closing != '`') {
-                index += 2
-                continue
-            }
-            index++
-            if (current == closing) {
-                if (index < sql.length && sql[index] == closing) index++ else return index
-            }
-        }
-        return index
-    }
 }

@@ -1,31 +1,45 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -35,24 +49,37 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.format.LocaleFormat
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.WriteAccess
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.ConnectStep
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelState
 import hu.laurel.sqlpulse.ui.components.ColorRail
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.InfoBadge
+import hu.laurel.sqlpulse.ui.components.MonoBlock
 import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.components.StepIndicator
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -60,15 +87,34 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
-import java.text.DateFormat
-import java.util.Date
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import kotlinx.coroutines.delay
+
+/** Everything the connection list can ask for, so the list itself can be drawn without a ViewModel. */
+data class ConnectionListActions(
+    val onCreate: () -> Unit = {},
+    val onEdit: (Long) -> Unit = {},
+    val onOpenKeyStore: () -> Unit = {},
+    val onOpenSchema: () -> Unit = {},
+    val onOpenQuery: () -> Unit = {},
+    val onOpenSettings: () -> Unit = {},
+    val onOpenSchemaDiff: () -> Unit = {},
+    val onConnect: (ConnectionEntity) -> Unit = {},
+    val onConfirmConnect: () -> Unit = {},
+    val onCancelConnect: () -> Unit = {},
+    val onAcceptHostKey: () -> Unit = {},
+    val onRejectHostKey: () -> Unit = {},
+    val onUnlockWrites: (ConnectionEntity) -> Unit = {},
+    val onLockWrites: (ConnectionEntity) -> Unit = {},
+    val onDisconnect: () -> Unit = {},
+    val onDuplicate: (ConnectionEntity) -> Unit = {},
+    val onDelete: (ConnectionEntity) -> Unit = {},
+)
 
 /**
  * The launcher screen (§7.1). A card per connection; one tap starts the unlock and the tunnel, and
  * the card shows which of the four steps is running, because four different things can break.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionListScreen(
     onCreate: () -> Unit,
@@ -77,10 +123,15 @@ fun ConnectionListScreen(
     onOpenSchema: () -> Unit,
     onOpenQuery: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSchemaDiff: () -> Unit = {},
     viewModel: ConnectionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val confirming by viewModel.confirming.collectAsStateWithLifecycle()
+    val shortcut by viewModel.shortcutPending.collectAsStateWithLifecycle()
+
+    // Composed only while unlocked, which is what makes a launcher shortcut wait for the unlock.
+    LaunchedEffect(shortcut) { if (shortcut != null) viewModel.openShortcut() }
 
     // A write window is the one thing on this screen that changes without anybody touching it, so
     // the clock only ticks while one is open — and stops again the moment the last one closes.
@@ -92,20 +143,67 @@ fun ConnectionListScreen(
         }
     }
 
+    ConnectionListContent(
+        state = state,
+        confirming = confirming,
+        now = now,
+        actions = ConnectionListActions(
+            onCreate = onCreate,
+            onEdit = onEdit,
+            onOpenKeyStore = onOpenKeyStore,
+            onOpenSchema = onOpenSchema,
+            onOpenQuery = onOpenQuery,
+            onOpenSettings = onOpenSettings,
+            onOpenSchemaDiff = onOpenSchemaDiff,
+            onConnect = viewModel::connect,
+            onConfirmConnect = viewModel::confirmConnect,
+            onCancelConnect = viewModel::cancelConnect,
+            onAcceptHostKey = viewModel::acceptHostKey,
+            onRejectHostKey = viewModel::rejectHostKey,
+            onUnlockWrites = viewModel::unlockWrites,
+            onLockWrites = viewModel::lockWrites,
+            onDisconnect = viewModel::disconnect,
+            onDuplicate = viewModel::duplicate,
+            onDelete = viewModel::delete,
+        ),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectionListContent(
+    state: ConnectionListUiState,
+    confirming: ConnectionEntity?,
+    now: Long,
+    actions: ConnectionListActions,
+) {
+    var environmentFilter by rememberSaveable { mutableStateOf<String?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.connections_title)) },
                 actions = {
                     if (state.tunnel is TunnelState.Active) {
-                        IconButton(onClick = onOpenQuery) {
+                        IconButton(onClick = actions.onOpenQuery) {
                             Icon(Icons.Default.Code, contentDescription = stringResource(R.string.query_title))
                         }
                     }
-                    IconButton(onClick = onOpenKeyStore) {
+                    // Comparing works from the stored schemas, so it needs no open connection —
+                    // only something to compare, which one saved connection already is.
+                    if (state.connections.isNotEmpty()) {
+                        IconButton(onClick = actions.onOpenSchemaDiff) {
+                            Icon(
+                                Icons.Default.CompareArrows,
+                                contentDescription = stringResource(R.string.schemadiff_title),
+                            )
+                        }
+                    }
+                    IconButton(onClick = actions.onOpenKeyStore) {
                         Icon(Icons.Default.Key, contentDescription = stringResource(R.string.keys_title))
                     }
-                    IconButton(onClick = onOpenSettings) {
+                    IconButton(onClick = actions.onOpenSettings) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = stringResource(R.string.settings_title),
@@ -116,9 +214,14 @@ fun ConnectionListScreen(
         },
         floatingActionButton = {
             if (state.connections.isNotEmpty()) {
-                FloatingActionButton(onClick = onCreate) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.connection_new))
-                }
+                ExtendedFloatingActionButton(
+                    onClick = actions.onCreate,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text(stringResource(R.string.connection_new)) },
+                    shape = Shapes.card,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                )
             }
         },
     ) { padding ->
@@ -128,50 +231,65 @@ fun ConnectionListScreen(
                     title = stringResource(R.string.connections_empty_title),
                     body = stringResource(R.string.connections_empty_body),
                     actionLabel = stringResource(R.string.connections_empty_action),
-                    onAction = onCreate,
+                    onAction = actions.onCreate,
                     modifier = Modifier.align(Alignment.Center),
                 )
             } else {
+                // Filtering only means something once there is more than one environment to
+                // choose between; with a single group the chips would be one button doing nothing.
+                val shown = state.groups.filter { (environment, _) ->
+                    environmentFilter == null || environment.name == environmentFilter
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.l),
+                    // Room at the bottom for the extended button, so it never covers the last card.
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = Spacing.l,
+                        end = Spacing.l,
+                        top = Spacing.xs,
+                        bottom = 96.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.m),
                 ) {
-                    state.groups.forEach { (environment, connections) ->
-                        if (state.showsGroupHeadings) {
-                            item(key = "group-${environment.name}") {
-                                Text(
-                                    stringResource(environment.label()),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = LocalSemanticColors.current.textSecondary,
-                                    modifier = Modifier.padding(top = Spacing.s),
-                                )
-                            }
+                    if (state.showsGroupHeadings) {
+                        item(key = "filters") {
+                            EnvironmentFilters(
+                                environments = state.groups.map { it.first },
+                                total = state.connections.size,
+                                selected = environmentFilter,
+                                onSelect = { environmentFilter = it },
+                            )
                         }
+                    }
+                    shown.forEach { (environment, connections) ->
+                        // No headings: the chips above and the badge on every card already say which
+                        // environment a card belongs to; the order still groups them.
                         items(connections, key = { it.id }) { connection ->
                             ConnectionCard(
                                 connection = connection,
                                 tunnel = state.tunnel.takeIf { it.connectionId == connection.id },
                                 writeAccess = state.writeAccess(connection, now),
-                                onUnlockWrites = { viewModel.unlockWrites(connection) },
-                                onLockWrites = { viewModel.lockWrites(connection) },
+                                fileSize = state.fileSizes[connection.id],
+                                now = now,
+                                onUnlockWrites = { actions.onUnlockWrites(connection) },
+                                onLockWrites = { actions.onLockWrites(connection) },
                                 onClick = {
                                     // An already open connection goes straight to the schema;
                                     // disconnecting lives in the long-press menu and the notification.
                                     if (state.tunnel.connectionId == connection.id &&
                                         state.tunnel is TunnelState.Active
                                     ) {
-                                        onOpenSchema()
+                                        actions.onOpenSchema()
                                     } else {
-                                        viewModel.connect(connection)
+                                        actions.onConnect(connection)
                                     }
                                 },
                                 connected = state.tunnel.connectionId == connection.id &&
                                     state.tunnel is TunnelState.Active,
-                                onDisconnect = viewModel::disconnect,
-                                onEdit = { onEdit(connection.id) },
-                                onDuplicate = { viewModel.duplicate(connection) },
-                                onDelete = { viewModel.delete(connection) },
+                                onDisconnect = actions.onDisconnect,
+                                onEdit = { actions.onEdit(connection.id) },
+                                onDuplicate = { actions.onDuplicate(connection) },
+                                onDelete = { actions.onDelete(connection) },
                             )
                         }
                     }
@@ -182,16 +300,16 @@ fun ConnectionListScreen(
         confirming?.let { connection ->
             ProductionConfirmDialog(
                 connection = connection,
-                onConfirm = viewModel::confirmConnect,
-                onCancel = viewModel::cancelConnect,
+                onConfirm = actions.onConfirmConnect,
+                onCancel = actions.onCancelConnect,
             )
         }
 
         state.hostKeyPrompt?.let { prompt ->
             HostKeyDialog(
                 prompt = prompt,
-                onAccept = viewModel::acceptHostKey,
-                onReject = viewModel::rejectHostKey,
+                onAccept = actions.onAcceptHostKey,
+                onReject = actions.onRejectHostKey,
             )
         }
     }
@@ -203,6 +321,8 @@ private fun ConnectionCard(
     connection: ConnectionEntity,
     tunnel: TunnelState?,
     writeAccess: WriteAccess,
+    fileSize: Long?,
+    now: Long,
     onUnlockWrites: () -> Unit,
     onLockWrites: () -> Unit,
     onClick: () -> Unit,
@@ -217,74 +337,105 @@ private fun ConnectionCard(
     val color = ConnectionColor.fromName(connection.color)
     val environment = ConnectionEnvironment.fromName(connection.environment)
 
-    HairlineCard {
+    HairlineCard(
+        // A production card keeps a red edge all round, not only the rail: it is the one card
+        // that has to be recognised before it is opened (§8).
+        modifier = if (environment.isProduction) {
+            Modifier.border(1.dp, semantic.production.copy(alpha = 0.35f), Shapes.card)
+        } else {
+            Modifier
+        },
+    ) {
         Row(
-            modifier = Modifier.combinedClickable(
-                onClick = onClick,
-                onLongClick = { menuOpen = true },
-            ),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .height(IntrinsicSize.Min)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { menuOpen = true },
+                ),
         ) {
             ColorRail(color.value)
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(Spacing.l),
-                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s),
                 ) {
-                    Text(connection.name, style = MaterialTheme.typography.titleMedium)
-                    // Only production is worth a badge: it is the one that has to be noticed
-                    // before a statement is typed, and the others would only be noise.
-                    if (environment.isProduction) {
-                        Surface(
-                            color = semantic.production.copy(alpha = 0.16f),
-                            shape = Shapes.chip,
-                        ) {
-                            Text(
-                                stringResource(environment.shortLabel()),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = semantic.production,
-                                modifier = Modifier.padding(
-                                    horizontal = Spacing.s,
-                                    vertical = 2.dp,
-                                ),
+                    Text(
+                        connection.name,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // Each environment keeps one colour everywhere it is named: development the
+                    // accent, test amber, production red.
+                    val environmentColor = when (environment) {
+                        ConnectionEnvironment.DEVELOPMENT -> MaterialTheme.colorScheme.primary
+                        ConnectionEnvironment.TEST -> semantic.warning
+                        ConnectionEnvironment.PRODUCTION -> semantic.production
+                        ConnectionEnvironment.UNSET -> null
+                    }
+                    if (environmentColor != null) {
+                        InfoBadge(stringResource(environment.label()), environmentColor)
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // A file on the phone has no host, port or tunnel to show: its name and size
+                    // take their place.
+                    val isFile = !DatabaseEngine.fromName(connection.engine).hasServer
+                    Icon(
+                        when {
+                            isFile -> Icons.Default.Description
+                            connection.useSshTunnel -> Icons.Default.Terminal
+                            else -> Icons.Default.Lan
+                        },
+                        contentDescription = null,
+                        tint = semantic.textSecondary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        when {
+                            isFile -> fileLine(connection.fileName.orEmpty(), fileSize)
+                            // Without a tunnel there is no SSH host to name.
+                            connection.useSshTunnel ->
+                                "${connection.sshUser}@${connection.sshHost} → " +
+                                    "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                            else -> "${connection.dbHost}:${connection.dbPort}/${connection.database}"
+                        },
+                        style = MonoStyles.cell.copy(fontSize = 12.sp),
+                        color = semantic.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                val tls = SslMode.fromName(connection.sslMode) != SslMode.DISABLED
+                if (tls || connection.readOnly) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (tls) InfoBadge(stringResource(R.string.connection_badge_tls), semantic.success)
+                        if (connection.readOnly) {
+                            InfoBadge(
+                                stringResource(R.string.connection_badge_read_only),
+                                color = semantic.textSecondary,
+                                container = semantic.surfaceRaised,
                             )
                         }
                     }
                 }
-                Text(
-                    // Without a tunnel there is no SSH host to name.
-                    if (connection.useSshTunnel) {
-                        "${connection.sshUser}@${connection.sshHost} → " +
-                            "${connection.dbHost}:${connection.dbPort}/${connection.database}"
-                    } else {
-                        "${connection.dbHost}:${connection.dbPort}/${connection.database}"
-                    },
-                    style = MonoStyles.cell,
-                    color = semantic.textSecondary,
-                )
 
                 // Only production says anything here: everywhere else "writes allowed" is the
                 // normal state of affairs and would be noise on every card.
                 if (environment.isProduction) {
                     WriteAccessLine(writeAccess)
                 }
-
-                val label = tunnel.label()
-                StatusDot(
-                    color = when (tunnel) {
-                        is TunnelState.Active -> semantic.success
-                        is TunnelState.Connecting, is TunnelState.Unlocking -> semantic.warning
-                        is TunnelState.Failed -> semantic.danger
-                        else -> semantic.textSecondary
-                    },
-                    label = stringResource(label),
-                    pulsing = tunnel is TunnelState.Connecting || tunnel is TunnelState.Unlocking,
-                )
 
                 if (tunnel is TunnelState.Connecting || tunnel is TunnelState.Unlocking ||
                     tunnel is TunnelState.Failed
@@ -300,13 +451,28 @@ private fun ConnectionCard(
                     )
                 }
 
-                Text(
-                    text = connection.lastUsedAt?.let {
-                        stringResource(R.string.last_used, DateFormat.getDateTimeInstance().format(Date(it)))
-                    } ?: stringResource(R.string.never_used),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(
+                        color = when (tunnel) {
+                            is TunnelState.Active -> semantic.success
+                            is TunnelState.Connecting, is TunnelState.Unlocking -> semantic.warning
+                            is TunnelState.Failed -> semantic.danger
+                            else -> semantic.textSecondary
+                        },
+                        label = stringResource(tunnel.label()),
+                        pulsing = tunnel is TunnelState.Connecting || tunnel is TunnelState.Unlocking,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        // Relative, as a glance wants it: "3 days ago" rather than a timestamp.
+                        text = connection.lastUsedAt?.let {
+                            DateUtils.getRelativeTimeSpanString(it, now, DateUtils.MINUTE_IN_MILLIS).toString()
+                        } ?: stringResource(R.string.never_used),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = semantic.textSecondary,
+                        maxLines = 1,
+                    )
+                }
             }
 
             Box {
@@ -355,6 +521,56 @@ private fun ConnectionCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * One chip per environment present, plus "all". Selecting one narrows the list to that group;
+ * the production chip carries the production colour, like everything else that means production.
+ */
+@Composable
+private fun EnvironmentFilters(
+    environments: List<ConnectionEnvironment>,
+    total: Int,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+    ) {
+        FilterChip(
+            selected = selected == null,
+            onClick = { onSelect(null) },
+            label = { Text(stringResource(R.string.connections_filter_all, total)) },
+        )
+        environments.forEach { environment ->
+            val production = environment.isProduction
+            FilterChip(
+                selected = selected == environment.name,
+                onClick = {
+                    onSelect(if (selected == environment.name) null else environment.name)
+                },
+                label = { Text(stringResource(environment.label())) },
+                leadingIcon = if (production) {
+                    { Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                } else {
+                    null
+                },
+                colors = if (production) {
+                    FilterChipDefaults.filterChipColors(
+                        labelColor = semantic.production,
+                        iconColor = semantic.production,
+                        selectedContainerColor = semantic.production.copy(alpha = 0.16f),
+                        selectedLabelColor = semantic.production,
+                        selectedLeadingIconColor = semantic.production,
+                    )
+                } else {
+                    FilterChipDefaults.filterChipColors()
+                },
+            )
         }
     }
 }
@@ -424,7 +640,7 @@ private fun StepProgress(tunnel: TunnelState, tunnelled: Boolean) {
                 ConnectStep.SCHEMA -> stringResource(R.string.step_schema)
             }
         },
-        modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
@@ -434,73 +650,131 @@ private fun StepProgress(tunnel: TunnelState, tunnelled: Boolean) {
  * Not a lock — the user can say yes — but the moment where "which database am I on" gets answered
  * before the first statement rather than after it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProductionConfirmDialog(
     connection: ConnectionEntity,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.production_confirm_title)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.production_confirm_body,
-                    connection.name,
-                    "${connection.dbHost}:${connection.dbPort}/${connection.database}",
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.production_confirm_open))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+    val server = DatabaseEngine.fromName(connection.engine).hasServer
+    BasicAlertDialog(onDismissRequest = onCancel) {
+        ProductionConfirmCard(
+            name = connection.name,
+            target = if (server) "${connection.dbHost}:${connection.dbPort}/${connection.database}" else connection.fileName.orEmpty(),
+            isFile = !server,
+            onConfirm = onConfirm,
+            onCancel = onCancel,
+        )
+    }
 }
 
+/**
+ * The card of the production confirmation. A file connection says "database file", not "server":
+ * a SQLite file does not point at anything, it is the thing itself.
+ */
+@Composable
+fun ProductionConfirmCard(
+    name: String,
+    target: String,
+    isFile: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    DialogCard(danger = true) {
+        DialogHeading(
+            title = stringResource(R.string.production_confirm_title),
+            subtitle = stringResource(R.string.environment_production_short).uppercase(),
+            danger = true,
+        )
+        Text(
+            stringResource(
+                if (isFile) R.string.production_confirm_body_file else R.string.production_confirm_body,
+                name,
+                target,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onCancel,
+            actionLabel = stringResource(R.string.production_confirm_open),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
+}
+
+/** `name · 1.2 MB`, or `name · copy missing` when the app has no copy of the file. */
+@Composable
+private fun fileLine(name: String, size: Long?): String =
+    if (size == null) {
+        stringResource(R.string.sqlite_card_missing, name)
+    } else {
+        stringResource(R.string.sqlite_card_size, name, LocaleFormat.byteSize(size, appLocale()))
+    }
+
+/** The host-key decision as a window; the card itself is [HostKeyCard]. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostKeyDialog(prompt: HostKeyPrompt, onAccept: () -> Unit, onReject: () -> Unit) {
+    BasicAlertDialog(onDismissRequest = onReject) {
+        HostKeyCard(prompt = prompt, onAccept = onAccept, onReject = onReject)
+    }
+}
+
+/**
+ * First-seen and changed keys are deliberately different cards: the first asks for a check of the
+ * fingerprint, the second is a red, blocking warning with no way to accept — a changed key is the
+ * one case where a quick tap must never be the path of least resistance (§5).
+ */
+@Composable
+fun HostKeyCard(prompt: HostKeyPrompt, onAccept: () -> Unit, onReject: () -> Unit) {
+    val semantic = LocalSemanticColors.current
     val changed = prompt.storedFingerprint != null
-    AlertDialog(
-        onDismissRequest = onReject,
-        title = {
+    DialogCard(danger = changed) {
+        DialogHeading(
+            title = stringResource(if (changed) R.string.host_key_changed_title else R.string.host_key_new_title),
+            subtitle = "${prompt.host}:${prompt.port}",
+            danger = changed,
+        )
+        if (changed) {
             Text(
-                stringResource(
-                    if (changed) R.string.host_key_changed_title else R.string.host_key_new_title,
-                ),
+                stringResource(R.string.host_key_changed_headline),
+                style = MaterialTheme.typography.titleSmall,
+                color = semantic.danger,
             )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                if (changed) {
-                    Text(
-                        stringResource(
-                            R.string.host_key_changed_body,
-                            prompt.storedFingerprint.orEmpty(),
-                            prompt.offeredFingerprint,
-                        ),
-                    )
-                } else {
-                    Text(stringResource(R.string.host_key_new_body, "${prompt.host}:${prompt.port}"))
-                    Text("${prompt.keyType} ${prompt.offeredFingerprint}", style = MonoStyles.fingerprint)
-                }
-            }
-        },
-        confirmButton = {
-            // A changed key is blocked outright: the only way past it is the connection editor (§5).
-            if (!changed) {
-                TextButton(onClick = onAccept) { Text(stringResource(R.string.host_key_accept)) }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onReject) { Text(stringResource(R.string.host_key_reject)) }
-        },
-    )
+            FingerprintBlock(stringResource(R.string.host_key_stored_label), prompt.storedFingerprint.orEmpty(), semantic.textSecondary)
+            FingerprintBlock(
+                stringResource(R.string.host_key_offered_label),
+                "${prompt.keyType} ${prompt.offeredFingerprint}",
+                semantic.danger,
+            )
+            Text(stringResource(R.string.host_key_changed_explanation), style = MaterialTheme.typography.bodyMedium)
+        } else {
+            Text(stringResource(R.string.host_key_new_body, "${prompt.host}:${prompt.port}"), style = MaterialTheme.typography.bodyMedium)
+            FingerprintBlock(stringResource(R.string.host_key_offered_label), "${prompt.keyType} ${prompt.offeredFingerprint}", semantic.success)
+        }
+        // A changed key is blocked outright: the only way past it is the connection editor (§5).
+        DialogButtons(
+            cancelLabel = stringResource(R.string.host_key_reject),
+            onCancel = onReject,
+            actionLabel = stringResource(R.string.host_key_accept),
+            onAction = onAccept,
+            enabled = true,
+            showAction = !changed,
+        )
+    }
+}
+
+/** A labelled fingerprint in mono, outlined in a colour so the two can be compared by eye. */
+@Composable
+private fun FingerprintBlock(label: String, value: String, edge: androidx.compose.ui.graphics.Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = LocalSemanticColors.current.textSecondary)
+        MonoBlock(value, edge = edge.copy(alpha = 0.6f))
+    }
 }
 
 private fun TunnelState?.label(): Int = when (this) {

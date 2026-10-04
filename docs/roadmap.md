@@ -105,10 +105,61 @@ megnézhető.
 
 | Funkció | Hol |
 | --- | --- |
-| Éles MySQL 8.0, 5.7 és MariaDB 11 ellen futó integrációs tesztek a CI-ban | `.github/workflows/integration.yml` |
+| Valódi szerverek (MySQL 8.0, MariaDB, PostgreSQL 16, SQL Server 2022) ellen futó integrációs tesztek — helyben futtatva, CI nincs | `app/src/test/.../integration/` |
 | A vándorlások valódi SQLite-on végigfuttatva, 1-től a mai verzióig | `app/src/test/.../MigrationSqlTest.kt` |
 | Kiadási build R8-cal, a driverek és a natív hívások megtartva | `app/proguard-rules.pro` |
 | Diagnosztikai jelentés hibabejelentéshez, amiben nincs gépnév, felhasználó, jelszó, kulcs, lekérdezés | `data/diagnostics/` |
+
+### A dbx-ből átvett ötletek (2026-10)
+
+A t8y2/dbx asztali kliens megoldásai Kotlinra átírva (elemzés: `docs/dbx-elemzes.md`).
+
+| Funkció | Hol |
+| --- | --- |
+| Séma-összehasonlítás két kapcsolat (vagy adatbázis) között, a tárolt sémából, az élő oldal frissíthető; táblák, oszlopok, indexek, idegen kulcsok; csak olvas | `data/schema/SchemaDiff*.kt`, `ui/schemadiff/` |
+| Írás előtti előnézet: az UPDATE/DELETE által érintett első 20 sor, régi és új érték egymás mellett | `data/sql/WriteImpact.kt`, `ui/query/WriteRowPreviewTable.kt` |
+| A lekérdezés eredménye szerkeszthető, ha egy táblára vezethető vissza és a kulcs benne van; ha nem, kiírja, miért | `data/sql/ResultEditability.kt`, `ui/query/ResultEdit*.kt` |
+| Keresés az egész adatbázisban: egy érték minden szöveges oszlopban, táblánként, megszakítható | `data/search/`, `ui/search/` |
+| Adat-összehasonlítás két kapcsolat között: a pillanatfelvétel túléli a kapcsolatváltást, kulcsválasztás, ismétlődő kulcs jelzése | `data/snapshot/SnapshotVault.kt`, `ui/snapshot/SnapshotSheet.kt` |
+| Export Markdown-táblázatként | `data/export/ResultSerializer.kt` |
+| Éles írászár a sorszerkesztésre és a CSV importra is (eddig csak a SQL szerkesztőben volt) | `data/sql/WriteGate.kt` |
+
+### Üzemeltetés telefonról (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| Replikáció állapota csatornánként: ítélet, késés, szálak, utolsó hiba, GTID/pozíciók | `data/schema/ReplicationStatus.kt`, `ui/server/ServerOpsPanels.kt` |
+| A leglassabb utasítások a `performance_schema` összesítőjéből | `data/schema/SlowStatements.kt`, `ui/server/ServerOpsPanels.kt` |
+| Tárhely: tábla- és indexméretek, AUTO_INCREMENT-tartalék, nem használt és redundáns indexek | `data/schema/Storage*.kt`, `ui/storage/` |
+| Integrációs tesztek mindezekre (helyben MySQL 8.0 és MariaDB 10.11 ellen is lefuttatva) | `app/src/test/.../integration/` |
+
+### Elszámolhatóság és kényelem (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| Írási napló: minden írás (szerkesztő, sorszerkesztés, eredmény-szerkesztés, CSV import, visszavonás) helyben, titkosítva; szűrés, export, törlés | `data/writelog/`, `ui/writelog/` |
+| Oszlop-összesítés a betöltött sorokból (fejléc hosszan nyomva) | `data/grid/ColumnStats.kt`, `ui/grid/Sheets.kt` |
+| Indítóikon-parancsikonok a legutóbbi nem éles kapcsolatokhoz (alapból ki) | `data/shortcuts/` |
+| SQL átadása a szerkesztőnek új fülön (Lassú panel, futó lekérdezések); keresési találat → szűrt tábla | `ui/handoff/Handoffs.kt` |
+
+### Több adatbázismotor (2026-10)
+
+| Funkció | Hol |
+| --- | --- |
+| PostgreSQL, SQL Server / Azure SQL, SQLite-fájl a MySQL/MariaDB mellett (motorválasztó a kapcsolatszerkesztőben) | `data/sql/dialect/`, `docs/tobb-motor-terv.md` |
+| EXPLAIN-fa minden motoron (PG JSON, SQL Server becsült XML-terv, SQLite query plan) | `data/sql/plan/` |
+| Keresés, séma-összehasonlítás, Tárhely minden motoron; Szerver és Pulzus PG-n és SQL Serveren | `data/search/`, `data/schema/`, `data/sql/dialect/*ServerCatalog.kt` |
+| Szerkesztő: undo/redo, kódminták, testreszabható gombsor, megosztás; motorfüggő kulcsszavak | `ui/query/`, `data/query/` |
+| Kiugró értékek (IQR + robusztus z) az oszlop-összesítőben, a rácsban és a diagramon | `data/grid/Outliers.kt` |
+
+### Kényelem és mélyítés (2026-10-04)
+
+| Funkció | Hol |
+| --- | --- |
+| Riasztások a Pulzusból (kapcsolatonként, alapból ki, csak élő kapcsolat alatt) | `data/alerts/`, `ui/alerts/` |
+| Séma-összehasonlítás: nézetek, triggerek, CHECK-feltételek, FK-szabályok (Room v12) | `data/schema/ObjectText.kt`, `ui/schemadiff/` |
+| Felugró kiegészítő lista, CSV kézi oszlop-párosítás, „teljes találat” export | `ui/query/CompletionPopup.kt`, `data/csv/CsvMapping.kt`, `data/export/FullExporter.kt` |
+| Minden dialógus a tervhez igazítva (host key: megváltozott kulcs piros kártya), magyar formátumok | `ui/components/Dialogs.kt`, `data/format/LocaleFormat.kt` |
 
 ## Ami hiányzik
 
@@ -124,10 +175,11 @@ képernyő nincs minden kiszolgálóverzióval végigmérve.
 
 ## Ami ezután jön
 
-1. **Séma-összehasonlítás.** Két kapcsolat szerkezete egymás mellett: mi tér el a
-   fejlesztői és az éles adatbázis között.
-2. **Éles próba minden képernyőn.** A kapcsolat, a régi driver ága és az SSH ág van
+1. **Éles próba minden képernyőn.** A kapcsolat, a régi driver ága és az SSH ág van
    valódi kiszolgálón kimérve; a többi képernyő nincs minden verzióval végigpróbálva.
+   Különösen az új, dbx-ből átvett funkciók (fent) várnak valódi kiszolgálós próbára.
+2. **A séma-összehasonlítás mélyítése.** Nézetek, triggerek, CHECK-feltételek és FK-szabályok
+   nincsenek a tárolt sémában; ehhez Room-vándorlás kellene.
 
 ## Amit szándékosan nem tartalmaz
 

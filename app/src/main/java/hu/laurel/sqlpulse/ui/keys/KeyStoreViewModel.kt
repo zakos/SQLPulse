@@ -46,18 +46,18 @@ class KeyStoreViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: SshKeyRepository,
     @IoDispatcher private val io: CoroutineDispatcher,
-) : ViewModel() {
+) : ViewModel(), KeyStoreController {
 
-    val keys: StateFlow<List<SshKeyEntity>> = repository.observeKeys()
+    override val keys: StateFlow<List<SshKeyEntity>> = repository.observeKeys()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _importState = MutableStateFlow(KeyImportState())
-    val importState: StateFlow<KeyImportState> = _importState.asStateFlow()
+    override val importState: StateFlow<KeyImportState> = _importState.asStateFlow()
 
     private var passphraseFailures = 0
 
     /** Reads a key file through the Storage Access Framework; the original file is left alone (§5). */
-    fun loadFromUri(uri: Uri, onLoaded: (String) -> Unit) {
+    override fun loadFromUri(uri: Uri, onLoaded: (String) -> Unit) {
         viewModelScope.launch {
             _importState.value = _importState.value.copy(busy = true, error = null)
             val text = withContext(io) {
@@ -76,14 +76,14 @@ class KeyStoreViewModel @Inject constructor(
         }
     }
 
-    fun onKeyTextChanged(text: String) {
+    override fun onKeyTextChanged(text: String) {
         _importState.value = _importState.value.copy(
             needsPassphrase = text.isNotBlank() && SshKeyParser.isEncrypted(text),
             error = null,
         )
     }
 
-    fun import(name: String, text: String, passphrase: CharArray?) {
+    override fun import(name: String, text: String, passphrase: CharArray?) {
         if (_importState.value.lockedForSeconds > 0) return
         viewModelScope.launch {
             _importState.value = _importState.value.copy(busy = true, error = null)
@@ -102,7 +102,7 @@ class KeyStoreViewModel @Inject constructor(
         }
     }
 
-    fun generate(name: String) {
+    override fun generate(name: String) {
         viewModelScope.launch {
             _importState.value = _importState.value.copy(busy = true, error = null)
             try {
@@ -117,7 +117,7 @@ class KeyStoreViewModel @Inject constructor(
         }
     }
 
-    fun delete(key: SshKeyEntity) {
+    override fun delete(key: SshKeyEntity) {
         viewModelScope.launch {
             try {
                 repository.delete(key.id)
@@ -130,12 +130,12 @@ class KeyStoreViewModel @Inject constructor(
         }
     }
 
-    fun dismissImportState() {
+    override fun dismissImportState() {
         _importState.value = KeyImportState()
     }
 
     /** Clears only the message, so a failure shown outside the import form can be dismissed. */
-    fun clearError() {
+    override fun clearError() {
         _importState.value = _importState.value.copy(error = null)
     }
 

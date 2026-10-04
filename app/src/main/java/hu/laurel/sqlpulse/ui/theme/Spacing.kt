@@ -19,7 +19,7 @@ object Spacing {
 object Shapes {
     val card = RoundedCornerShape(16.dp)
     val button = RoundedCornerShape(12.dp)
-    val sheet = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    val sheet = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     val chip = RoundedCornerShape(percent = 50)
 }
 

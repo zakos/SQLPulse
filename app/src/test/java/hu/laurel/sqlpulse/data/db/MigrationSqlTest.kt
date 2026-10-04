@@ -141,7 +141,7 @@ class MigrationSqlTest {
     // ------------------------------------------------------- the whole ladder
 
     /**
-     * Every table and column the current entities declare exists after 1 → 9, with matching
+     * Every table and column the current entities declare exists after 1 → 12, with matching
      * nullability. The expectation is read out of `Entities.kt` itself (see [EntitySource]), so a
      * field added to an entity without a migration fails here.
      */
@@ -205,7 +205,7 @@ class MigrationSqlTest {
 
     /** The user's saved connection, key and sealed password come out the other side unchanged. */
     @Test
-    fun `data written at version 1 survives to version 9`() {
+    fun `data written at version 1 survives to version 12`() {
         seedVersion1()
         migrateToCurrent()
 
@@ -488,6 +488,159 @@ class MigrationSqlTest {
     }
 
     /** 4→5 adds the SSH password table without disturbing the MySQL one. */
+    /**
+     * 9→10 adds the write log. It has to arrive empty, leave every existing row alone, and — the
+     * point of the design — survive the deletion of a connection: the log is evidence of what was
+     * written, so it is denormalised and carries no foreign key.
+     */
+    @Test
+    fun `the 9 to 10 write log starts empty and outlives its connection`() {
+        seedVersion1()
+        migrate(1, 9)
+        assertFalse("`write_log` must not exist before version 10", tables().contains("write_log"))
+
+        migrate(9, 10)
+
+        assertTrue(tables().contains("write_log"))
+        assertEquals(0, rows("SELECT * FROM write_log").size)
+        assertEquals(1, rows("SELECT * FROM `connection`").size)
+        assertTrue(
+            "`index_write_log_time` must exist, or retention scans the whole log",
+            rows("PRAGMA index_list(`write_log`)").any { it["name"] == "index_write_log_time" },
+        )
+        assertEquals(
+            "no foreign key: the log must survive its connection",
+            0,
+            rows("PRAGMA foreign_key_list(`write_log`)").size,
+        )
+
+        exec(
+            "INSERT INTO write_log (time, connectionId, connectionName, connectionColor, environment," +
+                " `database`, source, statement, affectedRows, outcome, error, durationMs, inTransaction)" +
+                " VALUES (1700000000000, $CONNECTION_ID, 'prod reporting', 'Production', 'PRODUCTION'," +
+                " 'reporting', 'SQL_EDITOR', 'UPDATE t SET a = 1 WHERE id = 2', 1, 'OK', NULL, 12, 0)",
+        )
+        exec("PRAGMA foreign_keys = ON")
+        exec("DELETE FROM `connection` WHERE id = $CONNECTION_ID")
+        val kept = rows("SELECT * FROM write_log").single()
+        assertEquals("prod reporting", kept["connectionName"])
+        assertEquals("PRODUCTION", kept["environment"])
+    }
+
+    /**
+     * 10→11 adds the engine. Every connection saved before it is a MySQL connection, so the
+     * existing row has to come out as MYSQL with no SQLite file, and a new row inserted the way
+     * the version-10 app would (without naming the column) has to land on MYSQL as well.
+     */
+    @Test
+    fun `the 10 to 11 engine column makes every existing connection MySQL`() {
+        seedVersion1()
+        migrate(1, 10)
+        assertFalse("`engine` must not exist before version 11", columns("connection").containsKey("engine"))
+
+        migrate(10, 11)
+
+        val connection = columns("connection")
+        assertEquals("'MYSQL'", connection.getValue("engine").default)
+        assertTrue(connection.getValue("engine").notNull)
+        for (name in listOf("fileUri", "fileName")) {
+            assertNull("`$name` must not have a default", connection.getValue(name).default)
+            assertFalse("`$name` must stay nullable", connection.getValue(name).notNull)
+        }
+        val existing = rows("SELECT * FROM `connection`").single()
+        assertEquals("MYSQL", existing["engine"])
+        assertNull(existing["fileUri"])
+        assertNull(existing["fileName"])
+        assertEquals("prod reporting", existing["name"])
+        assertEquals("10.0.0.7", existing["dbHost"])
+
+        exec(
+            "INSERT INTO `connection` (name, color, useSshTunnel, sshHost, sshPort, sshUser, sshKeyId," +
+                " dbHost, dbPort, `database`, dbUser, readOnly)" +
+                " VALUES ('older app', 'Blue', 0, '', 22, '', NULL, 'db', 3306, 'x', 'u', 1)",
+        )
+        assertEquals(
+            "MYSQL",
+            rows("SELECT engine FROM `connection` WHERE name = 'older app'").single()["engine"],
+        )
+    }
+
+    /**
+     * 11→12 keeps views, triggers, CHECK constraints and foreign key rules for the schema
+     * comparison. What matters: the old cache rows survive with NULL where the new facts belong
+     * (NULL means "captured before this was kept", which the comparison skips, so no made-up
+     * default may turn it into "no action" / "no checks"), and the new tables start empty and
+     * die with their connection like the rest of the cache.
+     */
+    @Test
+    fun `the 11 to 12 cache additions keep old rows unknown and the new tables die with the connection`() {
+        seedVersion1()
+        migrate(1, 11)
+        for (table in V12_TABLES) assertFalse("`$table` must not exist before version 12", tables().contains(table))
+        exec(
+            "INSERT INTO `cached_table` (connectionId, `database`, name, kind, approximateRows," +
+                " comment, engine, collation, dataBytes, indexBytes, capturedAt, structureCapturedAt)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'TABLE', 42, NULL, 'InnoDB'," +
+                " 'utf8mb4_general_ci', 8192, 4096, 1700000900000, 1700000900000)",
+        )
+        exec(
+            "INSERT INTO `cached_foreign_key` (connectionId, `database`, tableName, constraintName," +
+                " `column`, referencedDatabase, referencedTable, referencedColumn)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'fk_customer', 'customer_id'," +
+                " 'reporting', 'customers', 'id')",
+        )
+
+        migrate(11, 12)
+
+        val oldTable = rows("SELECT * FROM cached_table").single()
+        assertEquals("orders", oldTable["name"])
+        assertNull("old structures have no CHECK marker", oldTable["checksCapturedAt"])
+        val oldKey = rows("SELECT * FROM cached_foreign_key").single()
+        assertEquals("fk_customer", oldKey["constraintName"])
+        assertNull(oldKey["onDelete"])
+        assertNull(oldKey["onUpdate"])
+        for ((table, column) in listOf(
+            "cached_table" to "checksCapturedAt", "cached_foreign_key" to "onDelete", "cached_foreign_key" to "onUpdate",
+        )) {
+            assertNull("`$table`.`$column` must have no default", columns(table).getValue(column).default)
+            assertFalse("`$table`.`$column` must stay nullable", columns(table).getValue(column).notNull)
+        }
+
+        for (table in V12_TABLES) {
+            assertTrue("`$table` is missing at version 12", tables().contains(table))
+            assertEquals("`$table` must start empty", 0, rows("SELECT * FROM `$table`").size)
+            assertTrue(columns(table).getValue("connectionId").let { it.notNull && it.primaryKey })
+            assertTrue(
+                "`index_${table}_connectionId` must exist",
+                rows("PRAGMA index_list(`$table`)").any { it["name"] == "index_${table}_connectionId" },
+            )
+        }
+        assertTrue(columns("cached_object_capture").getValue("capturedAt").notNull)
+
+        exec(
+            "INSERT INTO `cached_check` (connectionId, `database`, tableName, name, expression, enforced)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'qty_pos', 'qty > 0', 1)",
+        )
+        exec(
+            "INSERT INTO `cached_view` (connectionId, `database`, name, definition)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'v_orders', 'select 1')",
+        )
+        exec(
+            "INSERT INTO `cached_trigger` (connectionId, `database`, tableName, name, timing, event, body)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 'orders', 'bi', 'BEFORE', 'INSERT', 'SET NEW.x = 1')",
+        )
+        exec(
+            "INSERT INTO `cached_object_capture` (connectionId, `database`, capturedAt)" +
+                " VALUES ($CONNECTION_ID, 'reporting', 1700000900000)",
+        )
+        exec("PRAGMA foreign_keys = ON")
+        assertEquals(emptyList<Map<String, Any?>>(), rows("PRAGMA foreign_key_check"))
+        exec("DELETE FROM `connection` WHERE id = $CONNECTION_ID")
+        for (table in V12_TABLES) {
+            assertEquals("`$table` must be emptied with its connection", 0, rows("SELECT * FROM `$table`").size)
+        }
+    }
+
     @Test
     fun `the 4 to 5 credential table is added alongside the existing one`() {
         seedVersion1()
@@ -536,12 +689,15 @@ class MigrationSqlTest {
          * it imports Room — so bumping the schema means bumping this too, and `every version step
          * is covered` then fails until the new migration is listed.
          */
-        const val CURRENT_VERSION = 9
+        const val CURRENT_VERSION = 12
 
         /** The five tables the offline schema cache lives in, added at version 9. */
         val CACHE_TABLES = listOf(
             "cached_database", "cached_table", "cached_column", "cached_index", "cached_foreign_key",
         )
+
+        /** The four tables added at version 12 for the deeper schema comparison. */
+        val V12_TABLES = listOf("cached_check", "cached_view", "cached_trigger", "cached_object_capture")
 
         const val KEY_ID = 7L
         const val CONNECTION_ID = 3L

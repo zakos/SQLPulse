@@ -254,6 +254,117 @@ object MigrationStatements {
     )
 
     /**
+     * 9→10 adds the write log: one table, empty, and nothing existing touched.
+     *
+     * No foreign key to `connection`: the log has to outlive a deleted or renamed connection, so
+     * the connection's name, colour and environment are copied into each row instead. The index on
+     * `time` serves the newest-first read and both retention deletes.
+     */
+    val MIGRATION_9_10: List<String> = listOf(
+        """
+        CREATE TABLE IF NOT EXISTS `write_log` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `time` INTEGER NOT NULL,
+            `connectionId` INTEGER,
+            `connectionName` TEXT NOT NULL,
+            `connectionColor` TEXT NOT NULL,
+            `environment` TEXT NOT NULL,
+            `database` TEXT,
+            `source` TEXT NOT NULL,
+            `statement` TEXT NOT NULL,
+            `affectedRows` INTEGER,
+            `outcome` TEXT NOT NULL,
+            `error` TEXT,
+            `durationMs` INTEGER NOT NULL,
+            `inTransaction` INTEGER NOT NULL
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_write_log_time` ON `write_log` (`time`)",
+    )
+
+    /**
+     * 10→11: a connection says which database engine it talks to.
+     *
+     * `engine` defaults to 'MYSQL', which is what every existing connection is — the app spoke
+     * nothing else. The two file columns are for SQLite, which has no host: nullable with no
+     * default, so a server connection simply never has them. Plain ADD COLUMNs, no rebuild: the
+     * connection table is the one table a failed rebuild would lose the user's work from.
+     */
+    val MIGRATION_10_11: List<String> = listOf(
+        "ALTER TABLE `connection` ADD COLUMN `engine` TEXT NOT NULL DEFAULT 'MYSQL'",
+        "ALTER TABLE `connection` ADD COLUMN `fileUri` TEXT",
+        "ALTER TABLE `connection` ADD COLUMN `fileName` TEXT",
+    )
+
+    /**
+     * 11→12: the schema comparison also compares views, triggers, CHECK constraints and foreign
+     * key rules, so the cache has to keep them.
+     *
+     * Existing rows get NULLs, never made-up values: a NULL rule or a NULL `checksCapturedAt`
+     * means "captured before this was kept", which the comparison skips, whereas a default of
+     * 'NO ACTION' or "no checks" would be reported as a difference against any fresh capture.
+     * The new tables start empty and die with their connection like the other cache tables.
+     */
+    val MIGRATION_11_12: List<String> = listOf(
+        "ALTER TABLE `cached_foreign_key` ADD COLUMN `onDelete` TEXT",
+        "ALTER TABLE `cached_foreign_key` ADD COLUMN `onUpdate` TEXT",
+        "ALTER TABLE `cached_table` ADD COLUMN `checksCapturedAt` INTEGER",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_check` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `tableName` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `expression` TEXT,
+            `enforced` INTEGER NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `tableName`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_check_connectionId` ON `cached_check` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_view` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `definition` TEXT NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_view_connectionId` ON `cached_view` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_trigger` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `tableName` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `timing` TEXT NOT NULL,
+            `event` TEXT NOT NULL,
+            `body` TEXT NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`, `tableName`, `name`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_trigger_connectionId` ON `cached_trigger` (`connectionId`)",
+        """
+        CREATE TABLE IF NOT EXISTS `cached_object_capture` (
+            `connectionId` INTEGER NOT NULL,
+            `database` TEXT NOT NULL,
+            `capturedAt` INTEGER NOT NULL,
+            PRIMARY KEY(`connectionId`, `database`),
+            FOREIGN KEY(`connectionId`) REFERENCES `connection`(`id`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+        "CREATE INDEX IF NOT EXISTS `index_cached_object_capture_connectionId`" +
+            " ON `cached_object_capture` (`connectionId`)",
+    )
+
+    /**
      * Every migration in order, keyed by the version it leaves the database at: index 0 is 1→2.
      * The test walks this list, so a ninth migration added to [Migrations] without being added
      * here goes untested — and a migration added here without being wired into [Migrations] does
@@ -268,5 +379,8 @@ object MigrationStatements {
         6 to MIGRATION_6_7,
         7 to MIGRATION_7_8,
         8 to MIGRATION_8_9,
+        9 to MIGRATION_9_10,
+        10 to MIGRATION_10_11,
+        11 to MIGRATION_11_12,
     )
 }

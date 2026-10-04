@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="completion_list">Suggestions</string>
+    <string name="import_map_for">Table column for %1$s</string>
+    <string name="import_preview_title">First rows as they will be written</string>
+    <string name="import_issue_more">+ %1$d more to check</string>
+    <string name="import_issue_duplicate">More than one file column goes into %2$s (%1$s). Only one may.</string>
+    <string name="import_issue_required">%1$s is required by the table and no file column fills it.</string>
+    <string name="import_issue_type">%1$s → %2$s (%3$s): %4$d values do not look like that type, e.g. “%5$s”.</string>
+    <string name="import_issue_null">%1$s → %2$s is NOT NULL, but %3$d rows are empty there.</string>
+    <string name="export_scope_screen">What is on screen (%1$d rows)</string>
+    <string name="export_scope_full">Full result (re-runs the query)</string>
+    <string name="export_scope_full_note">Runs the same statement again without the row limit and writes the rows straight to the file. At most %1$s rows or %2$d MB.</string>
+    <string name="export_full_title">Exporting the full result</string>
+    <string name="export_full_progress">rows written · %2$s MB · cap %1$s rows</string>
+    <string name="export_cap_title">The file stops short</string>
+    <string name="export_cap_rows">The result has more than %2$s rows, the most an export from the phone holds. The file contains the first %1$s rows and is complete up to there. Narrow the query to get the rest.</string>
+    <string name="export_cap_bytes">The file reached %2$d MB, the most an export from the phone holds. It contains the first %1$s rows and is complete up to there. Narrow the query to get the rest.</string>
+</resources>

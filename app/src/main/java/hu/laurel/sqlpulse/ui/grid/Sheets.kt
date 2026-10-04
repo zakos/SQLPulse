@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.ui.grid
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +19,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -25,12 +29,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.grid.ColumnStats
+import hu.laurel.sqlpulse.data.grid.OutlierOutcome
+import hu.laurel.sqlpulse.data.grid.Outliers
+import hu.laurel.sqlpulse.ui.components.SectionCaption
+import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
-import hu.laurel.sqlpulse.data.sql.BlobPreview
 import hu.laurel.sqlpulse.data.sql.JsonFormatter
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -72,8 +83,20 @@ fun CellSheet(
                 .padding(bottom = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.m),
         ) {
-            Text(column.label, style = MaterialTheme.typography.titleMedium)
-            Text(column.typeName, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+            // Column name and type on one line, in the grid's own monospace: the sheet is a closer
+            // look at a cell, and should read as the same thing.
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                Text(
+                    column.label,
+                    style = MonoStyles.cell.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+                )
+                Text(
+                    column.typeName,
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
 
             val raw = value.asText()
             // Only offered when the text really parses as JSON, so the toggle never promises a
@@ -97,12 +120,15 @@ fun CellSheet(
                     showFormatted && formatted != null -> formatted
                     else -> raw
                 },
-                style = MonoStyles.cell,
+                style = MonoStyles.cell.copy(lineHeight = 22.sp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background, Shapes.button)
+                    .border(1.dp, semantic.hairline, Shapes.button)
                     .heightIn(max = 240.dp)
                     .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = Spacing.m),
             )
 
             blobPreview?.takeIf { it.truncated }?.let {
@@ -374,6 +400,276 @@ fun LinkWalkSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Column statistics: count, non-null count, distinct count, sum, average, min, max.
+ * Each value is copyable to clipboard. Numeric stats are shown only when the column's
+ * values parse as numbers.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ColumnStatsSheet(
+    columnLabel: String,
+    stats: ColumnStats,
+    onCopy: (String) -> Unit,
+    onDismiss: () -> Unit,
+    highlightOutliers: Boolean = false,
+    onHighlightOutliersChange: ((Boolean) -> Unit)? = null,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(),
+        shape = Shapes.sheet,
+    ) {
+        ColumnStatsSheetContent(columnLabel, stats, onCopy, highlightOutliers, onHighlightOutliersChange)
+    }
+}
+
+@Composable
+fun ColumnStatsSheetContent(
+    columnLabel: String,
+    stats: ColumnStats,
+    onCopy: (String) -> Unit,
+    highlightOutliers: Boolean = false,
+    /** Null where the caller cannot mark cells, which hides the toggle. */
+    onHighlightOutliersChange: ((Boolean) -> Unit)? = null,
+    /** Start with the outlier list open; the screenshot test uses it. */
+    outliersExpanded: Boolean = false,
+) {
+    val semantic = LocalSemanticColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The outlier list can be long, and a bottom sheet does not scroll its own content.
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.l)
+            .padding(bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        Text(
+            stringResource(R.string.colstats_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            columnLabel,
+            style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+        )
+        Text(
+            stringResource(R.string.colstats_based_on, stats.rowCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            StatRow(
+                label = stringResource(R.string.colstats_count),
+                value = stats.rowCount.toString(),
+                onCopy = onCopy,
+            )
+            StatRow(
+                label = stringResource(R.string.colstats_nonnull),
+                value = stats.nonNullCount.toString(),
+                onCopy = onCopy,
+            )
+            StatRow(
+                label = stringResource(R.string.colstats_distinct),
+                value = stats.distinctCount.toString(),
+                onCopy = onCopy,
+            )
+            stats.sum?.let {
+                StatRow(
+                    label = stringResource(R.string.colstats_sum),
+                    value = it.toPlainString(),
+                    onCopy = onCopy,
+                )
+            }
+            stats.average?.let {
+                StatRow(
+                    label = stringResource(R.string.colstats_average),
+                    value = it,
+                    onCopy = onCopy,
+                )
+            }
+            stats.min?.let {
+                StatRow(
+                    label = stringResource(R.string.colstats_minimum),
+                    value = it,
+                    onCopy = onCopy,
+                )
+            }
+            stats.max?.let {
+                StatRow(
+                    label = stringResource(R.string.colstats_maximum),
+                    value = it,
+                    onCopy = onCopy,
+                )
+            }
+        }
+
+        DistributionSection(
+            outcome = stats.distribution,
+            onCopy = onCopy,
+            highlight = highlightOutliers,
+            onHighlightChange = onHighlightOutliersChange,
+            initiallyExpanded = outliersExpanded,
+        )
+    }
+}
+
+/** Most outliers listed on screen; "Copy all" still takes every one. */
+private const val OUTLIER_LIST_LIMIT = 50
+
+/**
+ * Median, spread and outliers of a numeric column. A column that is not numeric gets no section at
+ * all; one with too few values gets a single line saying why there is no verdict.
+ */
+@Composable
+private fun DistributionSection(
+    outcome: OutlierOutcome,
+    onCopy: (String) -> Unit,
+    highlight: Boolean,
+    onHighlightChange: ((Boolean) -> Unit)?,
+    initiallyExpanded: Boolean,
+) {
+    val semantic = LocalSemanticColors.current
+    when (outcome) {
+        OutlierOutcome.NotApplicable -> Unit
+        is OutlierOutcome.NotEnoughData -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            SectionCaption(stringResource(R.string.outliers_title))
+            Text(
+                stringResource(R.string.outliers_not_enough, outcome.count),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+
+        is OutlierOutcome.Report -> {
+            var expanded by remember { mutableStateOf(initiallyExpanded) }
+            val fmt = Outliers::format
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                SectionCaption(stringResource(R.string.outliers_title))
+                StatRow(stringResource(R.string.outliers_median), fmt(outcome.median), onCopy)
+                StatRow(
+                    stringResource(R.string.outliers_quartiles),
+                    "${fmt(outcome.q1)} \u2013 ${fmt(outcome.q3)}",
+                    onCopy,
+                )
+                StatRow(stringResource(R.string.outliers_stddev), fmt(outcome.stdDev), onCopy)
+
+                val count = outcome.outliers.size
+                val warn = count > 0
+                // The count line is the entry to the list, so it reads as a button when there is
+                // something behind it and as a plain fact when there is not.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background, Shapes.button)
+                        .border(1.dp, if (warn) semantic.warning else semantic.hairline, Shapes.button)
+                        .then(if (warn) Modifier.clickable { expanded = !expanded } else Modifier)
+                        .padding(horizontal = Spacing.m, vertical = Spacing.s),
+                ) {
+                    Text(
+                        text = stringResource(R.string.outliers_fences, fmt(outcome.lowFence), fmt(outcome.highFence)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
+                    )
+                    Text(
+                        text = if (warn) {
+                            pluralStringResource(R.plurals.outliers_count, count, count) +
+                                if (expanded) "  \u25B4" else "  \u25BE"
+                        } else {
+                            stringResource(R.string.outliers_none)
+                        },
+                        style = MonoStyles.cell.copy(fontSize = 14.sp),
+                        color = if (warn) semantic.warning else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+
+                if (warn && expanded) {
+                    outcome.outliers.take(OUTLIER_LIST_LIMIT).forEach { o ->
+                        val rule = stringResource(
+                            when {
+                                o.byIqr && o.byRobustZ -> R.string.outliers_rule_both
+                                o.byIqr -> R.string.outliers_rule_iqr
+                                else -> R.string.outliers_rule_z
+                            },
+                        )
+                        val value = fmt(o.value)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onCopy(value) }
+                                .padding(horizontal = Spacing.m, vertical = Spacing.xs),
+                        ) {
+                            Text(
+                                stringResource(R.string.outliers_row, o.row + 1),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = semantic.textSecondary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(value, style = MonoStyles.cell.copy(fontSize = 14.sp), modifier = Modifier.weight(1.4f))
+                            Text(rule, style = MaterialTheme.typography.labelSmall, color = semantic.textSecondary)
+                        }
+                    }
+                    if (count > OUTLIER_LIST_LIMIT) {
+                        Text(
+                            stringResource(R.string.outliers_more, count - OUTLIER_LIST_LIMIT),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = semantic.textSecondary,
+                            modifier = Modifier.padding(horizontal = Spacing.m),
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            onCopy(
+                                outcome.outliers.joinToString("\n") { "${it.row + 1}\t${fmt(it.value)}" },
+                            )
+                        },
+                        shape = Shapes.button,
+                    ) { Text(stringResource(R.string.outliers_copy_all)) }
+                }
+
+                if (onHighlightChange != null && warn) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.outliers_highlight),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(checked = highlight, onCheckedChange = onHighlightChange)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, value: String, onCopy: (String) -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background, Shapes.button)
+            .border(1.dp, semantic.hairline, Shapes.button)
+            .clickable { onCopy(value) }
+            .padding(horizontal = Spacing.m, vertical = Spacing.s),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+        Text(
+            value,
+            style = MonoStyles.cell.copy(fontSize = 14.sp),
+        )
     }
 }
 

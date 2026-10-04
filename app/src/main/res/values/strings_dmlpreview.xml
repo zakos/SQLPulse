@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The rows a write would change, shown in its confirmation before it runs. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="dml_preview_first_of">First %1$d of %2$d rows</string>
+    <string name="dml_preview_first">First %1$d rows</string>
+    <string name="dml_preview_empty">No rows match right now, so nothing would change.</string>
+    <string name="dml_preview_statement">Statement %1$d</string>
+    <plurals name="dml_preview_all">
+        <item quantity="one">The %1$d affected row</item>
+        <item quantity="other">All %1$d affected rows</item>
+    </plurals>
+</resources>

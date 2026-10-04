@@ -8,6 +8,14 @@ import org.junit.Test
 
 class SqlFailuresTest {
 
+    @Test
+    fun `a sqlite uniqueness failure yields its column list`() {
+        val message = "[SQLITE_CONSTRAINT_PRIMARYKEY] A PRIMARY KEY constraint failed " +
+            "(UNIQUE constraint failed: article.ArtNr, article.SubArtNr, article.ShopId)"
+        assertEquals("article.ArtNr, article.SubArtNr, article.ShopId", SqlFailures.uniqueConstraintColumns(message))
+        assertEquals(null, SqlFailures.uniqueConstraintColumns("Duplicate entry '1' for key 'PRIMARY'"))
+    }
+
     private fun kind(code: Int, state: String? = null, message: String = "") =
         SqlFailures.classify(code, state, message)
 

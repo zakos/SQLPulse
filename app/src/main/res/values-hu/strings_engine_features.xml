@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tárhely képernyő PostgreSQL, SQL Server és SQLite esetén -->
+    <string name="storage_sequence_warning">Sorozat %1$s kihasználva</string>
+    <string name="storage_identity_warning">Azonosító %1$s kihasználva</string>
+    <string name="storage_file_size">Fájl: %1$s</string>
+    <string name="storage_sizes_unavailable">A táblaméretek nem elérhetők: ebben a SQLite-buildben nincs dbstat tábla. A sorok száma továbbra is látszik.</string>
+    <string name="storage_index_sizes_unavailable_generic">Az indexek külön méretét nem sikerült kiolvasni; a táblák csak az adat- és indexösszeget mutatják.</string>
+    <string name="storage_unused_note_reset">Nem használt: a használati statisztika utolsó nullázása óta (%1$s) nem olvasta senki. Egy csak havi riportban használt index is felkerülhet ide.</string>
+    <!-- Séma-összehasonlítás -->
+    <string name="schemadiff_engines_differ">E két kapcsolat különböző adatbázismotort használ (%1$s és %2$s). A típusokat, alapértékeket és indexfajtákat mindegyik másképp írja, ezért nincs értelmes különbséglista. Válassz két azonos motorú kapcsolatot.</string>
+    <string name="storage_unavailable_not_for_engine">Ennél az adatbázismotornál nem érhető el.</string>
+</resources>

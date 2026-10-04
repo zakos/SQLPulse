@@ -1,14 +1,21 @@
 package hu.laurel.sqlpulse.ui.backup
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -29,8 +36,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
@@ -39,9 +51,11 @@ import hu.laurel.sqlpulse.data.backup.MergeDecision
 import hu.laurel.sqlpulse.data.backup.MergeResolution
 import hu.laurel.sqlpulse.data.backup.PassphrasePolicy
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 import java.text.DateFormat
 import java.util.Date
 
@@ -52,11 +66,20 @@ import java.util.Date
  * leave the phone, and a checkbox called "include secrets" with no sentence under it is not a
  * choice anybody can make well.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackupScreen(
     onBack: () -> Unit,
     viewModel: BackupViewModel = hiltViewModel(),
+) {
+    BackupScreenContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [BackupController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BackupScreenContent(
+    onBack: () -> Unit,
+    viewModel: BackupController,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
@@ -72,6 +95,7 @@ fun BackupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.backup_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -137,7 +161,7 @@ fun BackupScreen(
 @Composable
 private fun ExportSection(
     state: BackupUiState,
-    viewModel: BackupViewModel,
+    viewModel: BackupController,
     onSave: () -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
@@ -191,7 +215,12 @@ private fun ExportSection(
             color = semantic.textSecondary,
         )
 
-        Button(onClick = onSave, enabled = state.canExport, shape = Shapes.button) {
+        Button(
+            onClick = onSave,
+            enabled = state.canExport,
+            shape = Shapes.button,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
             Text(stringResource(R.string.backup_save_file))
         }
         if (state.exported) {
@@ -203,7 +232,7 @@ private fun ExportSection(
 @Composable
 private fun ImportSection(
     state: BackupUiState,
-    viewModel: BackupViewModel,
+    viewModel: BackupController,
     onChooseFile: () -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
@@ -222,7 +251,7 @@ private fun ImportSection(
                 text = stringResource(
                     R.string.backup_file_made,
                     metadata.appVersion.ifBlank { metadata.app },
-                    DateFormat.getDateTimeInstance().format(Date(metadata.createdAtEpochMs)),
+                    LocaleFormat.dateTime(metadata.createdAtEpochMs, appLocale()),
                 ),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -391,11 +420,24 @@ private fun ScopeChoice(
     onClick: () -> Unit,
 ) {
     val semantic = LocalSemanticColors.current
-    Row(verticalAlignment = Alignment.Top) {
-        RadioButton(selected = selected, onClick = onClick)
-        Column(modifier = Modifier.padding(start = Spacing.s)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(note, style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+    val accent = MaterialTheme.colorScheme.primary
+    // A card per choice, the chosen one outlined and tinted in the accent: what goes into the file
+    // is the decision on this screen, and it should look like one.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Shapes.card)
+            .background(if (selected) accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface)
+            .border(1.dp, if (selected) accent else MaterialTheme.colorScheme.outline, Shapes.card)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.size(20.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+            Text(note, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = semantic.textSecondary)
         }
     }
 }
@@ -425,12 +467,7 @@ private fun allLabelFor(resolution: MergeResolution): Int = when (resolution) {
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        HairlineCard {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(Spacing.l),
-                verticalArrangement = Arrangement.spacedBy(Spacing.m),
-            ) { content() }
-        }
+        SectionCaption(title, modifier = Modifier.padding(top = Spacing.m))
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) { content() }
     }
 }

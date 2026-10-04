@@ -6,7 +6,11 @@ import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.settings.SettingsRepository
+import hu.laurel.sqlpulse.data.writelog.WriteLogEntries
+import hu.laurel.sqlpulse.data.writelog.WriteLogger
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.di.IoDispatcher
+import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.Statement
 import java.sql.Types
@@ -55,6 +59,7 @@ class QueryExecutor @Inject constructor(
     private val history: QueryHistoryDao,
     private val settings: SettingsRepository,
     private val writeUnlock: WriteUnlockStore,
+    private val writeLog: WriteLogger,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -68,9 +73,13 @@ class QueryExecutor @Inject constructor(
         rowLimit: Int = SqlGuards.DEFAULT_ROW_LIMIT,
         readOnly: Boolean,
     ): QueryOutcome {
+        // Every decision below is the live engine's: MySQL's dialect is SqlGuards and WriteImpact
+        // themselves, so for MySQL nothing changed.
+        val dialect = sessions.dialect()
+
         // `USE` is answered by moving the session's database, not by sending it to one pooled
         // connection and leaving the others behind (§7.4).
-        SqlGuards.useTarget(sql)?.let { database ->
+        dialect.namespaceSwitch(sql)?.let { database ->
             sessions.selectDatabase(database)
             return QueryOutcome(
                 table = ResultTable.EMPTY,
@@ -79,7 +88,7 @@ class QueryExecutor @Inject constructor(
             )
         }
 
-        val kind = SqlGuards.classify(sql)
+        val kind = dialect.classify(sql)
         if (kind == StatementKind.OTHER) throw UnsupportedStatementException()
         if (kind == StatementKind.WRITE && readOnly) throw ReadOnlyConnectionException()
         if (kind == StatementKind.WRITE) {
@@ -94,39 +103,74 @@ class QueryExecutor @Inject constructor(
             )
             if (!access.allowed) throw WritesLockedException(access)
         }
-        if (settings.settings.first().blockWritesWithoutWhere && SqlGuards.isUnguardedWrite(sql)) {
+        if (settings.settings.first().blockWritesWithoutWhere && dialect.isUnguardedWrite(sql)) {
             throw UnguardedWriteException()
         }
 
-        val limited = SqlGuards.applyDefaultLimit(sql, rowLimit)
-        val bound = SqlGuards.bindParameters(limited.sql)
+        // A plan request is sent as it is: a row limit added to it would change the plan being
+        // asked for (SQL Server's TOP is an operator of its own).
+        val explaining = dialect.isExplain(sql)
+        val limited = if (explaining) SqlGuards.LimitResult(sql.trim(), false) else dialect.applyDefaultLimit(sql, rowLimit)
+        val bound = dialect.bindParameters(limited.sql)
 
         val started = System.currentTimeMillis()
-        val outcome = sessions.withConnection { connection ->
-            connection.prepareStatement(bound.sql).use { statement ->
-                bind(statement, bound.parameterOrder, parameters)
-                statement.queryTimeout = sessions.queryTimeoutSeconds()
-                running = statement
-                try {
-                    if (statement.execute()) {
-                        statement.resultSet.use { rows ->
-                            QueryOutcome(
-                                table = ResultTable.from(rows, rowLimit)
-                                    .copy(limitAdded = limited.limitAdded),
-                                sqlRun = bound.sql,
-                            )
-                        }
+        // Taken before the write: a COMMIT from elsewhere while it runs must not change what the
+        // log says about this statement.
+        val inTransaction = sessions.inTransaction.value
+        val outcome = try {
+            sessions.withConnection { borrowed ->
+                val runOn: (Connection) -> QueryOutcome = { connection ->
+                    // SQL Server returns a plan only for a plain batch: a prepared statement is
+                    // prepared, not planned, and the answer is empty (measured). The values then
+                    // go in as literals, which is safe because nothing is executed.
+                    val plain = if (explaining && dialect.plansAsPlainBatch) {
+                        SqlGuards.bindParameters(limited.sql, dialect.grammar) { name ->
+                            dialect.planLiteral(QueryParameters.binding(parameters[name] ?: ParameterValue()))
+                        }.sql
                     } else {
-                        QueryOutcome(
-                            table = ResultTable.EMPTY,
-                            updateCount = statement.updateCount,
-                            sqlRun = bound.sql,
-                        )
+                        null
                     }
-                } finally {
-                    running = null
+                    val opened: Statement = if (plain != null) {
+                        connection.createStatement()
+                    } else {
+                        connection.prepareStatement(bound.sql).also { bind(it, bound.parameterOrder, parameters) }
+                    }
+                    opened.use { statement ->
+                        statement.queryTimeout = sessions.queryTimeoutSeconds()
+                        running = statement
+                        try {
+                            val hasRows = if (plain != null) statement.execute(plain) else (statement as PreparedStatement).execute()
+                            if (hasRows) {
+                                statement.resultSet.use { rows ->
+                                    QueryOutcome(
+                                        table = ResultTable.from(rows, rowLimit)
+                                            .copy(limitAdded = limited.limitAdded),
+                                        sqlRun = bound.sql,
+                                    )
+                                }
+                            } else {
+                                QueryOutcome(
+                                    table = ResultTable.EMPTY,
+                                    updateCount = statement.updateCount,
+                                    sqlRun = bound.sql,
+                                )
+                            }
+                        } finally {
+                            running = null
+                        }
+                    }
                 }
+                // Only SQL Server's plan request needs the connection put into a mode and back out
+                // of it; for every other statement this is a plain call.
+                if (explaining) dialect.inPlanMode(borrowed) { runOn(borrowed) } else runOn(borrowed)
             }
+        } catch (e: Exception) {
+            // Every guard above throws before this point, so a failure here means the statement
+            // was sent. Only writes are logged; a failed SELECT is not a write.
+            if (kind == StatementKind.WRITE && e !is NoSqlSessionException) {
+                logWrite(sql, bound, parameters, started, null, e, inTransaction)
+            }
+            throw e
         }
 
         // A session that has written is never reconnected to automatically: the server rolled the
@@ -134,6 +178,9 @@ class QueryExecutor @Inject constructor(
         if (kind == StatementKind.WRITE) sessions.noteWrite()
 
         val duration = System.currentTimeMillis() - started
+        if (kind == StatementKind.WRITE) {
+            logWrite(sql, bound, parameters, started, outcome.updateCount, null, inTransaction)
+        }
         withContext(io) {
             // §9: the history keeps the SQL and the timings, never the result.
             history.insert(
@@ -148,6 +195,25 @@ class QueryExecutor @Inject constructor(
         }
         return outcome.copy(table = outcome.table.copy(durationMs = duration))
     }
+
+    /** Records a write that was sent, with the bound values written out next to the SQL. */
+    private suspend fun logWrite(
+        sql: String,
+        bound: SqlGuards.BoundStatement,
+        parameters: Map<String, ParameterValue>,
+        started: Long,
+        affectedRows: Int?,
+        failure: Throwable?,
+        inTransaction: Boolean,
+    ) = writeLog.record(
+        source = WriteSource.SQL_EDITOR,
+        statement = WriteLogEntries.withParameters(sql, bound.parameterOrder, parameters),
+        affectedRows = affectedRows,
+        failure = failure,
+        startedAt = started,
+        durationMs = System.currentTimeMillis() - started,
+        inTransaction = inTransaction,
+    )
 
     /**
      * How many rows the write in [sql] would touch, or null when that cannot be said.
@@ -164,8 +230,9 @@ class QueryExecutor @Inject constructor(
         sql: String,
         parameters: Map<String, ParameterValue> = emptyMap(),
     ): Long? {
-        val count = WriteImpact.countQuery(sql) ?: return null
-        val bound = SqlGuards.bindParameters(count)
+        val dialect = sessions.dialect()
+        val count = dialect.writeCountQuery(sql) ?: return null
+        val bound = dialect.bindParameters(count)
         return runCatching {
             sessions.withConnection { connection ->
                 connection.prepareStatement(bound.sql).use { statement ->
@@ -177,8 +244,40 @@ class QueryExecutor @Inject constructor(
         }.getOrNull()
     }
 
+    /**
+     * The rows the write in [sql] would change (up to [WriteImpact.PREVIEW_ROWS]), or null when no
+     * preview can be derived or it failed to run — the card then simply has no table, and the write
+     * is not held up by it.
+     *
+     * It goes through exactly the path the count takes: a plain SELECT on the session, with the
+     * session's query timeout, not recorded in the history. [WriteImpact.previewQuery] only ever
+     * produces a single SELECT (the check below keeps it that way), so it has no way to write; the
+     * one thing it cannot rule out is a function with side effects hidden in a subquery, which is
+     * why the SET expressions are screened there.
+     */
+    suspend fun previewWrite(
+        sql: String,
+        parameters: Map<String, ParameterValue> = emptyMap(),
+    ): WriteRowPreview? {
+        val dialect = sessions.dialect()
+        val query = dialect.writePreviewQuery(sql, WriteImpact.PREVIEW_ROWS) ?: return null
+        if (!query.sql.startsWith("SELECT ")) return null
+        val bound = dialect.bindParameters(query.sql)
+        return runCatching {
+            sessions.withConnection { connection ->
+                connection.prepareStatement(bound.sql).use { statement ->
+                    bind(statement, bound.parameterOrder, parameters)
+                    statement.queryTimeout = sessions.queryTimeoutSeconds()
+                    statement.executeQuery().use { rows ->
+                        WriteRowPreview(query.kind, query.changedColumns, ResultTable.from(rows, WriteImpact.PREVIEW_ROWS))
+                    }
+                }
+            }
+        }.getOrNull()
+    }
+
     /** Binds the values by the type the user gave each one (§7.4). */
-    private fun bind(
+    internal fun bind(
         statement: PreparedStatement,
         order: List<String>,
         parameters: Map<String, ParameterValue>,

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="outliers_title">Distribution</string>
+    <string name="outliers_median">Median</string>
+    <string name="outliers_quartiles">Q1 – Q3</string>
+    <string name="outliers_stddev">Standard deviation</string>
+    <plurals name="outliers_count">
+        <item quantity="one">%1$d outlier</item>
+        <item quantity="other">%1$d outliers</item>
+    </plurals>
+    <string name="outliers_none">No outliers</string>
+    <string name="outliers_fences">Fences %1$s … %2$s</string>
+    <string name="outliers_not_enough">Only %1$d values: at least 4 are needed to judge outliers.</string>
+    <string name="outliers_row">Row %1$d</string>
+    <string name="outliers_rule_both">IQR + z</string>
+    <string name="outliers_rule_iqr">IQR</string>
+    <string name="outliers_rule_z">robust z</string>
+    <string name="outliers_more">… and %1$d more (Copy all includes them)</string>
+    <string name="outliers_copy_all">Copy all</string>
+    <string name="outliers_highlight">Highlight outliers in the grid</string>
+    <plurals name="chart_outliers">
+        <item quantity="one">%1$d outlier (IQR)</item>
+        <item quantity="other">%1$d outliers (IQR)</item>
+    </plurals>
+    <string name="chart_iqr_band">IQR band</string>
+    <string name="chart_iqr_band_note">Shaded: Q1 – Q3 of %1$s; dashed: fences</string>
+</resources>

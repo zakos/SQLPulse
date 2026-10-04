@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="outliers_title">Eloszlás</string>
+    <string name="outliers_median">Medián</string>
+    <string name="outliers_quartiles">Q1 – Q3</string>
+    <string name="outliers_stddev">Szórás</string>
+    <plurals name="outliers_count">
+        <item quantity="one">%1$d kiugró érték</item>
+        <item quantity="other">%1$d kiugró érték</item>
+    </plurals>
+    <string name="outliers_none">Nincs kiugró érték</string>
+    <string name="outliers_fences">Határok %1$s … %2$s</string>
+    <string name="outliers_not_enough">Csak %1$d érték van: a kiugró értékekhez legalább 4 kell.</string>
+    <string name="outliers_row">%1$d. sor</string>
+    <string name="outliers_rule_both">IQR + z</string>
+    <string name="outliers_rule_iqr">IQR</string>
+    <string name="outliers_rule_z">robusztus z</string>
+    <string name="outliers_more">… és még %1$d (az Összes másolása ezeket is tartalmazza)</string>
+    <string name="outliers_copy_all">Összes másolása</string>
+    <string name="outliers_highlight">Kiugró értékek jelölése a rácsban</string>
+    <plurals name="chart_outliers">
+        <item quantity="one">%1$d kiugró érték (IQR)</item>
+        <item quantity="other">%1$d kiugró érték (IQR)</item>
+    </plurals>
+    <string name="chart_iqr_band">IQR-sáv</string>
+    <string name="chart_iqr_band_note">Színezve: %1$s Q1 – Q3 közötti sávja; szaggatott: határok</string>
+</resources>

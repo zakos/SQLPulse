@@ -34,8 +34,13 @@ class Converters {
         CachedColumnEntity::class,
         CachedIndexEntity::class,
         CachedForeignKeyEntity::class,
+        WriteLogEntity::class,
+        CachedCheckEntity::class,
+        CachedViewEntity::class,
+        CachedTriggerEntity::class,
+        CachedObjectCaptureEntity::class,
     ],
-    version = 9,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -49,6 +54,7 @@ abstract class SqlPulseDatabase : RoomDatabase() {
     abstract fun queryHistory(): QueryHistoryDao
     abstract fun savedQueries(): SavedQueryDao
     abstract fun schemaCache(): SchemaCacheDao
+    abstract fun writeLog(): WriteLogDao
 
     companion object {
         const val NAME = "sqlpulse.db"

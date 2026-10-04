@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
 import hu.laurel.sqlpulse.data.sql.SqlGuards
+import hu.laurel.sqlpulse.data.writelog.WriteLogRetention
 import hu.laurel.sqlpulse.ui.theme.ThemePreference
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,6 +46,13 @@ data class Settings(
      * a screenshot is the quickest way to report what an app is doing wrong.
      */
     val blockScreenshots: Boolean = true,
+    /**
+     * Show the most recent connections as launcher shortcuts. Off by default: a label on the home
+     * screen is readable without unlocking, and it names a database this app can write to.
+     */
+    val launcherShortcuts: Boolean = false,
+    /** How many days the write log is kept (the entry cap is fixed, see WriteLogRetention). */
+    val writeLogDays: Int = WriteLogRetention.DEFAULT_DAYS,
 )
 
 @Singleton
@@ -62,6 +70,8 @@ class SettingsRepository @Inject constructor(
             blockWritesWithoutWhere = preferences[BLOCK_UNGUARDED_WRITES] ?: true,
             maxAffectedRows = preferences[MAX_AFFECTED_ROWS] ?: AffectedRowLimit.DEFAULT_MAX_AFFECTED_ROWS,
             blockScreenshots = preferences[BLOCK_SCREENSHOTS] ?: true,
+            launcherShortcuts = preferences[LAUNCHER_SHORTCUTS] ?: false,
+            writeLogDays = preferences[WRITE_LOG_DAYS] ?: WriteLogRetention.DEFAULT_DAYS,
         )
     }
 
@@ -78,8 +88,14 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { it[BLOCK_UNGUARDED_WRITES] = block }
     }
 
+    suspend fun setWriteLogDays(days: Int) = put(WRITE_LOG_DAYS, days.coerceIn(1, 3650))
+
     suspend fun setBlockScreenshots(block: Boolean) {
         context.dataStore.edit { it[BLOCK_SCREENSHOTS] = block }
+    }
+
+    suspend fun setLauncherShortcuts(show: Boolean) {
+        context.dataStore.edit { it[LAUNCHER_SHORTCUTS] = show }
     }
 
     suspend fun setTheme(theme: ThemePreference) {
@@ -97,6 +113,8 @@ class SettingsRepository @Inject constructor(
         val GRID_FONT = intPreferencesKey("grid_font_scale")
         val BLOCK_UNGUARDED_WRITES = booleanPreferencesKey("block_writes_without_where")
         val MAX_AFFECTED_ROWS = intPreferencesKey("max_affected_rows")
+        val WRITE_LOG_DAYS = intPreferencesKey("write_log_days")
         val BLOCK_SCREENSHOTS = booleanPreferencesKey("block_screenshots")
+        val LAUNCHER_SHORTCUTS = booleanPreferencesKey("launcher_shortcuts")
     }
 }

@@ -78,28 +78,28 @@ class SchemaLayoutTest {
         )
         val loose = graph.nodes.filterNot { it.connected }
         assertEquals(listOf("audit", "cache", "config", "flags", "log"), loose.map { it.table })
-        // Below the deepest connected row, three to a row for five tables.
+        // Below the deepest connected row, two to a row so each box can be wide enough to read.
         assertEquals(2, loose.first().level)
-        assertEquals(listOf(0, 1, 2, 0, 1), loose.map { it.order })
-        assertEquals(3, loose.last().level)
+        assertEquals(listOf(0, 1, 0, 1, 0), loose.map { it.order })
+        assertEquals(4, loose.last().level)
     }
 
     @Test
-    fun `a schema with no links at all becomes a squarish block, not a tall column`() {
+    fun `a schema with no links at all wraps into rows that a phone can read`() {
         val tables = (1..64).map { "t%02d".format(it) }
         val graph = SchemaLayout.build(tables, emptyList())
-        assertEquals(8, SchemaLayout.isolatedColumns(64))
-        // 64 tables in rows of 8: eight rows, not sixty-four.
-        assertEquals(7, graph.nodes.maxOf { it.level })
+        assertEquals(2, SchemaLayout.isolatedColumns(64))
+        // Two boxes of a readable width fit a phone; the rest goes down, where panning is natural.
+        assertEquals(31, graph.nodes.maxOf { it.level })
+        assertEquals(setOf(0, 1), graph.nodes.map { it.order }.toSet())
         assertTrue(graph.nodes.none { it.connected })
     }
 
     @Test
-    fun `the block never gets narrower than three or wider than eight`() {
-        assertEquals(3, SchemaLayout.isolatedColumns(1))
-        assertEquals(3, SchemaLayout.isolatedColumns(9))
-        assertEquals(4, SchemaLayout.isolatedColumns(16))
-        assertEquals(8, SchemaLayout.isolatedColumns(400))
+    fun `the block is two wide however many tables there are`() {
+        assertEquals(2, SchemaLayout.isolatedColumns(1))
+        assertEquals(2, SchemaLayout.isolatedColumns(9))
+        assertEquals(2, SchemaLayout.isolatedColumns(400))
     }
 
     @Test

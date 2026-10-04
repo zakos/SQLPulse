@@ -1,20 +1,22 @@
 package hu.laurel.sqlpulse.ui.grid
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,10 +25,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,26 +40,38 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.grid.ColumnStatsComputer
+import hu.laurel.sqlpulse.data.grid.OutlierOutcome
+import hu.laurel.sqlpulse.data.grid.Outliers
 import hu.laurel.sqlpulse.data.sql.CellType
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnMeta
 import hu.laurel.sqlpulse.data.sql.ColumnSort
 import hu.laurel.sqlpulse.data.sql.ResultTable
-import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.LocalGridFontScale
+import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
-import hu.laurel.sqlpulse.ui.theme.SqlPulseColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
 
 /** What the grid hands back when the user picks a cell or a row. */
@@ -87,6 +99,11 @@ fun ResultGrid(
     sort: ColumnSort? = null,
     /** Called with a column label when its sort icon is tapped. Null hides the icons. */
     onSort: ((String) -> Unit)? = null,
+    /**
+     * Called with a column index when its header is long-pressed. Null opens the grid's own
+     * column summary sheet, so every result table gets it without each screen wiring it up.
+     */
+    onColumnStats: ((Int) -> Unit)? = null,
     /** False where the caller already says so in its own summary line. */
     showLimitNote: Boolean = true,
 ) {
@@ -114,6 +131,31 @@ fun ResultGrid(
         }
     }
 
+    var statsColumn by remember(table) { mutableStateOf<Int?>(null) }
+    // Hoisted here, not in the sheet: the sheet closes, the marks in the grid have to stay.
+    var highlighted by remember(table) { mutableStateOf(emptySet<Int>()) }
+    val outlierRows = remember(table, highlighted) {
+        highlighted.associateWith { column ->
+            (Outliers.analyzeColumn(table, column) as? OutlierOutcome.Report)?.outlierRows.orEmpty()
+        }
+    }
+    val clipboard = LocalClipboardManager.current
+    statsColumn?.let { index ->
+        val stats = remember(table, index) { ColumnStatsComputer.compute(table, index) }
+        if (stats == null) {
+            statsColumn = null
+        } else {
+            ColumnStatsSheet(
+                columnLabel = table.columns[index].label,
+                stats = stats,
+                onCopy = { clipboard.setText(AnnotatedString(it)) },
+                onDismiss = { statsColumn = null },
+                highlightOutliers = index in highlighted,
+                onHighlightOutliersChange = { on -> highlighted = if (on) highlighted + index else highlighted - index },
+            )
+        }
+    }
+
     Column(modifier = modifier) {
         if (table.limitAdded && showLimitNote) {
             Text(
@@ -135,6 +177,7 @@ fun ResultGrid(
             },
             sort = sort,
             onSort = onSort,
+            onColumnStats = onColumnStats ?: { statsColumn = it },
         )
         HorizontalDivider(color = semantic.hairline)
 
@@ -146,6 +189,8 @@ fun ResultGrid(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Intrinsic height, so the pinned first cell can run the row's full height.
+                        .height(IntrinsicSize.Min)
                         // The row grows with the text but never shrinks below a touch target.
                         .heightIn(min = maxOf(ROW_HEIGHT.dp, (ROW_HEIGHT * scale).dp))
                         .combinedClickable(
@@ -159,6 +204,7 @@ fun ResultGrid(
                             column = column,
                             value = row.firstOrNull() ?: CellValue.Null,
                             width = widthOf(0),
+                            outlier = rowIndex in outlierRows[0].orEmpty(),
                             onClick = {
                                 onCellClick(CellSelection(rowIndex, column, row.first()))
                             },
@@ -173,6 +219,7 @@ fun ResultGrid(
                                 value = cell,
                                 modifier = Modifier
                                     .width(widthOf(index))
+                                    .outlierMark(rowIndex in outlierRows[index].orEmpty())
                                     .clickable { onCellClick(CellSelection(rowIndex, column, cell)) }
                                     .padding(horizontal = Spacing.s, vertical = Spacing.xs),
                             )
@@ -208,6 +255,7 @@ private fun HeaderRow(
     onResize: (Int, Float) -> Unit,
     sort: ColumnSort?,
     onSort: ((String) -> Unit)?,
+    onColumnStats: ((Int) -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -224,6 +272,7 @@ private fun HeaderRow(
                 sort = sort,
                 onSort = onSort,
                 onResize = { onResize(0, it) },
+                onLongPress = { onColumnStats?.invoke(0) },
             )
         }
         Row(
@@ -237,12 +286,14 @@ private fun HeaderRow(
                     sort = sort,
                     onSort = onSort,
                     onResize = { onResize(offset + 1, it) },
+                    onLongPress = { onColumnStats?.invoke(offset + 1) },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HeaderCell(
     label: String,
@@ -250,6 +301,7 @@ private fun HeaderCell(
     sort: ColumnSort?,
     onSort: ((String) -> Unit)?,
     onResize: (Float) -> Unit,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val semantic = LocalSemanticColors.current
     val sorted = sort?.takeIf { it.column == label }
@@ -259,49 +311,58 @@ private fun HeaderCell(
     // its end made every header 48dp wider than the cells under it, so the columns drifted
     // further left of their titles with each one — a grid whose fourth column sat under the
     // third one's name.
+    val sortLabel = stringResource(
+        when {
+            sorted == null -> R.string.grid_sort_none
+            sorted.descending -> R.string.grid_sort_desc
+            else -> R.string.grid_sort_asc
+        },
+        label,
+    )
     Row(
         modifier = Modifier.width(width),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            // The title scales with the cells under it: a header that stayed put while the rows
-            // grew would be the one row of the grid the setting did not reach.
-            style = MonoStyles.cell.copy(
-                fontSize = MonoStyles.cell.fontSize * (LocalGridFontScale.current / 100f),
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        // The whole title is the sort control, cycling ascending -> descending -> the table's own
+        // order; only the sorted column shows an arrow, so the header reads as names, not icons.
+        Row(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = Spacing.s),
-        )
-        if (onSort != null) {
-            // One icon per column, cycling ascending -> descending -> the table's own order.
-            IconButton(
-                onClick = { onSort(label) },
-                modifier = Modifier.size(SORT_ICON_TARGET.dp),
-            ) {
-                Icon(
-                    imageVector = when {
-                        sorted == null -> Icons.Default.SwapVert
-                        sorted.descending -> Icons.Default.ArrowDownward
-                        else -> Icons.Default.ArrowUpward
-                    },
-                    contentDescription = stringResource(
-                        when {
-                            sorted == null -> R.string.grid_sort_none
-                            sorted.descending -> R.string.grid_sort_desc
-                            else -> R.string.grid_sort_asc
-                        },
-                        label,
-                    ),
-                    tint = if (sorted == null) {
-                        semantic.textSecondary.copy(alpha = 0.6f)
+                .fillMaxHeight()
+                .then(
+                    if (onSort != null || onLongPress != null) {
+                        Modifier.combinedClickable(
+                            onClick = { if (onSort != null) onSort(label) },
+                            onLongClick = onLongPress,
+                            onClickLabel = if (onSort != null) sortLabel else null,
+                            role = if (onSort != null) Role.Button else null,
+                        )
                     } else {
-                        MaterialTheme.colorScheme.primary
+                        Modifier
                     },
-                    modifier = Modifier.size(SORT_ICON.dp),
+                )
+                .padding(horizontal = Spacing.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                // The title scales with the cells under it: a header that stayed put while the
+                // rows grew would be the one row of the grid the setting did not reach.
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp * (LocalGridFontScale.current / 100f),
+                ),
+                color = semantic.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (sorted != null) {
+                Icon(
+                    imageVector = if (sorted.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = Spacing.xs).size(SORT_ICON.dp),
                 )
             }
         }
@@ -310,7 +371,14 @@ private fun HeaderCell(
             modifier = Modifier
                 .width(RESIZE_HANDLE.dp)
                 .height(HEADER_HEIGHT.dp)
-                .background(semantic.hairline)
+                // Wide enough for a thumb, drawn as a hairline so the header stays quiet.
+                .drawBehind {
+                    drawRect(
+                        semantic.hairline,
+                        topLeft = Offset(size.width - 1.dp.toPx(), size.height * 0.25f),
+                        size = Size(1.dp.toPx(), size.height * 0.5f),
+                    )
+                }
                 .pointerInput(label) {
                     detectHorizontalDragGestures { _, dragAmount -> onResize(dragAmount) }
                 },
@@ -319,22 +387,65 @@ private fun HeaderCell(
 }
 
 @Composable
-private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, onClick: () -> Unit) {
+private fun StickyCell(column: ColumnMeta, value: CellValue, width: Dp, outlier: Boolean = false, onClick: () -> Unit) {
+    val semantic = LocalSemanticColors.current
     Box(
         modifier = Modifier
             .width(width)
-            // §8: a slight shadow on its right edge separates it while the rest scrolls.
-            .shadow(elevation = 2.dp, clip = false)
-            .background(MaterialTheme.colorScheme.surface)
+            .fillMaxHeight()
+            // The pinned column is the screen's own ground with a hairline and a soft shade on its
+            // right edge (§8): it reads as the same table, only held still while the rest scrolls.
+            .background(MaterialTheme.colorScheme.background)
+            .outlierMark(outlier)
+            .drawWithContent {
+                drawContent()
+                val edge = 1.dp.toPx()
+                drawRect(semantic.hairline, topLeft = Offset(size.width - edge, 0f), size = Size(edge, size.height))
+                drawRect(
+                    Brush.horizontalGradient(
+                        listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent),
+                        startX = size.width,
+                        endX = size.width + 6.dp.toPx(),
+                    ),
+                    topLeft = Offset(size.width, 0f),
+                    size = Size(6.dp.toPx(), size.height),
+                )
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.s, vertical = Spacing.xs),
+        contentAlignment = Alignment.CenterStart,
     ) {
         Cell(column = column, value = value)
     }
 }
 
+/**
+ * Marks a cell as an outlier: a faint warning wash and a small triangle in the top-right corner.
+ * Two cues because a tint alone is lost on a dim screen and a marker alone is easy to miss.
+ */
+@Composable
+internal fun Modifier.outlierMark(on: Boolean): Modifier {
+    if (!on) return this
+    val warning = LocalSemanticColors.current.warning
+    return this.drawBehind {
+        drawRect(warning.copy(alpha = OUTLIER_TINT))
+        val side = OUTLIER_MARKER_DP.dp.toPx()
+        val corner = Path().apply {
+            moveTo(size.width - side, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, side)
+            close()
+        }
+        drawPath(corner, warning)
+    }
+}
+
+private const val OUTLIER_TINT = 0.16f
+private const val OUTLIER_MARKER_DP = 8
+
 @Composable
 internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Modifier) {
+    val semantic = LocalSemanticColors.current
     val text: String
     val color: Color
     var italic = false
@@ -342,23 +453,23 @@ internal fun Cell(column: ColumnMeta, value: CellValue, modifier: Modifier = Mod
     when (value) {
         is CellValue.Null -> {
             text = "NULL"
-            color = SqlPulseColors.CellNull
+            color = semantic.cellNull
             italic = true
         }
 
         is CellValue.Number -> {
             text = value.value
-            color = SqlPulseColors.CellNumber
+            color = semantic.cellNumber
         }
 
         is CellValue.Date -> {
             text = value.value
-            color = SqlPulseColors.CellDate
+            color = semantic.cellDate
         }
 
         is CellValue.Bool -> {
             text = if (value.value) "1" else "0"
-            color = SqlPulseColors.CellNumber
+            color = semantic.cellNumber
         }
 
         // §7.5, §11: a BLOB shows its size in the grid, never its contents.

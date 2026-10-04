@@ -39,6 +39,8 @@ fun sessionHeader(
     sshHost: String,
     dbHost: String,
     dbPort: Int,
+    /** A SQLite connection's file name: the "server" is a file, with no host, port or tunnel. */
+    file: String? = null,
     database: String,
     currentDatabase: String? = null,
     dbUser: String,
@@ -46,7 +48,11 @@ fun sessionHeader(
     readOnly: Boolean,
 ): SessionHeader = SessionHeader(
     connectionName = connectionName,
-    server = if (tunnelled) "$sshUser@$sshHost → $dbHost:$dbPort" else "$dbHost:$dbPort",
+    server = when {
+        file != null -> file
+        tunnelled -> "$sshUser@$sshHost → $dbHost:$dbPort"
+        else -> "$dbHost:$dbPort"
+    },
     database = currentDatabase?.takeIf { it.isNotBlank() } ?: database,
     user = dbUser,
     environment = environment,

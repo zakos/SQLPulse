@@ -8,7 +8,6 @@
     <string name="plan_fallback">This server did not return a JSON plan, so what follows is the tabular one.</string>
     <string name="plan_total_cost">Plan cost: %1$s</string>
     <string name="plan_no_cost">This server reports no cost figures, so the heaviest step is picked by rows read.</string>
-    <string name="plan_expensive">The heaviest step of the plan</string>
     <string name="plan_expand">Open</string>
     <string name="plan_collapse">Close</string>
 

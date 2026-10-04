@@ -5,10 +5,15 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ConnectionRepository
+import hu.laurel.sqlpulse.data.connection.LocalDatabaseFiles
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
 import hu.laurel.sqlpulse.data.connection.WriteAccess
 import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.shortcuts.LauncherShortcuts
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequests
 import hu.laurel.sqlpulse.ssh.HostKeyPrompt
 import hu.laurel.sqlpulse.ssh.TunnelManager
 import hu.laurel.sqlpulse.ssh.TunnelState
@@ -28,6 +33,8 @@ data class ConnectionListUiState(
     val serverVersion: String? = null,
     /** Connection id to the end of its write window; empty when nothing is unlocked. */
     val unlockedUntil: Map<Long, Long> = emptyMap(),
+    /** Connection id to the size of its SQLite file copy; a file connection with no copy is absent. */
+    val fileSizes: Map<Long, Long> = emptyMap(),
 ) {
     /**
      * Whether this connection may be written to at [now], and why not when it may not.
@@ -58,7 +65,28 @@ class ConnectionListViewModel @Inject constructor(
     private val repository: ConnectionRepository,
     private val tunnelManager: TunnelManager,
     private val writeUnlock: WriteUnlockStore,
+    private val shortcutRequests: ShortcutRequests,
+    private val launcherShortcuts: LauncherShortcuts,
+    private val localFiles: LocalDatabaseFiles,
 ) : ViewModel() {
+
+    /**
+     * A launcher shortcut waiting to be opened. Acting on it is left to the screen, which only
+     * exists while the app is unlocked: a ViewModel can outlive the lock, a request must not.
+     */
+    val shortcutPending: StateFlow<ShortcutRequest?> = shortcutRequests.pending
+
+    /**
+     * A shortcut is just a tap on the connection's card: connect() decides whether the production
+     * question comes first. A deleted or unknown id is silently dropped.
+     */
+    fun openShortcut() {
+        val request = shortcutRequests.take() ?: return
+        viewModelScope.launch {
+            if (!launcherShortcuts.allows(request.connectionId)) return@launch
+            repository.byId(request.connectionId)?.let(::connect)
+        }
+    }
 
     val uiState: StateFlow<ConnectionListUiState> = combine(
         repository.observeAll(),
@@ -67,7 +95,13 @@ class ConnectionListViewModel @Inject constructor(
         tunnelManager.serverVersion,
         writeUnlock.unlockedUntil,
     ) { connections, tunnel, prompt, version, unlocked ->
-        ConnectionListUiState(connections, tunnel, prompt, version, unlocked)
+        ConnectionListUiState(
+            connections, tunnel, prompt, version, unlocked,
+            fileSizes = connections
+                .filter { !DatabaseEngine.fromName(it.engine).hasServer }
+                .mapNotNull { connection -> localFiles.sizeOf(connection.id)?.let { connection.id to it } }
+                .toMap(),
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),

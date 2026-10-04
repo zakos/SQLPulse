@@ -90,16 +90,7 @@ data class ResultTable(
          * we stop early rather than letting a runaway query fill the heap (§10).
          */
         fun from(resultSet: ResultSet, maxRows: Int): ResultTable {
-            val meta = resultSet.metaData
-            val columns = (1..meta.columnCount).map { index ->
-                ColumnMeta(
-                    label = meta.getColumnLabel(index),
-                    type = cellTypeOf(meta.getColumnType(index)),
-                    typeName = meta.getColumnTypeName(index) ?: "",
-                    table = meta.getTableName(index)?.takeIf { it.isNotBlank() },
-                )
-            }
-
+            val columns = columnsOf(resultSet)
             val rows = ArrayList<List<CellValue>>()
             var truncated = false
             while (resultSet.next()) {
@@ -107,12 +98,31 @@ data class ResultTable(
                     truncated = true
                     break
                 }
-                rows += columns.indices.map { column ->
-                    readCell(resultSet, column + 1, columns[column].type)
-                }
+                rows += readRow(resultSet, columns)
             }
             return ResultTable(columns, rows, truncated)
         }
+
+        /** The columns of [resultSet], as the grid and the exports describe them. */
+        fun columnsOf(resultSet: ResultSet): List<ColumnMeta> {
+            val meta = resultSet.metaData
+            return (1..meta.columnCount).map { index ->
+                ColumnMeta(
+                    label = meta.getColumnLabel(index),
+                    type = columnTypeOf(
+                        meta.getColumnType(index),
+                        meta.getColumnTypeName(index) ?: "",
+                        postgres = meta.javaClass.name.startsWith("org.postgresql."),
+                    ),
+                    typeName = meta.getColumnTypeName(index) ?: "",
+                    table = meta.getTableName(index)?.takeIf { it.isNotBlank() },
+                )
+            }
+        }
+
+        /** The row [resultSet] is positioned on. Shared with the streaming export, so both read cells alike. */
+        fun readRow(resultSet: ResultSet, columns: List<ColumnMeta>): List<CellValue> =
+            columns.indices.map { column -> readCell(resultSet, column + 1, columns[column].type) }
 
         private fun readCell(resultSet: ResultSet, index: Int, type: CellType): CellValue =
             when (type) {
@@ -141,6 +151,20 @@ data class ResultTable(
                 }
             }
 
+        /**
+         * PostgreSQL reports `bit(n)` and `bit varying` as JDBC BIT like it does boolean, but their
+         * value is a string of 0s and 1s ("101"), which getBoolean refuses. The driver spells those
+         * type names in lower case. SQL Server spells its one-bit flag `bit` in lower case too, so the
+         * rule is the driver's, not the spelling's: only PostgreSQL's bit strings are text. Even
+         * `bit(1)` stays text there, because a flag edited back as "true" is not a valid bit value.
+         * (R8 keeps org.postgresql intact, so the class name survives a release build.)
+         */
+        internal fun columnTypeOf(jdbcType: Int, typeName: String, postgres: Boolean = false): CellType {
+            val type = cellTypeOf(jdbcType)
+            val bitString = postgres && (typeName == "bit" || typeName == "varbit")
+            return if (type == CellType.BOOLEAN && bitString) CellType.TEXT else type
+        }
+
         fun cellTypeOf(jdbcType: Int): CellType = when (jdbcType) {
             Types.TINYINT, Types.SMALLINT, Types.INTEGER, Types.BIGINT,
             Types.FLOAT, Types.REAL, Types.DOUBLE, Types.NUMERIC, Types.DECIMAL,
@@ -148,7 +172,8 @@ data class ResultTable(
 
             // Android's java.sql.Types stops at JDBC 4.1, so the two zoned constants are
             // spelled out: 2013 is TIME_WITH_TIMEZONE and 2014 is TIMESTAMP_WITH_TIMEZONE.
-            Types.DATE, Types.TIME, Types.TIMESTAMP, 2013, 2014 -> CellType.DATE
+            // -155 is SQL Server's DATETIMEOFFSET (microsoft.sql.Types), which JDBC has no type for.
+            Types.DATE, Types.TIME, Types.TIMESTAMP, 2013, 2014, -155 -> CellType.DATE
 
             Types.BIT, Types.BOOLEAN -> CellType.BOOLEAN
 

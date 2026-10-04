@@ -130,6 +130,19 @@ data class ConnectionEntity(
     /** File name under the app's `ca` directory holding the CA that signs the server cert. */
     val caCertificate: String? = null,
     val lastUsedAt: Long? = null,
+    /**
+     * Name of a DatabaseEngine entry. Every row from before engines existed is MySQL, which is
+     * what the column's default says (migration 10→11).
+     */
+    val engine: String = "MYSQL",
+    /**
+     * SQLite only: the Storage Access Framework URI the database file was picked from. The app
+     * opens its own copy in private storage (`filesDir/sqlite/<id>.sqlite`); this is where the copy
+     * came from, kept so the user can be told and can refresh it. Null for server engines.
+     */
+    val fileUri: String? = null,
+    /** SQLite only: the picked file's display name, for the list and the title bar. */
+    val fileName: String? = null,
 )
 
 @Entity(tableName = "db_credential")
@@ -306,6 +319,13 @@ data class CachedTableEntity(
      * page would then claim a freshness nothing measured.
      */
     val structureCapturedAt: Long?,
+    /**
+     * When this table's CHECK constraints were read, or null for a structure captured before
+     * they were kept (v12). The marker is what tells "no CHECK constraints" from "never read",
+     * so the schema comparison does not report every constraint of a fresh capture as missing
+     * from an old one.
+     */
+    val checksCapturedAt: Long?,
 )
 
 @Entity(
@@ -388,4 +408,147 @@ data class CachedForeignKeyEntity(
     val referencedDatabase: String,
     val referencedTable: String,
     val referencedColumn: String,
+    /** CASCADE, SET NULL, … as the server reports it; null in a row captured before v12. */
+    val onDelete: String?,
+    val onUpdate: String?,
+)
+
+/** A CHECK constraint of a cached table (v12). */
+@Entity(
+    tableName = "cached_check",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedCheckEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    val expression: String?,
+    val enforced: Boolean,
+)
+
+/**
+ * A view's text as the server gave it (v12). Raw, not normalised: the normalisation rules will
+ * improve and a stored row must be re-read through the better rule, not frozen at the old one.
+ */
+@Entity(
+    tableName = "cached_view",
+    primaryKeys = ["connectionId", "database", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedViewEntity(
+    val connectionId: Long,
+    val database: String,
+    val name: String,
+    val definition: String,
+)
+
+/**
+ * A trigger with its body (v12). The table is part of the key because PostgreSQL names triggers
+ * per table; MySQL, SQL Server and SQLite names are unique per schema, which the wider key
+ * merely tolerates.
+ */
+@Entity(
+    tableName = "cached_trigger",
+    primaryKeys = ["connectionId", "database", "tableName", "name"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedTriggerEntity(
+    val connectionId: Long,
+    val database: String,
+    val tableName: String,
+    val name: String,
+    /** BEFORE, AFTER or INSTEAD OF. */
+    val timing: String,
+    /** INSERT, UPDATE, DELETE, or several joined by " OR " / ", ". */
+    val event: String,
+    /** The trigger's text (body, or the whole CREATE statement where the engine has only that). */
+    val body: String,
+)
+
+/**
+ * When a database's views and triggers were last read (v12). Their own marker, because a
+ * database with no triggers and a database whose triggers were never read look the same in
+ * `cached_trigger`, and only one of them is a fact about the server.
+ */
+@Entity(
+    tableName = "cached_object_capture",
+    primaryKeys = ["connectionId", "database"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ConnectionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["connectionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("connectionId")],
+)
+data class CachedObjectCaptureEntity(
+    val connectionId: Long,
+    val database: String,
+    val capturedAt: Long,
+)
+
+/**
+ * One write the app sent to a server (the "Írási napló").
+ *
+ * No foreign key to `connection`, on purpose: the log answers "who wrote what, where" long after the
+ * connection may have been renamed or deleted, so the name, colour and environment are copied here
+ * as they were at that moment and the row outlives its connection. Enum-valued columns are stored
+ * as their names, like the rest of the schema, so a reader never depends on an ordinal.
+ */
+@Entity(tableName = "write_log", indices = [Index("time")])
+data class WriteLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Epoch milliseconds when the statement was sent. */
+    val time: Long,
+    /** Null when the write ran with no session to name (it then failed anyway). */
+    val connectionId: Long?,
+    val connectionName: String,
+    /** Name of a ui.theme.ConnectionColor entry, copied so the log keeps its colour rail. */
+    val connectionColor: String,
+    /** Name of a ConnectionEnvironment entry at that moment. */
+    val environment: String,
+    val database: String?,
+    /** Name of a data.writelog.WriteSource entry. */
+    val source: String,
+    val statement: String,
+    /** Rows the server said it changed; null when the statement failed before it could say. */
+    val affectedRows: Int?,
+    /** Name of a data.writelog.WriteOutcome entry. */
+    val outcome: String,
+    /** Short error class and message for a failed write; never credentials. */
+    val error: String?,
+    val durationMs: Long,
+    /**
+     * True when a manual transaction was open. Whether it was later committed or rolled back is
+     * not tracked, so this only says the write was not auto-committed.
+     */
+    val inTransaction: Boolean,
 )

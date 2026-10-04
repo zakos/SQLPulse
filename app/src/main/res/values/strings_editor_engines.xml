@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="snippets_builtin_note_engine">%1$s templates. Nothing is run until you run it, and no snippet changes the structure of a table.</string>
+</resources>

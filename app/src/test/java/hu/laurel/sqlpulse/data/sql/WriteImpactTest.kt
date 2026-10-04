@@ -9,6 +9,17 @@ import org.junit.Test
 class WriteImpactTest {
 
     @Test
+    fun `double quoted strings keep their text in the count and the preview`() {
+        // MySQL's default mode reads "..." as a string; SQLite falls back to one when no column
+        // has the name. Either way the derived SELECT carries the same text as the write.
+        val sql = "UPDATE article set ArtNr=\"x\" where Label like \"%csirk%\""
+        assertEquals("SELECT COUNT(*) FROM article where Label like \"%csirk%\"", WriteImpact.countQuery(sql))
+        val preview = WriteImpact.previewQuery(sql)
+        assertEquals(listOf("ArtNr"), preview?.changedColumns)
+        assertTrue(preview!!.sql.contains("(\"x\") AS"))
+    }
+
+    @Test
     fun `an update becomes a count over the same table and where`() {
         assertEquals(
             "SELECT COUNT(*) FROM orders WHERE paid = 0 AND id > 10",
@@ -39,6 +50,24 @@ class WriteImpactTest {
         assertEquals(
             "SELECT COUNT(*) FROM orders AS o WHERE o.id = 1",
             WriteImpact.countQuery("DELETE FROM orders AS o WHERE o.id = 1"),
+        )
+    }
+
+    @Test
+    fun `a table that starts with a backtick is still the table`() {
+        // The quoted name is blanked while the statement is scanned for keywords; finding where
+        // the table starts must not skip over that blank as if it were whitespace.
+        assertEquals(
+            "SELECT COUNT(*) FROM `orders` WHERE id = 1",
+            WriteImpact.countQuery("DELETE FROM `orders` WHERE id = 1"),
+        )
+        assertEquals(
+            "SELECT COUNT(*) FROM `my orders` WHERE id = 1",
+            WriteImpact.countQuery("UPDATE LOW_PRIORITY `my orders` SET paid = 1 WHERE id = 1"),
+        )
+        assertEquals(
+            "SELECT *, (1) AS `paid (new)` FROM `orders` LIMIT 20",
+            WriteImpact.previewQuery("UPDATE `orders` SET paid = 1")?.sql,
         )
     }
 
@@ -176,5 +205,50 @@ class WriteImpactTest {
     @Test
     fun `a ceiling of zero turns the check off`() {
         assertFalse(AffectedRowLimit.exceeds(1_000_000, 0))
+    }
+
+    @Test
+    fun `a side effect in a subquery of the set list refuses the preview`() {
+        val sqls = listOf(
+            "UPDATE t SET a = (SELECT SLEEP(5)) WHERE id = 1",
+            "UPDATE t SET a = COALESCE((SELECT NEXTVAL(seq)), 0) WHERE id = 1",
+            "UPDATE t SET a = (SELECT GET_LOCK('x', 1) FROM dual) + 1",
+            "UPDATE t SET a = (SELECT @v := 3)",
+            "UPDATE t SET a = (SELECT b FROM u LIMIT 1 FOR UPDATE)",
+            "UPDATE t SET a = (SELECT b FROM u LOCK IN SHARE MODE)",
+            "UPDATE t SET a = (SELECT b INTO @x FROM u)",
+        )
+        sqls.forEach { assertNull(it, WriteImpact.previewQuery(it)) }
+    }
+
+    @Test
+    fun `a side effect in the where refuses both the count and the preview`() {
+        val sqls = listOf(
+            "UPDATE t SET a = 1 WHERE id IN (SELECT id FROM u WHERE SLEEP(1))",
+            "DELETE FROM t WHERE GET_LOCK('k', 0) = 1",
+            "DELETE FROM t WHERE id = (SELECT MAX(id) FROM u FOR UPDATE)",
+            "DELETE FROM t WHERE (@n := @n + 1) > 3",
+            "DELETE FROM t WHERE id = (SELECT id INTO @i FROM u LIMIT 1)",
+        )
+        sqls.forEach {
+            assertNull(it, WriteImpact.previewQuery(it))
+            assertNull(it, WriteImpact.countQuery(it))
+        }
+    }
+
+    @Test
+    fun `a function name in a literal or comment is not a side effect`() {
+        val update = "UPDATE t SET note = 'call SLEEP(5) for update into x' /* GET_LOCK */ WHERE id = 1 -- FOR UPDATE"
+        assertTrue(WriteImpact.previewQuery(update) != null)
+        val delete = "DELETE FROM t WHERE note = 'SLEEP(1) FOR UPDATE'"
+        assertTrue(WriteImpact.countQuery(delete) != null)
+        assertTrue(WriteImpact.previewQuery(delete) != null)
+    }
+
+    @Test
+    fun `an ordinary subquery is still previewed`() {
+        val sql = "UPDATE t SET a = (SELECT MAX(b) FROM u) WHERE id IN (SELECT id FROM v WHERE x > 1)"
+        assertTrue(WriteImpact.previewQuery(sql) != null)
+        assertTrue(WriteImpact.countQuery(sql) != null)
     }
 }

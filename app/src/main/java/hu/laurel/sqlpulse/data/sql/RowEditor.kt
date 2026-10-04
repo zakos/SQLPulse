@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.writelog.WriteLogger
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import java.sql.Connection
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,13 +47,15 @@ class RowChangedException(val currentValue: String?, val rowExists: Boolean) :
     Exception("the row changed since it was read")
 
 /**
- * Runs row edits inside a transaction (§7.6). Nothing here decides whether an edit is allowed —
- * that is the read-only flag and the MySQL grants (§3); this only makes sure that what runs is
- * exactly one row, and that it can be taken back.
+ * Runs row edits inside a transaction (§7.6). Whether an edit is allowed at all is [WriteGate]'s
+ * call and the MySQL grants' (§3); this makes sure that what runs is exactly one row, and that it
+ * can be taken back.
  */
 @Singleton
 class RowEditor @Inject constructor(
     private val sessions: SqlSessionManager,
+    private val writeGate: WriteGate,
+    private val writeLog: WriteLogger,
 ) {
 
     /**
@@ -68,7 +72,8 @@ class RowEditor @Inject constructor(
         oldValue: String?,
         newValue: String?,
     ): RowEdit {
-        val plain = RowSqlBuilder.update(database, table, key, column, newValue)
+        val syntax = sessions.dialect()
+        val plain = RowSqlBuilder.update(database, table, key, column, newValue, syntax = syntax)
         return RowEdit(
             statement = RowSqlBuilder.update(
                 database = database,
@@ -77,6 +82,7 @@ class RowEditor @Inject constructor(
                 column = column,
                 newValue = newValue,
                 expectedValue = Expected.of(oldValue),
+                syntax = syntax,
             ),
             // The undo only applies while the value is still the one we wrote, for the same reason.
             undo = RowSqlBuilder.update(
@@ -86,11 +92,12 @@ class RowEditor @Inject constructor(
                 column = column,
                 newValue = oldValue,
                 expectedValue = Expected.of(newValue),
+                syntax = syntax,
             ),
-            preview = RowSqlBuilder.render(plain),
+            preview = RowSqlBuilder.render(plain, syntax),
             kind = EditKind.UPDATE,
             unguarded = plain,
-            conflictProbe = RowSqlBuilder.selectValue(database, table, key, column),
+            conflictProbe = RowSqlBuilder.selectValue(database, table, key, column, syntax),
             newValue = newValue,
         )
     }
@@ -101,21 +108,23 @@ class RowEditor @Inject constructor(
      * two-step confirmation instead, and for the table name to be typed on a production connection.
      */
     fun prepareDelete(database: String, table: String, key: Map<String, String?>): RowEdit {
-        val statement = RowSqlBuilder.delete(database, table, key)
+        val syntax = sessions.dialect()
+        val statement = RowSqlBuilder.delete(database, table, key, syntax)
         return RowEdit(
             statement = statement,
             undo = null,
-            preview = RowSqlBuilder.render(statement),
+            preview = RowSqlBuilder.render(statement, syntax),
             kind = EditKind.DELETE,
         )
     }
 
     fun prepareInsert(database: String, table: String, values: Map<String, String?>): RowEdit {
-        val statement = RowSqlBuilder.insert(database, table, values)
+        val syntax = sessions.dialect()
+        val statement = RowSqlBuilder.insert(database, table, values, syntax)
         return RowEdit(
             statement = statement,
             undo = null,
-            preview = RowSqlBuilder.render(statement),
+            preview = RowSqlBuilder.render(statement, syntax),
             kind = EditKind.INSERT,
         )
     }
@@ -127,9 +136,9 @@ class RowEditor @Inject constructor(
      * else wrote to it, or it is gone. Both are worth saying out loud, with what the column holds
      * now, rather than reporting "0 rows changed" and leaving the user to guess.
      */
-    suspend fun execute(edit: RowEdit): Int {
+    suspend fun execute(edit: RowEdit, source: WriteSource = WriteSource.ROW_EDIT): Int {
         try {
-            return execute(edit.statement)
+            return execute(edit.statement, source)
         } catch (e: UnexpectedRowCountException) {
             if (e.affected != 0 || edit.conflictProbe == null) throw e
             val current = readValue(edit.conflictProbe)
@@ -142,8 +151,8 @@ class RowEditor @Inject constructor(
     }
 
     /** Reruns an edit without its "the value is still what I saw" condition. */
-    suspend fun overwrite(edit: RowEdit): Int =
-        execute(edit.unguarded ?: edit.statement)
+    suspend fun overwrite(edit: RowEdit, source: WriteSource = WriteSource.ROW_EDIT): Int =
+        execute(edit.unguarded ?: edit.statement, source)
 
     private suspend fun readValue(probe: PreparedSql): ProbeResult = sessions.withConnection { connection ->
         connection.prepareStatement(probe.sql).use { prepared ->
@@ -160,12 +169,54 @@ class RowEditor @Inject constructor(
      * Runs [statement] in a transaction and rolls back unless exactly one row changed. A typo in a
      * key that matched three rows is a bug, not something to commit and apologise for (§11).
      */
-    suspend fun execute(statement: PreparedSql): Int = sessions.withConnection { connection ->
+    suspend fun execute(statement: PreparedSql, source: WriteSource = WriteSource.ROW_EDIT): Int {
+        val started = System.currentTimeMillis()
+        // Set from inside the connection block, where the JDBC connection can say whether the
+        // user's own transaction is open.
+        var inTransaction = false
+        try {
+            val affected = sessions.withConnection { connection ->
+                writeGate.check()
+                inTransaction = !connection.autoCommit
+                runInTransaction(statement, connection)
+            }
+            log(statement, source, affected, null, started, inTransaction)
+            return affected
+        } catch (e: Exception) {
+            // A refused write (read-only, locked) or a missing session never reached the server,
+            // so there is nothing to account for; everything else was sent and failed.
+            if (e !is ReadOnlyConnectionException && e !is WritesLockedException && e !is NoSqlSessionException) {
+                log(statement, source, (e as? UnexpectedRowCountException)?.affected, e, started, inTransaction)
+            }
+            throw e
+        }
+    }
+
+    private suspend fun log(
+        statement: PreparedSql,
+        source: WriteSource,
+        affected: Int?,
+        failure: Throwable?,
+        started: Long,
+        inTransaction: Boolean,
+    ) = writeLog.record(
+        source = source,
+        // The values written in (escaped), not the placeholders: "which row" is the question a
+        // log gets asked.
+        statement = RowSqlBuilder.render(statement, sessions.dialect()),
+        affectedRows = affected,
+        failure = failure,
+        startedAt = started,
+        durationMs = System.currentTimeMillis() - started,
+        inTransaction = inTransaction,
+    )
+
+    private fun runInTransaction(statement: PreparedSql, connection: Connection): Int {
         // Inside a manual transaction the user owns the commit: committing here would quietly
         // write everything else they have run since they opened it. The row count is still
         // checked, and a wrong count is reported without a rollback, so what to do about it stays
         // their decision.
-        if (!connection.autoCommit) return@withConnection runGuarded(statement, connection)
+        if (!connection.autoCommit) return runGuarded(statement, connection)
 
         val previousAutoCommit = connection.autoCommit
         connection.autoCommit = false
@@ -181,7 +232,7 @@ class RowEditor @Inject constructor(
                 throw UnexpectedRowCountException(affected)
             }
             connection.commit()
-            affected
+            return affected
         } catch (e: Exception) {
             // §11: a half-finished write is rolled back and the user is told it did not happen.
             runCatching { connection.rollback() }

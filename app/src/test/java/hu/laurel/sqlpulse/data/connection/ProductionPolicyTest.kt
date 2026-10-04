@@ -189,4 +189,17 @@ class ProductionPolicyTest {
         unlockedUntil = until,
         now = now,
     )
+
+    @Test
+    fun `a file on the phone is never refused for crossing the network in the clear`() {
+        val file = ProductionShape(
+            ConnectionEnvironment.PRODUCTION, tunnelled = false, sslMode = SslMode.DISABLED,
+            readOnly = true, queryTimeoutSeconds = 30, local = true,
+        )
+        assertNull(ProductionPolicy.refusal(file))
+        // The same shape over a network is refused, so the rule has not been loosened for servers.
+        assertEquals(SaveRefusal.Unprotected, ProductionPolicy.refusal(file.copy(local = false)))
+        // The query timeout cap still applies to a file marked production.
+        assertTrue(ProductionPolicy.refusal(file.copy(queryTimeoutSeconds = 600)) is SaveRefusal.QueryTimeoutTooLong)
+    }
 }

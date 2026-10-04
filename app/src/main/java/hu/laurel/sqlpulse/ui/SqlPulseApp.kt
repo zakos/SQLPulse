@@ -2,6 +2,19 @@ package hu.laurel.sqlpulse.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.ui.engine.EngineFeaturesViewModel
+import hu.laurel.sqlpulse.ui.engine.EngineGate
+import hu.laurel.sqlpulse.ui.engine.LocalEngineFeatures
+import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequest
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -13,10 +26,17 @@ import hu.laurel.sqlpulse.ui.backup.BackupScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
 import hu.laurel.sqlpulse.ui.map.SchemaMapScreen
 import hu.laurel.sqlpulse.ui.pulse.PulseScreen
+import hu.laurel.sqlpulse.data.alerts.AlertRequests
+import kotlinx.coroutines.flow.MutableStateFlow
 import hu.laurel.sqlpulse.ui.query.QueryEditorScreen
+import hu.laurel.sqlpulse.ui.search.DatabaseSearchScreen
 import hu.laurel.sqlpulse.ui.settings.SettingsScreen
 import hu.laurel.sqlpulse.ui.schema.SchemaBrowserScreen
+import hu.laurel.sqlpulse.ui.schemadiff.SchemaDiffScreen
 import hu.laurel.sqlpulse.ui.server.ServerScreen
+import hu.laurel.sqlpulse.ui.settings.KeyBarSettingsScreen
+import hu.laurel.sqlpulse.ui.storage.StorageScreen
+import hu.laurel.sqlpulse.ui.writelog.WriteLogScreen
 import hu.laurel.sqlpulse.ui.schema.TableDetailScreen
 
 object Routes {
@@ -30,6 +50,11 @@ object Routes {
     const val PULSE = "pulse"
     const val MAP = "map"
     const val BACKUP = "backup"
+    const val SEARCH = "search"
+    const val SCHEMA_DIFF = "schema-diff"
+    const val STORAGE = "storage"
+    const val WRITE_LOG = "write_log"
+    const val KEY_BAR = "key_bar"
     const val TABLE = "table/{database}/{table}"
 
     fun editor(connectionId: Long) = "editor/$connectionId"
@@ -39,9 +64,28 @@ object Routes {
 }
 
 @Composable
-fun SqlPulseApp() {
+fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow(), alertRequests: AlertRequests? = null) {
     val navController = rememberNavController()
 
+    // A launcher shortcut lands on the list, wherever the user was; the list then does the connecting.
+    LaunchedEffect(connectRequests) {
+        connectRequests.filterNotNull().collect { navController.popBackStack(Routes.CONNECTIONS, false) }
+    }
+
+    // A tapped alert notification: this host only exists after the unlock, so the request waits for it.
+    val openPulse by (alertRequests?.pending ?: MutableStateFlow(false)).collectAsStateWithLifecycle()
+    LaunchedEffect(openPulse) {
+        if (openPulse) {
+            alertRequests?.consume()
+            navController.navigate(Routes.PULSE) { launchSingleTop = true }
+        }
+    }
+
+    // What the open connection's engine can do; every screen below reads it to hide what it cannot
+    // (MySQL, and no connection at all, mean everything).
+    val engineFeatures by hiltViewModel<EngineFeaturesViewModel>().features.collectAsStateWithLifecycle()
+
+    CompositionLocalProvider(LocalEngineFeatures provides engineFeatures) {
     NavHost(navController = navController, startDestination = Routes.CONNECTIONS) {
         composable(Routes.CONNECTIONS) {
             ConnectionListScreen(
@@ -51,7 +95,12 @@ fun SqlPulseApp() {
                 onOpenSchema = { navController.navigate(Routes.SCHEMA) },
                 onOpenQuery = { navController.navigate(Routes.QUERY) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenSchemaDiff = { navController.navigate(Routes.SCHEMA_DIFF) },
             )
+        }
+
+        composable(Routes.SCHEMA_DIFF) {
+            SchemaDiffScreen(onBack = { navController.popBackStack() })
         }
 
         composable(
@@ -69,11 +118,18 @@ fun SqlPulseApp() {
         }
 
         composable(Routes.SERVER) {
-            ServerScreen(onBack = { navController.popBackStack() })
+            EngineGate(EngineFeature.SERVER_ACTIVITY, onBack = { navController.popBackStack() }) {
+                ServerScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenQuery = { navController.navigate(Routes.QUERY) },
+                )
+            }
         }
 
         composable(Routes.PULSE) {
-            PulseScreen(onBack = { navController.popBackStack() })
+            EngineGate(EngineFeature.PULSE, onBack = { navController.popBackStack() }) {
+                PulseScreen(onBack = { navController.popBackStack() })
+            }
         }
 
         composable(Routes.BACKUP) {
@@ -81,12 +137,36 @@ fun SqlPulseApp() {
         }
 
         composable(Routes.MAP) {
-            SchemaMapScreen(
-                onBack = { navController.popBackStack() },
-                onOpenTable = { database, table ->
-                    navController.navigate(Routes.table(database, table))
-                },
-            )
+            EngineGate(EngineFeature.SCHEMA_MAP, onBack = { navController.popBackStack() }) {
+                SchemaMapScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
+        }
+
+        composable(Routes.SEARCH) {
+            EngineGate(EngineFeature.DATABASE_SEARCH, onBack = { navController.popBackStack() }) {
+                DatabaseSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
+        }
+
+        composable(Routes.STORAGE) {
+            EngineGate(EngineFeature.STORAGE, onBack = { navController.popBackStack() }) {
+                StorageScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTable = { database, table ->
+                        navController.navigate(Routes.table(database, table))
+                    },
+                )
+            }
         }
 
         composable(Routes.SETTINGS) {
@@ -94,7 +174,17 @@ fun SqlPulseApp() {
                 onBack = { navController.popBackStack() },
                 onOpenKeyStore = { navController.navigate(Routes.KEYS) },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                onOpenWriteLog = { navController.navigate(Routes.WRITE_LOG) },
+                onOpenKeyBar = { navController.navigate(Routes.KEY_BAR) },
             )
+        }
+
+        composable(Routes.KEY_BAR) {
+            KeyBarSettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.WRITE_LOG) {
+            WriteLogScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.QUERY) {
@@ -108,6 +198,8 @@ fun SqlPulseApp() {
                 onOpenServer = { navController.navigate(Routes.SERVER) },
                 onOpenPulse = { navController.navigate(Routes.PULSE) },
                 onOpenMap = { navController.navigate(Routes.MAP) },
+                onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                onOpenStorage = { navController.navigate(Routes.STORAGE) },
                 onOpenTable = { database, table ->
                     navController.navigate(Routes.table(database, table))
                 },
@@ -128,5 +220,6 @@ fun SqlPulseApp() {
                 },
             )
         }
+    }
     }
 }

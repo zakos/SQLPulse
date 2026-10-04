@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sql_error_unique_columns">Ütközik egy meglévő sor kulcsával (%1$s).</string>
+</resources>

@@ -1,0 +1,742 @@
+package hu.laurel.sqlpulse.data.schema
+
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+
+/**
+ * Schema comparison between two databases — typically the development copy and production — as
+ * pure logic.
+ *
+ * The algorithm follows dbx's `crates/dbx-sql-schema/src/schema_diff.rs` (Apache-2.0): tables are
+ * paired by name, then columns, indexes and foreign keys inside each pair; exact name matches win
+ * over case-insensitive ones (`resolve_column_matches`), column order is only compared when every
+ * column found its partner (`diff_columns_with_identifier_options`), a foreign key pointing into
+ * its own schema has the schema name neutralised (`normalize_self_referencing_fk`), and a MySQL
+ * view's DDL loses its `DEFINER` and its own schema qualifier before it is compared
+ * (`normalize_mysql_view_ddl`, `strip_mysql_view_definer`, now in [ObjectText] for every engine's
+ * views, triggers and CHECK expressions). What dbx does with the result — sync SQL, rollback
+ * scripts — is deliberately left behind: §2 of the specification rules out DDL, so this
+ * comparison only ever reports.
+ *
+ * Both sides are what the offline schema cache holds ([CachedTable], [CachedStructure]), not the
+ * live models. The app keeps one session at a time, so at most one side can ever be read live;
+ * comparing two captures is the only way both sides can be put next to each other at all, and it
+ * also means the comparison works on the underground. Beyond tables, columns, indexes and foreign
+ * keys the cache holds the foreign keys' ON DELETE / ON UPDATE rules, CHECK constraints, view
+ * definitions and triggers (v12). A capture taken before those were kept has null where they
+ * belong, and null means "unknown": it is skipped, never reported as a difference that is really
+ * only a gap. Column collations are still not kept, so they are not compared.
+ *
+ * Both sides must be the same engine ([compare] refuses otherwise; the screen says so before it
+ * gets that far). The spelling of types, defaults and generated constraint names is then
+ * normalised by that engine's rules: MySQL's below, the others' in [EngineSchemaText].
+ *
+ * Nothing here knows about Android, Room or JDBC, so every rule below is unit-tested.
+ */
+
+/** What the comparison should overlook. */
+data class SchemaDiffOptions(
+    /**
+     * Pair `Orders` with `orders`. Off by default: on Linux, MySQL table names are case-sensitive
+     * and the two really are different tables there.
+     */
+    val ignoreIdentifierCase: Boolean = false,
+    /** Leave collations out. Two server versions with different defaults would otherwise differ everywhere. */
+    val ignoreCharset: Boolean = false,
+    /** Leave comments out. On by default: a reworded comment is rarely what anybody is hunting for. */
+    val ignoreComments: Boolean = true,
+    /** Report a column that sits in a different place. */
+    val compareColumnOrder: Boolean = true,
+    /** Whose spelling rules apply. [SchemaDiff.compare] sets it from the two sides; callers need not. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
+)
+
+/** One side as it was captured: the database name, its tables, and whatever structures are known. */
+data class SchemaDiffSide(
+    val database: String,
+    val tables: List<CachedTable>,
+    /**
+     * Structure per table name. A table missing from here has only ever been listed, never opened,
+     * so there is nothing to compare its columns against — which is different from having none.
+     */
+    val structures: Map<String, CachedStructure>,
+    /** The text of each view by name, where it was captured; a view missing here is unknown. */
+    val viewDefinitions: Map<String, String> = emptyMap(),
+    /** Every trigger with its body, or null when this database's triggers were never captured. */
+    val triggers: List<CachedTrigger>? = null,
+    /** The engine the connection runs; only two sides of the same engine can be compared. */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
+)
+
+/** The two sides run different engines, so there is no meaningful list of differences. */
+class EngineMismatchException(val a: DatabaseEngine, val b: DatabaseEngine) :
+    IllegalArgumentException("cannot compare a ${a.name} schema with a ${b.name} schema")
+
+/** Where something was found. A and B rather than added and removed: neither side is "right". */
+enum class DiffStatus { ONLY_A, ONLY_B, CHANGED }
+
+/** What differs about a thing present on both sides. The screen turns these into words. */
+enum class DiffField {
+    NAME, KIND, ENGINE, COLLATION, COMMENT,
+    TYPE, NULLABLE, DEFAULT, EXTRA, POSITION,
+    UNIQUE, COLUMNS, REFERENCES, DEFINITION,
+    ON_DELETE, ON_UPDATE, EXPRESSION, ENFORCED, TIMING, EVENT, TABLE,
+}
+
+/** One property that differs, as each side has it. Null means the side has no value there. */
+data class FieldChange(val field: DiffField, val a: String?, val b: String?)
+
+/**
+ * A column, index or foreign key that differs.
+ *
+ * [summary] describes an item that is on one side only — its type, or its columns — in the SQL
+ * words a reader already knows, because "only in A: email" says little without "varchar(255)".
+ */
+data class ItemDiff(
+    val name: String,
+    val status: DiffStatus,
+    val changes: List<FieldChange> = emptyList(),
+    val summary: String? = null,
+)
+
+/** Whose structure was never captured. Without it only the table's own row can be compared. */
+enum class StructureGap { NONE, MISSING_A, MISSING_B, MISSING_BOTH }
+
+data class TableDiff(
+    /** The name on side A, or on side B for a table only B has. */
+    val name: String,
+    val status: DiffStatus,
+    val view: Boolean,
+    val changes: List<FieldChange> = emptyList(),
+    val columns: List<ItemDiff> = emptyList(),
+    val indexes: List<ItemDiff> = emptyList(),
+    val foreignKeys: List<ItemDiff> = emptyList(),
+    val checks: List<ItemDiff> = emptyList(),
+    val gap: StructureGap = StructureGap.NONE,
+) {
+    /** Everything inside the table that differs, for the count next to its name. */
+    val itemCount: Int get() = changes.size + columns.size + indexes.size + foreignKeys.size + checks.size
+}
+
+/** A table on both sides whose own row matches but whose structure one side never captured. */
+data class UncheckedTable(val name: String, val gap: StructureGap)
+
+data class SchemaDiffResult(
+    val tables: List<TableDiff>,
+    /** Tables on both sides, fully compared, with nothing to report. */
+    val identicalCount: Int,
+    val unchecked: List<UncheckedTable>,
+    /** Triggers that differ, by `table.name`. Empty both when they match and when [triggerGap] says why. */
+    val triggers: List<ItemDiff> = emptyList(),
+    /** Whose triggers were never captured; they cannot be compared until a refresh reads them. */
+    val triggerGap: StructureGap = StructureGap.NONE,
+) {
+    val onlyACount: Int get() = tables.count { it.status == DiffStatus.ONLY_A }
+    val onlyBCount: Int get() = tables.count { it.status == DiffStatus.ONLY_B }
+    val changedCount: Int get() = tables.count { it.status == DiffStatus.CHANGED }
+
+    /** True only when everything was compared and nothing differs. A gap is not a match. */
+    val identical: Boolean get() = tables.isEmpty() && unchecked.isEmpty() && triggers.isEmpty()
+}
+
+object SchemaDiff {
+
+    fun compare(a: SchemaDiffSide, b: SchemaDiffSide, requested: SchemaDiffOptions = SchemaDiffOptions()): SchemaDiffResult {
+        if (a.engine != b.engine) throw EngineMismatchException(a.engine, b.engine)
+        val options = requested.copy(engine = a.engine)
+        val ignoreCase = options.ignoreIdentifierCase
+        val pairs = matchByName(a.tables, b.tables, ignoreCase) { it.name }
+        val tables = mutableListOf<TableDiff>()
+        val unchecked = mutableListOf<UncheckedTable>()
+        var identical = 0
+
+        for ((left, right) in pairs) {
+            when {
+                right == null -> tables += TableDiff(left!!.name, DiffStatus.ONLY_A, left.isView)
+                left == null -> tables += TableDiff(right.name, DiffStatus.ONLY_B, right.isView)
+                else -> {
+                    val diff = compareTable(left, right, a, b, options)
+                    when {
+                        diff.itemCount > 0 -> tables += diff
+                        diff.gap != StructureGap.NONE -> unchecked += UncheckedTable(left.name, diff.gap)
+                        else -> identical++
+                    }
+                }
+            }
+        }
+
+        val triggerGap = when {
+            a.triggers == null && b.triggers == null -> StructureGap.MISSING_BOTH
+            a.triggers == null -> StructureGap.MISSING_A
+            b.triggers == null -> StructureGap.MISSING_B
+            else -> StructureGap.NONE
+        }
+        return SchemaDiffResult(
+            tables = tables.sortedWith(compareBy({ it.name.lowercase() }, { it.name })),
+            identicalCount = identical,
+            unchecked = unchecked.sortedWith(compareBy({ it.name.lowercase() }, { it.name })),
+            triggers = if (a.triggers != null && b.triggers != null) diffTriggers(a, b, options) else emptyList(),
+            triggerGap = triggerGap,
+        )
+    }
+
+    private fun compareTable(
+        left: CachedTable,
+        right: CachedTable,
+        a: SchemaDiffSide,
+        b: SchemaDiffSide,
+        options: SchemaDiffOptions,
+    ): TableDiff {
+        val changes = mutableListOf<FieldChange>()
+        if (left.isView != right.isView) changes += FieldChange(DiffField.KIND, left.kind, right.kind)
+        // A null engine or collation is a side that did not say (a view, an old capture), not a
+        // side that has none; only two stated values can disagree.
+        if (left.engine != null && right.engine != null && !left.engine.equals(right.engine, ignoreCase = true)) {
+            changes += FieldChange(DiffField.ENGINE, left.engine, right.engine)
+        }
+        if (!options.ignoreCharset && left.collation != null && right.collation != null &&
+            normalizeCollation(left.collation) != normalizeCollation(right.collation)
+        ) {
+            changes += FieldChange(DiffField.COLLATION, left.collation, right.collation)
+        }
+        if (!options.ignoreComments && left.comment.orEmpty() != right.comment.orEmpty()) {
+            changes += FieldChange(DiffField.COMMENT, left.comment, right.comment)
+        }
+        if (left.isView && right.isView) {
+            val leftDdl = a.viewDefinitions[left.name]
+            val rightDdl = b.viewDefinitions[right.name]
+            // A side whose definition was not captured (or not visible to its user) is unknown, not different.
+            if (leftDdl != null && rightDdl != null) {
+                val leftText = ObjectText.normalize(leftDdl, a.database, options.engine)
+                val rightText = ObjectText.normalize(rightDdl, b.database, options.engine)
+                if (leftText != rightText) {
+                    val (excerptA, excerptB) = ObjectText.excerpts(leftText, rightText)
+                    changes += FieldChange(DiffField.DEFINITION, excerptA, excerptB)
+                }
+            }
+        }
+
+        val leftStructure = a.structures[left.name]
+        val rightStructure = b.structures[right.name]
+        val gap = when {
+            leftStructure == null && rightStructure == null -> StructureGap.MISSING_BOTH
+            leftStructure == null -> StructureGap.MISSING_A
+            rightStructure == null -> StructureGap.MISSING_B
+            else -> StructureGap.NONE
+        }
+        if (leftStructure == null || rightStructure == null) {
+            return TableDiff(left.name, DiffStatus.CHANGED, left.isView, changes, gap = gap)
+        }
+
+        return TableDiff(
+            name = left.name,
+            status = DiffStatus.CHANGED,
+            view = left.isView,
+            changes = changes,
+            columns = diffColumns(leftStructure.columns, rightStructure.columns, options),
+            indexes = diffIndexes(leftStructure.indexes, rightStructure.indexes, options),
+            foreignKeys = diffForeignKeys(
+                groupForeignKeys(leftStructure.foreignKeys, a.database, options.ignoreIdentifierCase),
+                groupForeignKeys(rightStructure.foreignKeys, b.database, options.ignoreIdentifierCase),
+                options,
+            ),
+            // Null on a side means its checks were captured before they were kept: unknown.
+            checks = if (leftStructure.checks != null && rightStructure.checks != null) {
+                diffChecks(leftStructure.checks, rightStructure.checks, a.database, b.database, options)
+            } else {
+                emptyList()
+            },
+        )
+    }
+
+    // ------------------------------------------------------------------ columns
+
+    fun diffColumns(a: List<CachedColumn>, b: List<CachedColumn>, options: SchemaDiffOptions = SchemaDiffOptions()): List<ItemDiff> {
+        val left = a.sortedBy { it.position }
+        val right = b.sortedBy { it.position }
+        val pairs = matchByName(left, right, options.ignoreIdentifierCase) { it.name }
+        // Order only means something when the two lists are the same columns; with one added, every
+        // column after it has "moved", and reporting all of them would bury the one real change.
+        val compareOrder = options.compareColumnOrder && left.size == right.size && pairs.all { it.first != null && it.second != null }
+        val diffs = mutableListOf<ItemDiff>()
+        for ((l, r) in pairs) {
+            when {
+                r == null -> diffs += ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeColumn(l))
+                l == null -> diffs += ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeColumn(r))
+                else -> {
+                    val changes = mutableListOf<FieldChange>()
+                    if (normalizeType(l.typeName, options.engine) != normalizeType(r.typeName, options.engine)) {
+                        changes += FieldChange(DiffField.TYPE, l.typeName, r.typeName)
+                    }
+                    if (l.nullable != r.nullable) {
+                        changes += FieldChange(DiffField.NULLABLE, nullability(l.nullable), nullability(r.nullable))
+                    }
+                    if (normalizeDefault(l.defaultValue, options.engine) != normalizeDefault(r.defaultValue, options.engine)) {
+                        changes += FieldChange(DiffField.DEFAULT, l.defaultValue, r.defaultValue)
+                    }
+                    if (normalizeExtra(l.extra) != normalizeExtra(r.extra)) {
+                        changes += FieldChange(DiffField.EXTRA, l.extra, r.extra)
+                    }
+                    if (!options.ignoreComments && l.comment.orEmpty() != r.comment.orEmpty()) {
+                        changes += FieldChange(DiffField.COMMENT, l.comment, r.comment)
+                    }
+                    if (compareOrder) {
+                        val leftIndex = left.indexOf(l)
+                        val rightIndex = right.indexOf(r)
+                        if (leftIndex != rightIndex) {
+                            changes += FieldChange(DiffField.POSITION, "${leftIndex + 1}", "${rightIndex + 1}")
+                        }
+                    }
+                    if (changes.isNotEmpty()) diffs += ItemDiff(l.name, DiffStatus.CHANGED, changes)
+                }
+            }
+        }
+        return diffs
+    }
+
+    private fun nullability(nullable: Boolean) = if (nullable) "NULL" else "NOT NULL"
+
+    private fun describeColumn(column: CachedColumn): String = buildString {
+        append(column.typeName)
+        append(if (column.nullable) " NULL" else " NOT NULL")
+        column.defaultValue?.let { append(" DEFAULT ").append(it) }
+    }
+
+    /**
+     * A column type as two servers can agree on it.
+     *
+     * MySQL 8.0.19 stopped reporting integer display widths — `int(11)` became `int` — while 5.7
+     * and MariaDB still report them, and a dev/production pair on different versions would
+     * otherwise differ on every integer column of every table. The width never changed what the
+     * column stores, so it is dropped; except for `tinyint(1)`, which 8.0 keeps because it is how
+     * a boolean is spelled, and `zerofill`, where the width does change what is shown.
+     */
+    fun normalizeType(type: String, engine: DatabaseEngine = DatabaseEngine.MYSQL): String = when (engine) {
+        DatabaseEngine.MYSQL -> normalizeMySqlType(type)
+        DatabaseEngine.POSTGRESQL -> EngineSchemaText.normalizePostgresType(type)
+        DatabaseEngine.SQLSERVER -> EngineSchemaText.normalizeSqlServerType(type)
+        DatabaseEngine.SQLITE -> EngineSchemaText.normalizeSqliteType(type)
+    }
+
+    private fun normalizeMySqlType(type: String): String {
+        val lower = type.trim().lowercase().replace(WHITESPACE, " ")
+        if ("zerofill" in lower) return lower
+        return INTEGER_WIDTH.replace(lower) { match ->
+            val base = match.groupValues[1]
+            if (base == "tinyint" && match.groupValues[2] == "1") match.value else base
+        }
+    }
+
+    /**
+     * A column default as two servers can agree on it.
+     *
+     * MariaDB 10.2.7 started quoting literal defaults (`'abc'`) and spelling "no default" as the
+     * word `NULL`, where MySQL says `abc` and SQL NULL; and the two disagree on whether
+     * `current_timestamp` takes brackets. None of that is a difference in the schema.
+     */
+    fun normalizeDefault(value: String?, engine: DatabaseEngine = DatabaseEngine.MYSQL): String? {
+        val engineText = when (engine) {
+            DatabaseEngine.MYSQL -> value
+            DatabaseEngine.POSTGRESQL -> EngineSchemaText.normalizePostgresDefault(value)
+            DatabaseEngine.SQLSERVER -> EngineSchemaText.normalizeSqlServerDefault(value)
+            DatabaseEngine.SQLITE -> EngineSchemaText.normalizeSqliteDefault(value)
+        }
+        val trimmed = engineText?.trim() ?: return null
+        if (trimmed.equals("NULL", ignoreCase = true)) return null
+        if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+            return trimmed.substring(1, trimmed.length - 1).replace("''", "'")
+        }
+        return normalizeTimestampWords(trimmed)
+    }
+
+    /**
+     * `EXTRA` as two servers can agree on it: MySQL 8 adds `DEFAULT_GENERATED` to every column
+     * whose default is an expression, which 5.7 and MariaDB never say — the expression itself is
+     * already compared as the default.
+     */
+    fun normalizeExtra(value: String?): String? {
+        val words = value?.trim()?.lowercase() ?: return null
+        val cleaned = normalizeTimestampWords(words.replace("default_generated", ""))
+            .replace(WHITESPACE, " ").trim()
+        return cleaned.ifEmpty { null }
+    }
+
+    /**
+     * `CURRENT_TIMESTAMP`, `current_timestamp()` and `now()` are one function: MySQL reports the
+     * first, MariaDB the second, and a hand-written schema may well use the third.
+     */
+    private fun normalizeTimestampWords(value: String): String =
+        TIMESTAMP_CALL.replace(value) { match ->
+            val precision = match.groupValues[1].ifEmpty { match.groupValues[2] }
+            "current_timestamp" + if (precision.isEmpty() || precision == "0") "" else "($precision)"
+        }
+
+    /**
+     * A collation as two servers can agree on it: MySQL 8.0.30 renamed `utf8` to `utf8mb3`
+     * without changing what it stores, so `utf8_general_ci` and `utf8mb3_general_ci` are one.
+     */
+    fun normalizeCollation(value: String): String =
+        value.trim().lowercase().replace(Regex("^utf8mb3_"), "utf8_")
+
+    // ------------------------------------------------------------------ indexes
+
+    fun diffIndexes(a: List<CachedIndex>, b: List<CachedIndex>, options: SchemaDiffOptions = SchemaDiffOptions()): List<ItemDiff> {
+        val ignoreCase = options.ignoreIdentifierCase
+        val pairs = pairLeftovers(
+            matchByName(a, b, ignoreCase) { it.name },
+        ) { l, r -> l.unique == r.unique && listsEqual(l.columns, r.columns, ignoreCase) }
+        fun renamed(l: String, r: String) = !identifiersEqual(l, r, ignoreCase) &&
+            !(EngineSchemaText.isGeneratedName(options.engine, l) && EngineSchemaText.isGeneratedName(options.engine, r))
+        return pairs.mapNotNull { (l, r) ->
+            when {
+                r == null -> ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeIndex(l, options.engine))
+                l == null -> ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeIndex(r, options.engine))
+                else -> {
+                    val changes = mutableListOf<FieldChange>()
+                    if (renamed(l.name, r.name)) changes += FieldChange(DiffField.NAME, l.name, r.name)
+                    if (l.unique != r.unique) changes += FieldChange(DiffField.UNIQUE, uniqueness(l.unique), uniqueness(r.unique))
+                    if (!listsEqual(l.columns, r.columns, ignoreCase)) {
+                        changes += FieldChange(DiffField.COLUMNS, l.columns.joinToString(", "), r.columns.joinToString(", "))
+                    }
+                    changes.takeIf { it.isNotEmpty() }?.let { ItemDiff(l.name, DiffStatus.CHANGED, it) }
+                }
+            }
+        }
+    }
+
+    private fun uniqueness(unique: Boolean) = if (unique) "UNIQUE" else "INDEX"
+
+    private fun describeIndex(index: CachedIndex, engine: DatabaseEngine): String {
+        val kind = when {
+            index.name == "PRIMARY" -> "PRIMARY KEY"
+            // PostgreSQL names a primary key's index `<table>_pkey`; SQL Server's is `PK__…`.
+            engine == DatabaseEngine.POSTGRESQL && index.name.endsWith("_pkey") -> "PRIMARY KEY"
+            engine == DatabaseEngine.SQLSERVER && index.name.startsWith("PK_") -> "PRIMARY KEY"
+            index.unique -> "UNIQUE"
+            else -> "INDEX"
+        }
+        return "$kind (${index.columns.joinToString(", ")})"
+    }
+
+    // ------------------------------------------------------------------ foreign keys
+
+    /**
+     * A foreign key as one unit: the cache keeps a row per column, a reader thinks of one arrow.
+     *
+     * [referencedDatabase] is null when the key points into its own database. Dev and production
+     * almost never share a database name (`shop_dev` against `shop`), so a key that stays inside
+     * its schema has to be compared without that name, or every one of them would differ.
+     */
+    data class GroupedForeignKey(
+        val name: String,
+        val columns: List<String>,
+        val referencedDatabase: String?,
+        val referencedTable: String,
+        val referencedColumns: List<String>,
+        /** Null when the capture predates the rules: unknown, so not compared. */
+        val onDelete: String? = null,
+        val onUpdate: String? = null,
+    ) {
+        val references: String
+            get() = buildString {
+                referencedDatabase?.let { append(it).append('.') }
+                append(referencedTable).append('(').append(referencedColumns.joinToString(", ")).append(')')
+            }
+    }
+
+    fun groupForeignKeys(keys: List<CachedForeignKey>, ownDatabase: String, ignoreCase: Boolean = false): List<GroupedForeignKey> =
+        keys.groupBy { it.constraintName }.map { (name, rows) ->
+            // The cache returns a key's columns sorted by name, not in declaration order; pairs are
+            // kept together and sorted so two captures of the same key always read the same way.
+            val ordered = rows.sortedBy { it.column }
+            val first = ordered.first()
+            GroupedForeignKey(
+                name = name,
+                columns = ordered.map { it.column },
+                referencedDatabase = first.referencedDatabase.takeUnless {
+                    identifiersEqual(it, ownDatabase, ignoreCase)
+                },
+                referencedTable = first.referencedTable,
+                referencedColumns = ordered.map { it.referencedColumn },
+                onDelete = first.onDelete,
+                onUpdate = first.onUpdate,
+            )
+        }
+
+    fun diffForeignKeys(
+        a: List<GroupedForeignKey>,
+        b: List<GroupedForeignKey>,
+        options: SchemaDiffOptions = SchemaDiffOptions(),
+    ): List<ItemDiff> {
+        val ignoreCase = options.ignoreIdentifierCase
+        fun sameTarget(l: GroupedForeignKey, r: GroupedForeignKey) =
+            sameNullable(l.referencedDatabase, r.referencedDatabase, ignoreCase) &&
+                identifiersEqual(l.referencedTable, r.referencedTable, ignoreCase) &&
+                listsEqual(l.referencedColumns, r.referencedColumns, ignoreCase)
+        // Constraint names are often generated (`orders_ibfk_1`), so the same key can carry a
+        // different name on each side; a leftover pair with the same columns and target is one key.
+        val pairs = pairLeftovers(matchByName(a, b, ignoreCase) { it.name }) { l, r ->
+            listsEqual(l.columns, r.columns, ignoreCase) && sameTarget(l, r)
+        }
+        fun renamed(l: String, r: String) = !identifiersEqual(l, r, ignoreCase) &&
+            !(EngineSchemaText.isGeneratedName(options.engine, l) && EngineSchemaText.isGeneratedName(options.engine, r))
+        return pairs.mapNotNull { (l, r) ->
+            when {
+                r == null -> ItemDiff(l!!.name, DiffStatus.ONLY_A, summary = describeForeignKey(l))
+                l == null -> ItemDiff(r.name, DiffStatus.ONLY_B, summary = describeForeignKey(r))
+                else -> {
+                    val changes = mutableListOf<FieldChange>()
+                    if (renamed(l.name, r.name)) changes += FieldChange(DiffField.NAME, l.name, r.name)
+                    if (!listsEqual(l.columns, r.columns, ignoreCase)) {
+                        changes += FieldChange(DiffField.COLUMNS, l.columns.joinToString(", "), r.columns.joinToString(", "))
+                    }
+                    if (!sameTarget(l, r)) changes += FieldChange(DiffField.REFERENCES, l.references, r.references)
+                    if (!sameRule(l.onDelete, r.onDelete, options.engine)) {
+                        changes += FieldChange(DiffField.ON_DELETE, l.onDelete, r.onDelete)
+                    }
+                    if (!sameRule(l.onUpdate, r.onUpdate, options.engine)) {
+                        changes += FieldChange(DiffField.ON_UPDATE, l.onUpdate, r.onUpdate)
+                    }
+                    changes.takeIf { it.isNotEmpty() }?.let { ItemDiff(l.name, DiffStatus.CHANGED, it) }
+                }
+            }
+        }
+    }
+
+    private fun describeForeignKey(key: GroupedForeignKey): String = buildString {
+        append("(${key.columns.joinToString(", ")}) → ${key.references}")
+        SchemaExtras.foreignKeyRules(key.onDelete, key.onUpdate)?.let { append(" · ").append(it) }
+    }
+
+    /**
+     * Whether two ON DELETE / ON UPDATE rules agree. An unknown rule (null) agrees with anything.
+     * On MySQL, `NO ACTION` and `RESTRICT` are the same thing — InnoDB checks at once either way,
+     * and 8.0 reports `RESTRICT` for the default where 5.7 and MariaDB say `NO ACTION` — so they
+     * are not a difference there. Elsewhere they are (PostgreSQL can defer the one).
+     */
+    fun sameRule(a: String?, b: String?, engine: DatabaseEngine): Boolean {
+        if (a == null || b == null) return true
+        fun canonical(rule: String): String {
+            val words = rule.trim().uppercase().replace('_', ' ').replace(WHITESPACE, " ")
+            return if (engine == DatabaseEngine.MYSQL && words == "RESTRICT") "NO ACTION" else words
+        }
+        return canonical(a) == canonical(b)
+    }
+
+    // ------------------------------------------------------------------ check constraints
+
+    /**
+     * CHECK constraints by name, with leftovers joined by their expression: servers invent names
+     * for the unnamed ones (`orders_chk_1`, `CK__orders__3213E83F`, `orders_total_check`), and the
+     * same condition under two generated names is one constraint.
+     */
+    fun diffChecks(
+        a: List<CachedCheck>,
+        b: List<CachedCheck>,
+        databaseA: String,
+        databaseB: String,
+        options: SchemaDiffOptions = SchemaDiffOptions(),
+    ): List<ItemDiff> {
+        val ignoreCase = options.ignoreIdentifierCase
+        fun expression(check: CachedCheck, database: String) =
+            ObjectText.normalizeExpression(check.expression, database, options.engine)
+        // Normalised once per constraint; the pairing helpers only see the items.
+        val left = a.map { it to expression(it, databaseA) }
+        val right = b.map { it to expression(it, databaseB) }
+        val pairs = pairLeftovers(matchByName(left, right, ignoreCase) { it.first.name }) { l, r -> l.second == r.second }
+        fun renamed(l: String, r: String) = !identifiersEqual(l, r, ignoreCase) &&
+            !(isGeneratedCheckName(options.engine, l) && isGeneratedCheckName(options.engine, r))
+        return pairs.mapNotNull { (l, r) ->
+            when {
+                r == null -> ItemDiff(l!!.first.name, DiffStatus.ONLY_A, summary = describeCheck(l.first))
+                l == null -> ItemDiff(r.first.name, DiffStatus.ONLY_B, summary = describeCheck(r.first))
+                else -> {
+                    val changes = mutableListOf<FieldChange>()
+                    if (renamed(l.first.name, r.first.name)) changes += FieldChange(DiffField.NAME, l.first.name, r.first.name)
+                    if (l.second != r.second) {
+                        changes += FieldChange(DiffField.EXPRESSION, l.first.expression?.trim(), r.first.expression?.trim())
+                    }
+                    if (l.first.enforced != r.first.enforced) {
+                        changes += FieldChange(DiffField.ENFORCED, enforcement(l.first.enforced), enforcement(r.first.enforced))
+                    }
+                    changes.takeIf { it.isNotEmpty() }?.let { ItemDiff(l.first.name, DiffStatus.CHANGED, it) }
+                }
+            }
+        }
+    }
+
+    private fun enforcement(enforced: Boolean) = if (enforced) "ENFORCED" else "NOT ENFORCED"
+
+    private fun describeCheck(check: CachedCheck): String =
+        (check.expression?.trim().orEmpty()) + if (check.enforced) "" else " (NOT ENFORCED)"
+
+    /** `orders_chk_1` (MySQL/MariaDB), `CK__t__<hex>` (SQL Server), `check_1` (the SQLite reader). */
+    private fun isGeneratedCheckName(engine: DatabaseEngine, name: String): Boolean =
+        EngineSchemaText.isGeneratedName(engine, name) ||
+            (engine == DatabaseEngine.MYSQL && GENERATED_MYSQL_CHECK.matches(name)) ||
+            (engine == DatabaseEngine.SQLITE && GENERATED_SQLITE_CHECK.matches(name))
+
+    // ------------------------------------------------------------------ triggers
+
+    /**
+     * Triggers by table and name; a leftover pair with the same table, timing, event and body is
+     * one trigger under two names (a generated or renamed one). Bodies compare normalised, so a
+     * reformatted or re-quoted body is not a change, and a trigger on a table that exists on
+     * one side only is reported as one-sided like any other.
+     */
+    fun diffTriggers(a: SchemaDiffSide, b: SchemaDiffSide, options: SchemaDiffOptions): List<ItemDiff> {
+        val ignoreCase = options.ignoreIdentifierCase
+        class Entry(val trigger: CachedTrigger, val body: String) {
+            val label: String get() = "${trigger.table}.${trigger.name}"
+        }
+        fun entries(side: SchemaDiffSide) = side.triggers.orEmpty().map {
+            Entry(it, ObjectText.normalize(it.body, side.database, options.engine))
+        }
+        fun sameShape(l: Entry, r: Entry) =
+            identifiersEqual(l.trigger.table, r.trigger.table, ignoreCase) &&
+                shapeOf(l.trigger) == shapeOf(r.trigger) && l.body == r.body
+        val pairs = pairLeftovers(
+            matchByName(entries(a), entries(b), ignoreCase) { it.label },
+        ) { l, r -> sameShape(l, r) }
+        return pairs.mapNotNull { (l, r) ->
+            when {
+                r == null -> ItemDiff(l!!.label, DiffStatus.ONLY_A, summary = describeTrigger(l.trigger))
+                l == null -> ItemDiff(r.label, DiffStatus.ONLY_B, summary = describeTrigger(r.trigger))
+                else -> {
+                    val changes = mutableListOf<FieldChange>()
+                    if (!identifiersEqual(l.trigger.table, r.trigger.table, ignoreCase)) {
+                        changes += FieldChange(DiffField.TABLE, l.trigger.table, r.trigger.table)
+                    }
+                    if (!identifiersEqual(l.trigger.name, r.trigger.name, ignoreCase)) {
+                        changes += FieldChange(DiffField.NAME, l.trigger.name, r.trigger.name)
+                    }
+                    if (l.trigger.timing.equals(r.trigger.timing, ignoreCase = true).not()) {
+                        changes += FieldChange(DiffField.TIMING, l.trigger.timing, r.trigger.timing)
+                    }
+                    if (eventSet(l.trigger.event) != eventSet(r.trigger.event)) {
+                        changes += FieldChange(DiffField.EVENT, l.trigger.event, r.trigger.event)
+                    }
+                    if (l.body != r.body) {
+                        val (excerptA, excerptB) = ObjectText.excerpts(l.body, r.body)
+                        changes += FieldChange(DiffField.DEFINITION, excerptA, excerptB)
+                    }
+                    changes.takeIf { it.isNotEmpty() }?.let { ItemDiff(l.label, DiffStatus.CHANGED, it) }
+                }
+            }
+        }
+    }
+
+    private fun shapeOf(trigger: CachedTrigger) = trigger.timing.uppercase() to eventSet(trigger.event)
+
+    /** `INSERT OR UPDATE`, `UPDATE, INSERT` and `INSERT,UPDATE` are one set of events. */
+    private fun eventSet(event: String): Set<String> =
+        event.uppercase().split(Regex("[,\\s]+|\\bOR\\b")).filter { it.isNotBlank() && it != "OR" }.toSet()
+
+    private fun describeTrigger(trigger: CachedTrigger): String =
+        "${trigger.timing} ${trigger.event}".trim()
+
+    // ------------------------------------------------------------------ views
+
+    // A view's text is reduced by [ObjectText.normalize]; `stripDefiner` below is its first step.
+
+    /** `DEFINER=`user`@`host`` (or `=CURRENT_USER`) out of the header, i.e. before the word VIEW. */
+    fun stripDefiner(ddl: String): String {
+        val view = VIEW_KEYWORD.find(ddl) ?: return ddl
+        val header = ddl.substring(0, view.range.first)
+        val stripped = DEFINER.replace(header, "")
+        return stripped + ddl.substring(view.range.first)
+    }
+
+    // ------------------------------------------------------------------ matching
+
+    /**
+     * Pairs two lists by name, keeping A's order and then B's leftovers.
+     *
+     * Exact matches are made first, so `Orders` still pairs with `Orders` when `orders` is also
+     * there; only then, if asked, does a case-insensitive name find a partner — and only when the
+     * partner is unambiguous, because guessing between `Orders` and `ORDERS` would be inventing a
+     * pairing the schema does not have.
+     */
+    fun <T> matchByName(a: List<T>, b: List<T>, ignoreCase: Boolean, name: (T) -> String): List<Pair<T?, T?>> {
+        val partner = arrayOfNulls<Int>(a.size)
+        val used = BooleanArray(b.size)
+        val exact = HashMap<String, MutableList<Int>>()
+        b.forEachIndexed { index, item -> exact.getOrPut(name(item)) { mutableListOf() } += index }
+        a.forEachIndexed { index, item ->
+            val candidate = exact[name(item)]?.firstOrNull { !used[it] }
+            if (candidate != null) {
+                partner[index] = candidate
+                used[candidate] = true
+            }
+        }
+        if (ignoreCase) {
+            a.forEachIndexed { index, item ->
+                if (partner[index] != null) return@forEachIndexed
+                val candidates = b.indices.filter { !used[it] && name(b[it]).equals(name(item), ignoreCase = true) }
+                if (candidates.size == 1) {
+                    partner[index] = candidates.single()
+                    used[candidates.single()] = true
+                }
+            }
+        }
+        return buildList {
+            a.forEachIndexed { index, item -> add(item to partner[index]?.let { b[it] }) }
+            b.forEachIndexed { index, item -> if (!used[index]) add(null to item) }
+        }
+    }
+
+    /**
+     * Joins a one-sided item from A with a one-sided item from B when [same] says they are the same
+     * thing under different names. Each item joins at most once, in A's order.
+     */
+    private fun <T> pairLeftovers(pairs: List<Pair<T?, T?>>, same: (T, T) -> Boolean): List<Pair<T?, T?>> {
+        // Positions rather than values: two identical items on one side are still two items.
+        val onlyB = pairs.indices.filter { pairs[it].first == null }.toMutableList()
+        val joined = mutableSetOf<Int>()
+        val result = mutableListOf<Pair<T?, T?>>()
+        pairs.forEachIndexed { index, (l, r) ->
+            when {
+                l != null && r == null -> {
+                    val match = onlyB.firstOrNull { same(l, pairs[it].second!!) }
+                    if (match != null) {
+                        onlyB.remove(match)
+                        joined += match
+                        result += l to pairs[match].second
+                    } else {
+                        result += l to null
+                    }
+                }
+                l == null && index in joined -> Unit
+                else -> result += l to r
+            }
+        }
+        return result
+    }
+
+    fun identifiersEqual(a: String, b: String, ignoreCase: Boolean): Boolean = a.equals(b, ignoreCase)
+
+    private fun sameNullable(a: String?, b: String?, ignoreCase: Boolean): Boolean = when {
+        a == null || b == null -> a == b
+        else -> identifiersEqual(a, b, ignoreCase)
+    }
+
+    private fun listsEqual(a: List<String>, b: List<String>, ignoreCase: Boolean): Boolean =
+        a.size == b.size && a.indices.all { identifiersEqual(a[it], b[it], ignoreCase) }
+
+    private val CachedTable.isView: Boolean get() = kind == TableKind.VIEW.name
+
+    private val WHITESPACE = Regex("\\s+")
+    private val INTEGER_WIDTH = Regex("\\b(tinyint|smallint|mediumint|int|integer|bigint)\\s*\\(\\s*(\\d+)\\s*\\)")
+    private val TIMESTAMP_CALL = Regex(
+        // `now` only with its brackets: bare, it is as likely to be a text default as a function.
+        "\\b(?:(?:current_timestamp|localtimestamp|localtime)\\b(?:\\s*\\(\\s*(\\d*)\\s*\\))?|now\\s*\\(\\s*(\\d*)\\s*\\))",
+        RegexOption.IGNORE_CASE,
+    )
+    private val VIEW_KEYWORD = Regex("\\bVIEW\\b", RegexOption.IGNORE_CASE)
+    private val PRINCIPAL = "(?:`(?:[^`]|``)*`|'(?:[^'\\\\]|\\\\.|'')*'|\"(?:[^\"\\\\]|\\\\.)*\"|[^\\s@()]+)"
+    private val DEFINER = Regex(
+        "\\bDEFINER\\s*=\\s*(?:CURRENT_USER(?:\\s*\\(\\s*\\))?|$PRINCIPAL\\s*@\\s*$PRINCIPAL)\\s*",
+        RegexOption.IGNORE_CASE,
+    )
+    private val GENERATED_MYSQL_CHECK = Regex("^.+_chk_\\d+$")
+    private val GENERATED_SQLITE_CHECK = Regex("^check_\\d+$")
+}

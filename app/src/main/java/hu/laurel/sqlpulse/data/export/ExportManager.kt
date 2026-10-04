@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.io.File
 import javax.inject.Inject
@@ -34,17 +36,55 @@ class ExportManager @Inject constructor(
         format: ExportFormat,
         baseName: String,
         tableName: String? = null,
+        /** The engine the rows came from: INSERT exports quote names and values the way it reads them. */
+        syntax: SqlSyntax = MySqlDialect,
     ): Intent = withContext(io) {
-        val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
-        val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
-        file.writeText(ResultSerializer.serialize(table, format, tableName))
+        val file = newFile(baseName, format)
+        file.writeText(ResultSerializer.serialize(table, format, tableName, syntax))
+        shareIntent(file, format)
+    }
 
+    /** An empty file in the export cache, for a writer that streams into it. */
+    fun newFile(baseName: String, format: ExportFormat): File {
+        val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
+        return File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
+    }
+
+    /** The share sheet's intent for a file made by [newFile]. */
+    fun shareIntent(file: File, format: ExportFormat): Intent {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
-        Intent(Intent.ACTION_SEND).apply {
+        return Intent(Intent.ACTION_SEND).apply {
             type = format.mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    /**
+     * The text of a query for the share sheet.
+     *
+     * Short SQL goes as plain text, which every messaging app and note taker accepts. Past
+     * [MAX_INLINE_SQL] it goes as a `.sql` file instead: an intent carries its extras through the
+     * binder, and a script of several hundred kilobytes would throw rather than be shared.
+     */
+    suspend fun sqlIntent(sql: String): Intent {
+        if (sql.length <= MAX_INLINE_SQL) {
+            return Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, sql)
+            }
+        }
+        return withContext(io) {
+            val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
+            val file = File(directory, "query-${System.currentTimeMillis()}.sql")
+            file.writeText(sql)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
     }
 
@@ -59,5 +99,6 @@ class ExportManager @Inject constructor(
     private companion object {
         const val EXPORT_DIRECTORY = "exports"
         const val MAX_NAME_LENGTH = 40
+        const val MAX_INLINE_SQL = 50_000
     }
 }

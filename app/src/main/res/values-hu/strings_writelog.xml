@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="writelog_title">Írási napló</string>
+    <string name="writelog_open">Írási napló</string>
+    <string name="writelog_open_note">Minden írás, amit az app a szerverre küldött; csak ezen a telefonon van meg</string>
+    <string name="writelog_more">Továbbiak</string>
+    <string name="writelog_search">Keresés az utasításokban</string>
+    <string name="writelog_clear_search">Keresés törlése</string>
+    <string name="writelog_filter_all">Mind</string>
+    <string name="writelog_source_sql_editor">Szerkesztő</string>
+    <string name="writelog_source_row_edit">Sorszerkesztés</string>
+    <string name="writelog_source_result_edit">Találat szerk.</string>
+    <string name="writelog_source_csv_import">CSV import</string>
+    <string name="writelog_source_undo">Visszavonás</string>
+    <string name="writelog_outcome_ok">Rendben</string>
+    <string name="writelog_outcome_failed">Sikertelen</string>
+    <string name="writelog_rows">%1$d sor</string>
+    <string name="writelog_rows_one">1 sor</string>
+    <string name="writelog_rows_unknown">nincs darabszám</string>
+    <string name="writelog_in_transaction">Tranzakcióban</string>
+    <string name="writelog_in_transaction_note">Kézi tranzakcióban futott; hogy véglegesítették-e vagy visszagörgették, azt nem rögzítjük.</string>
+    <string name="writelog_duration_ms">%1$d ms</string>
+    <string name="writelog_database_none">nincs adatbázis</string>
+    <string name="writelog_expand">A teljes utasítás megjelenítése</string>
+    <string name="writelog_collapse">Összecsukás</string>
+    <string name="writelog_count">%1$d / %2$d bejegyzés</string>
+    <string name="writelog_empty_title">Még nem történt írás</string>
+    <string name="writelog_empty_body">Itt jelenik meg minden INSERT, UPDATE, DELETE, sorszerkesztés és CSV import, amit az app küldött, a kapcsolattal és az eredménnyel. A telefonról semmi nem kerül ki, amíg te nem exportálod.</string>
+    <string name="writelog_no_match_title">Nincs találat</string>
+    <string name="writelog_no_match_body">Lazítsd a szűrőket vagy a keresőszöveget, hogy többet láss a naplóból.</string>
+    <string name="writelog_no_match_action">Mindent mutass</string>
+    <string name="writelog_export_csv">Exportálás CSV-be</string>
+    <string name="writelog_export_json">Exportálás JSON-be</string>
+    <string name="writelog_export_failed">A naplót nem sikerült exportálni.</string>
+    <string name="writelog_clear">Napló törlése</string>
+    <string name="writelog_clear_title">Törlöd az írási naplót?</string>
+    <string name="writelog_clear_subtitle">%1$d bejegyzés</string>
+    <string name="writelog_clear_body">Minden bejegyzés törlődik erről a telefonról. A szervereken végzett írásokhoz ez nem nyúl, és a napló nem állítható vissza. A már megosztott exportok ott maradnak, ahová küldted őket.</string>
+    <string name="writelog_clear_confirm">Mindet törlöm</string>
+    <string name="writelog_keep_title">Megőrzés</string>
+    <string name="writelog_keep_days">%1$d nap</string>
+    <string name="writelog_keep_note">A régebbi bejegyzések a következő írás naplózásakor törlődnek. Így is legfeljebb 5000 bejegyzés marad meg. A mentés nem tartalmazza a naplót.</string>
+    <string name="writelog_values_note">Az utasítások a beírt értékekkel együtt kerülnek a naplóba, ezért a napló tartalmazhatja a kiírt adatokat.</string>
+</resources>

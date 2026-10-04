@@ -62,6 +62,23 @@ data class CachedForeignKey(
     val referencedDatabase: String,
     val referencedTable: String,
     val referencedColumn: String,
+    /** Null for a key captured before the rules were kept: unknown, not "no action". */
+    val onDelete: String? = null,
+    val onUpdate: String? = null,
+)
+
+data class CachedCheck(
+    val name: String,
+    val expression: String?,
+    val enforced: Boolean = true,
+)
+
+data class CachedTrigger(
+    val name: String,
+    val table: String,
+    val timing: String,
+    val event: String,
+    val body: String,
 )
 
 /** Everything the table page shows about one table, as it was captured. */
@@ -69,6 +86,8 @@ data class CachedStructure(
     val columns: List<CachedColumn>,
     val indexes: List<CachedIndex>,
     val foreignKeys: List<CachedForeignKey>,
+    /** Null when the structure was captured before CHECK constraints were kept (unknown, not none). */
+    val checks: List<CachedCheck>? = null,
 ) {
     val primaryKey: List<String> get() = columns.filter { it.isPrimaryKey }.map { it.name }
 }

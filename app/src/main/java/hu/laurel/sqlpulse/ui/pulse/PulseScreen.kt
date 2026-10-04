@@ -5,41 +5,54 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.alerts.AlertText
 import hu.laurel.sqlpulse.data.schema.Health
+import hu.laurel.sqlpulse.data.schema.MetricId
+import hu.laurel.sqlpulse.ui.alerts.AlertsController
+import hu.laurel.sqlpulse.ui.alerts.AlertsSheet
+import hu.laurel.sqlpulse.ui.alerts.AlertsViewModel
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.SegmentedChoice
 import hu.laurel.sqlpulse.ui.components.Sparkline
+import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
-import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * The live server screen the app is named after.
@@ -47,13 +60,26 @@ import hu.laurel.sqlpulse.ui.theme.Spacing
  * A tile per metric: the number now, the colour saying whether that is ordinary, and the last
  * minute behind it. Everything here reads; the screen cannot change anything on the server.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PulseScreen(
     onBack: () -> Unit,
     viewModel: PulseViewModel = hiltViewModel(),
+    alerts: AlertsViewModel = hiltViewModel(),
+) {
+    PulseScreenContent(onBack = onBack, viewModel = viewModel, alerts = alerts)
+}
+
+/** The screen itself, drawn from whatever [PulseController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PulseScreenContent(
+    onBack: () -> Unit,
+    viewModel: PulseController,
+    /** The alert rules of this connection; null hides the bell (screenshots of the tiles alone). */
+    alerts: AlertsController? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showAlerts by remember { mutableStateOf(false) }
     val semantic = LocalSemanticColors.current
 
     // Sampling runs only while this screen is on top: every reading is a round trip through the
@@ -66,7 +92,18 @@ fun PulseScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.pulse_title)) },
+                actions = {
+                    if (alerts != null) {
+                        IconButton(onClick = { showAlerts = true }) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = stringResource(R.string.alerts_open),
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -78,19 +115,25 @@ fun PulseScreen(
             )
         },
     ) { padding ->
+        if (showAlerts && alerts != null) {
+            AlertsSheet(controller = alerts, onDismiss = { showAlerts = false })
+        }
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.l, vertical = Spacing.s),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
             ) {
-                PulseInterval.entries.forEachIndexed { index, candidate ->
-                    SegmentedButton(
-                        selected = state.interval == candidate,
-                        onClick = { viewModel.setInterval(candidate) },
-                        shape = SegmentedButtonDefaults.itemShape(index, PulseInterval.entries.size),
-                        label = { Text(stringResource(candidate.labelRes())) },
-                    )
+                SegmentedChoice(
+                    options = PulseInterval.entries,
+                    selected = state.interval,
+                    label = { stringResource(it.labelRes()) },
+                    onSelect = viewModel::setInterval,
+                    modifier = Modifier.weight(1f),
+                )
+                // Says the numbers are moving, in words as well as with the pulsing dot.
+                if (state.live) {
+                    StatusDot(color = semantic.success, label = stringResource(R.string.pulse_live), pulsing = true)
                 }
             }
 
@@ -105,6 +148,11 @@ fun PulseScreen(
 
             when {
                 !state.connected -> Placeholder(R.string.pulse_no_session)
+                // Not an error to retry: the account cannot read these counters at all.
+                state.missingPrivilege != null -> Placeholder(
+                    R.string.pulse_no_privilege,
+                    state.missingPrivilege,
+                )
                 // The first reading has nothing to compare against: a counter on its own says
                 // how much has happened since the server started, not what is happening now.
                 !state.live -> Placeholder(R.string.pulse_waiting)
@@ -117,6 +165,14 @@ fun PulseScreen(
                 ) {
                     items(state.metrics, key = { it.id.name }) { metric ->
                         MetricTile(metric)
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            stringResource(R.string.pulse_footer),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = semantic.textSecondary,
+                            modifier = Modifier.padding(top = Spacing.xs),
+                        )
                     }
                 }
             }
@@ -135,17 +191,35 @@ private fun MetricTile(metric: Metric) {
 
     HairlineCard {
         Column(
-            modifier = Modifier.padding(Spacing.l),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            modifier = Modifier.padding(start = Spacing.m, end = Spacing.m, top = Spacing.m, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                stringResource(metric.id.labelRes()),
-                style = MaterialTheme.typography.labelMedium,
-                color = semantic.textSecondary,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(metric.id.labelRes()),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // The colour of a tile is never the only sign that it wants attention.
+                if (metric.health != Health.CALM) {
+                    StatusDot(
+                        color = colour,
+                        label = stringResource(
+                            if (metric.health == Health.ALARMED) R.string.pulse_health_alarmed else R.string.pulse_health_busy,
+                        ),
+                    )
+                }
+            }
             Text(
                 metric.display,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFeatureSettings = "tnum",
+                ),
                 // A calm number stays in the ordinary text colour; only what is worth noticing
                 // takes a colour, or every tile would be shouting.
                 color = if (metric.health == Health.CALM) {
@@ -154,25 +228,25 @@ private fun MetricTile(metric: Metric) {
                     colour
                 },
             )
-            Text(
-                stringResource(metric.id.unitRes()),
-                style = MonoStyles.cell,
-                color = semantic.textSecondary,
-            )
             Sparkline(
                 series = metric.series,
-                color = if (metric.health == Health.CALM) semantic.success else colour,
+                color = if (metric.health == Health.CALM) MaterialTheme.colorScheme.primary else colour,
                 modifier = Modifier.fillMaxWidth().height(SPARKLINE_HEIGHT),
+            )
+            Text(
+                stringResource(metric.id.unitRes()),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = semantic.textSecondary,
             )
         }
     }
 }
 
 @Composable
-private fun Placeholder(@StringRes textId: Int) {
+private fun Placeholder(@StringRes textId: Int, argument: String? = null) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            stringResource(textId),
+            if (argument == null) stringResource(textId) else stringResource(textId, argument),
             style = MaterialTheme.typography.bodyMedium,
             color = LocalSemanticColors.current.textSecondary,
             modifier = Modifier.padding(Spacing.xl),
@@ -188,25 +262,26 @@ private fun PulseInterval.labelRes(): Int = when (this) {
 }
 
 @StringRes
-private fun MetricId.labelRes(): Int = when (this) {
-    MetricId.QUERIES -> R.string.pulse_queries
-    MetricId.THREADS_RUNNING -> R.string.pulse_threads_running
-    MetricId.THREADS_CONNECTED -> R.string.pulse_threads_connected
-    MetricId.LOCK_WAITS -> R.string.pulse_lock_waits
-    MetricId.BUFFER_HIT -> R.string.pulse_buffer_hit
-    MetricId.SLOW_QUERIES -> R.string.pulse_slow_queries
-    MetricId.TRAFFIC_OUT -> R.string.pulse_traffic_out
-    MetricId.REPLICATION_LAG -> R.string.pulse_replication_lag
-}
+internal fun MetricId.labelRes(): Int = AlertText.metricLabel(this)
+
 
 /** What the number is counted in — the tile is unreadable without it. */
 @StringRes
 private fun MetricId.unitRes(): Int = when (this) {
-    MetricId.QUERIES, MetricId.SLOW_QUERIES -> R.string.pulse_unit_per_second
-    MetricId.THREADS_RUNNING, MetricId.THREADS_CONNECTED, MetricId.LOCK_WAITS ->
-        R.string.pulse_unit_now
+    MetricId.QUERIES, MetricId.SLOW_QUERIES, MetricId.PG_COMMITS, MetricId.PG_ROLLBACKS,
+    MetricId.PG_TUPLES_READ, MetricId.PG_TUPLES_WRITTEN, MetricId.MS_BATCH_REQUESTS,
+    MetricId.MS_TRANSACTIONS, MetricId.MS_LOCK_WAITS,
+    -> R.string.pulse_unit_per_second
 
-    MetricId.BUFFER_HIT -> R.string.pulse_unit_window
+    MetricId.THREADS_RUNNING, MetricId.THREADS_CONNECTED, MetricId.LOCK_WAITS,
+    MetricId.PG_CONNECTIONS, MetricId.PG_ACTIVE, MetricId.PG_IDLE_IN_XACT,
+    MetricId.MS_USER_CONNECTIONS, MetricId.MS_BLOCKED,
+    -> R.string.pulse_unit_now
+
+    MetricId.PG_DEADLOCKS -> R.string.pulse_unit_window
+    MetricId.MS_PAGE_LIFE -> R.string.pulse_unit_seconds_now
+    MetricId.MS_CACHE_HIT -> R.string.pulse_unit_now
+    MetricId.PG_CACHE_HIT, MetricId.BUFFER_HIT -> R.string.pulse_unit_window
     MetricId.TRAFFIC_OUT -> R.string.pulse_unit_out
     MetricId.REPLICATION_LAG -> R.string.pulse_unit_behind
 }

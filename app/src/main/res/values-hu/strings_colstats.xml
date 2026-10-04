@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="colstats_title">Oszlop összesítése</string>
+    <string name="colstats_based_on">A betöltött %1$d sor alapján</string>
+    <string name="colstats_count">Darab</string>
+    <string name="colstats_nonnull">Nem NULL</string>
+    <string name="colstats_distinct">Különböző</string>
+    <string name="colstats_sum">Összeg</string>
+    <string name="colstats_average">Átlag</string>
+    <string name="colstats_minimum">Legkisebb</string>
+    <string name="colstats_maximum">Legnagyobb</string>
+</resources>

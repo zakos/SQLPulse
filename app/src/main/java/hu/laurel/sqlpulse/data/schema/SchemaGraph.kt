@@ -58,21 +58,18 @@ data class SchemaGraph(
 object SchemaLayout {
 
     /** Tables nothing references are laid out below the graph, in a squarish block. */
-    const val MIN_ISOLATED_COLUMNS = 3
-    const val MAX_ISOLATED_COLUMNS = 8
+    const val ISOLATED_COLUMNS = 2
 
     /**
-     * How wide the block of unconnected tables should be.
+     * How wide the block of unconnected tables is: always two.
      *
-     * Roughly square, so a schema of a hundred unlinked tables is a block that fits the screen
-     * rather than a column twenty-five rows tall that has to be zoomed out until the names are
-     * unreadable — which is exactly what a real, older schema looks like.
+     * It used to be roughly square, which for a hundred unlinked tables meant ten tiny boxes
+     * across — fitted to a phone, names nobody could read. Table names are long (`mantis_bug_
+     * relationship_table`), so the boxes have to be wide, and two of them are what a phone shows
+     * at a readable size. The block grows downwards, where panning is natural.
      */
-    fun isolatedColumns(count: Int): Int {
-        if (count <= 0) return MIN_ISOLATED_COLUMNS
-        val square = Math.ceil(Math.sqrt(count.toDouble())).toInt()
-        return square.coerceIn(MIN_ISOLATED_COLUMNS, MAX_ISOLATED_COLUMNS)
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun isolatedColumns(count: Int): Int = ISOLATED_COLUMNS
 
     /**
      * @param tables every table in the database, in any order.
@@ -94,11 +91,18 @@ object SchemaLayout {
         val isolated = tables.filterNot { it in linked }.sorted()
 
         val nodes = mutableListOf<GraphNode>()
+        // A rank with many tables is wrapped into rows of at most ISOLATED_COLUMNS: one long row
+        // fitted to a phone shrinks every name to nothing. Parents stay above children, because
+        // the wrapped rows of a rank all sit between the rank above and the rank below.
+        var row = 0
         connected.groupBy { levels[it] ?: 0 }
             .toSortedMap()
-            .forEach { (level, inLevel) ->
-                inLevel.sorted().forEachIndexed { order, table ->
-                    nodes += GraphNode(table, level, order, rows[table], connected = true)
+            .forEach { (_, inLevel) ->
+                inLevel.sorted().chunked(ISOLATED_COLUMNS).forEach { chunk ->
+                    chunk.forEachIndexed { order, table ->
+                        nodes += GraphNode(table, row, order, rows[table], connected = true)
+                    }
+                    row++
                 }
             }
 

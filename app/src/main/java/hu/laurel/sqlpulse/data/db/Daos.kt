@@ -127,6 +127,28 @@ interface QueryHistoryDao {
 }
 
 @Dao
+interface WriteLogDao {
+    @Query("SELECT * FROM write_log ORDER BY time DESC, id DESC")
+    fun observeAll(): Flow<List<WriteLogEntity>>
+
+    @Insert
+    suspend fun insert(entry: WriteLogEntity): Long
+
+    @Query("DELETE FROM write_log WHERE time < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
+
+    /** Keeps the newest [keep] entries; the id tiebreak makes entries in the same millisecond stable. */
+    @Query(
+        "DELETE FROM write_log WHERE id NOT IN " +
+            "(SELECT id FROM write_log ORDER BY time DESC, id DESC LIMIT :keep)",
+    )
+    suspend fun trimToNewest(keep: Int)
+
+    @Query("DELETE FROM write_log")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface SavedQueryDao {
     @Query("SELECT * FROM saved_query WHERE connectionId = :connectionId ORDER BY name")
     fun observeAll(connectionId: Long): Flow<List<SavedQueryEntity>>
@@ -197,7 +219,8 @@ interface SchemaCacheDao {
     suspend fun deleteTables(connectionId: Long, database: String, names: List<String>)
 
     @Query(
-        "UPDATE cached_table SET structureCapturedAt = :capturedAt WHERE connectionId = :connectionId" +
+        "UPDATE cached_table SET structureCapturedAt = :capturedAt, checksCapturedAt = :capturedAt" +
+            " WHERE connectionId = :connectionId" +
             " AND `database` = :database AND name = :table",
     )
     suspend fun markStructureCaptured(
@@ -256,6 +279,31 @@ interface SchemaCacheDao {
     )
     suspend fun deleteForeignKeys(connectionId: Long, database: String, table: String)
 
+    // The whole database's structure in three reads, for the schema comparison: one query per
+    // table would be hundreds of reads of an encrypted file for a screen that needs all of them.
+
+    @Query(
+        "SELECT * FROM cached_column WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, position",
+    )
+    suspend fun columnsOfDatabase(connectionId: Long, database: String): List<CachedColumnEntity>
+
+    @Query(
+        "SELECT * FROM cached_index WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, position",
+    )
+    suspend fun indexesOfDatabase(connectionId: Long, database: String): List<CachedIndexEntity>
+
+    @Query(
+        "SELECT * FROM cached_foreign_key WHERE connectionId = :connectionId" +
+            " AND `database` = :database ORDER BY tableName, constraintName, `column`",
+    )
+    suspend fun foreignKeysOfDatabase(connectionId: Long, database: String): List<CachedForeignKeyEntity>
+
+    /** Every database of one connection that has at least its table list captured. */
+    @Query("SELECT DISTINCT `database` FROM cached_table WHERE connectionId = :connectionId ORDER BY `database`")
+    suspend fun databasesWithTables(connectionId: Long): List<String>
+
     /**
      * Everything cached for one connection, dropped.
      *
@@ -277,6 +325,74 @@ interface SchemaCacheDao {
 
     @Query("DELETE FROM cached_foreign_key WHERE connectionId = :connectionId")
     suspend fun deleteAllForeignKeys(connectionId: Long)
+
+    @Query("DELETE FROM cached_check WHERE connectionId = :connectionId")
+    suspend fun deleteAllChecks(connectionId: Long)
+
+    @Query("DELETE FROM cached_view WHERE connectionId = :connectionId")
+    suspend fun deleteAllViews(connectionId: Long)
+
+    @Query("DELETE FROM cached_trigger WHERE connectionId = :connectionId")
+    suspend fun deleteAllTriggers(connectionId: Long)
+
+    @Query("DELETE FROM cached_object_capture WHERE connectionId = :connectionId")
+    suspend fun deleteAllObjectCaptures(connectionId: Long)
+
+    // CHECK constraints: per table with the structure, and per database for the comparison.
+
+    @Query(
+        "SELECT * FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table ORDER BY name",
+    )
+    suspend fun checks(connectionId: Long, database: String, table: String): List<CachedCheckEntity>
+
+    @Query(
+        "SELECT * FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, name",
+    )
+    suspend fun checksOfDatabase(connectionId: Long, database: String): List<CachedCheckEntity>
+
+    @Upsert
+    suspend fun upsertChecks(checks: List<CachedCheckEntity>)
+
+    @Query(
+        "DELETE FROM cached_check WHERE connectionId = :connectionId AND `database` = :database" +
+            " AND tableName = :table",
+    )
+    suspend fun deleteChecks(connectionId: Long, database: String, table: String)
+
+    // Views and triggers are replaced as a set per database: they are read with one statement
+    // each, and an object the server no longer has must not linger.
+
+    @Query("SELECT * FROM cached_view WHERE connectionId = :connectionId AND `database` = :database ORDER BY name")
+    suspend fun views(connectionId: Long, database: String): List<CachedViewEntity>
+
+    @Upsert
+    suspend fun upsertViews(views: List<CachedViewEntity>)
+
+    @Query("DELETE FROM cached_view WHERE connectionId = :connectionId AND `database` = :database")
+    suspend fun deleteViews(connectionId: Long, database: String)
+
+    @Query(
+        "SELECT * FROM cached_trigger WHERE connectionId = :connectionId AND `database` = :database" +
+            " ORDER BY tableName, name",
+    )
+    suspend fun triggers(connectionId: Long, database: String): List<CachedTriggerEntity>
+
+    @Upsert
+    suspend fun upsertTriggers(triggers: List<CachedTriggerEntity>)
+
+    @Query("DELETE FROM cached_trigger WHERE connectionId = :connectionId AND `database` = :database")
+    suspend fun deleteTriggers(connectionId: Long, database: String)
+
+    @Query(
+        "SELECT capturedAt FROM cached_object_capture WHERE connectionId = :connectionId" +
+            " AND `database` = :database",
+    )
+    suspend fun objectsCapturedAt(connectionId: Long, database: String): Long?
+
+    @Upsert
+    suspend fun upsertObjectCapture(capture: CachedObjectCaptureEntity)
 }
 
 /**
@@ -292,4 +408,11 @@ object SchemaCacheDaoModule {
 
     @Provides
     fun provideSchemaCacheDao(db: SqlPulseDatabase): SchemaCacheDao = db.schemaCache()
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object WriteLogDaoModule {
+    @Provides
+    fun provideWriteLogDao(db: SqlPulseDatabase): WriteLogDao = db.writeLog()
 }

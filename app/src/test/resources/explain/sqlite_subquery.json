@@ -1,0 +1,1 @@
+{"sql": "SELECT name FROM customer WHERE id IN (SELECT customer_id FROM orders WHERE total > 100) ORDER BY name", "rows": [[3, 0, 0, "SEARCH customer USING INTEGER PRIMARY KEY (rowid=?)"], [7, 0, 0, "LIST SUBQUERY 1"], [9, 7, 0, "SCAN orders"], [28, 0, 0, "USE TEMP B-TREE FOR ORDER BY"]]}

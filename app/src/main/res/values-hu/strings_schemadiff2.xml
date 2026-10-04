@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="schemadiff2_limits">Összevetve: táblák, oszlopok (típus, NULL, alapérték, extra, sorrend), indexek, idegen kulcsok ON DELETE / ON UPDATE szabályokkal, CHECK feltételek, nézetek definíciója és triggerek. A rutinok, az események és az oszlopok illesztése nincs összevetve. A program csak felsorolja az eltéréseket, egyik kiszolgálón sem változtat semmit.</string>
+    <string name="schemadiff2_section_checks">CHECK feltételek</string>
+    <string name="schemadiff2_section_triggers">Triggerek</string>
+    <string name="schemadiff2_triggers_gap_a">Az A oldal triggereit még nem olvasta be az app, ezért nincsenek összevetve. Használja azon az oldalon a „Minden beolvasása a szerverről” gombot.</string>
+    <string name="schemadiff2_triggers_gap_b">A B oldal triggereit még nem olvasta be az app, ezért nincsenek összevetve. Használja azon az oldalon a „Minden beolvasása a szerverről” gombot.</string>
+    <string name="schemadiff2_triggers_gap_both">Egyik oldal triggereit sem olvasta még be az app, ezért nincsenek összevetve. Használja a „Minden beolvasása a szerverről” gombot egy élő kapcsolatú oldalon.</string>
+    <string name="schemadiff2_field_on_delete">törléskor</string>
+    <string name="schemadiff2_field_on_update">módosításkor</string>
+    <string name="schemadiff2_field_expression">feltétel</string>
+    <string name="schemadiff2_field_enforced">érvényesítve</string>
+    <string name="schemadiff2_field_timing">időzítés</string>
+    <string name="schemadiff2_field_event">esemény</string>
+    <string name="schemadiff2_field_table">tábla</string>
+</resources>

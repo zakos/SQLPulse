@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="storage_title">Storage</string>
+    <string name="storage_open">Storage: table and index sizes</string>
+    <string name="storage_more">More</string>
+    <string name="storage_no_session_title">No connection</string>
+    <string name="storage_no_database_title">No database selected</string>
+    <string name="storage_no_database_body">Pick a database in the schema browser first; sizes are read for one database at a time.</string>
+    <string name="storage_empty_title">No tables</string>
+    <string name="storage_empty_body">This database has no base tables; views take no space of their own and are left out.</string>
+    <string name="storage_total_data">Data</string>
+    <string name="storage_total_index">Indexes</string>
+    <string name="storage_total_free">Free</string>
+    <plurals name="storage_table_count">
+        <item quantity="one">%1$d table</item>
+        <item quantity="other">%1$d tables</item>
+    </plurals>
+    <string name="storage_estimate_note">Sizes and row counts are the server\'s own estimates, not exact figures.</string>
+    <string name="storage_sort_total">Total size</string>
+    <string name="storage_sort_rows">Rows</string>
+    <string name="storage_sort_free">Free space</string>
+    <string name="storage_sort_name">Name</string>
+    <string name="storage_legend_data">Data</string>
+    <string name="storage_legend_index">Indexes</string>
+    <string name="storage_rows_estimate">~%1$s rows est.</string>
+    <string name="storage_free_space">%1$s free</string>
+    <string name="storage_updated">updated %1$s</string>
+    <string name="storage_ai_warning">AUTO_INCREMENT %1$s used</string>
+    <string name="storage_index_sizes_unavailable">Per-index sizes are not readable on this server (mysql.innodb_index_stats); tables show data and index totals only.</string>
+    <string name="storage_unused_title">Unused indexes</string>
+    <string name="storage_unused_note">Unused means not read since the server last started (up %1$s). An index needed only by a monthly report can show up here.</string>
+    <string name="storage_unused_note_unknown">Unused means not read since the server last started. An index needed only by a monthly report can show up here.</string>
+    <string name="storage_unused_note_userstat">Unused means not read since MariaDB\'s user statistics were last enabled or flushed. An index needed only by a monthly report can show up here.</string>
+    <string name="storage_unused_none">No unused indexes found.</string>
+    <string name="storage_redundant_title">Redundant indexes</string>
+    <string name="storage_redundant_none">No redundant indexes found.</string>
+    <string name="storage_redundant_covered">covered by %1$s</string>
+    <string name="storage_ddl_note">SQLPulse does not change the schema. Dropping an index is done elsewhere.</string>
+    <string name="storage_unavailable_not_on_server">Not available on this server.</string>
+    <string name="storage_unavailable_userstat">Not available on this server: MariaDB records index use only when the userstat variable is on.</string>
+    <string name="storage_unavailable_perfschema">Not available on this server: the performance schema is not collecting table I/O, so every index would look unused.</string>
+    <string name="storage_unavailable_failed">Could not be read: %1$s</string>
+    <string name="storage_uptime_days">%1$d d %2$d h</string>
+    <string name="storage_uptime_hours">%1$d h %2$d min</string>
+    <string name="storage_uptime_minutes">%1$d min</string>
+</resources>

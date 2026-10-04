@@ -3,14 +3,23 @@ package hu.laurel.sqlpulse.ui.schema
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.OriginalState
+import hu.laurel.sqlpulse.data.connection.SqliteWriteBack
+import hu.laurel.sqlpulse.data.connection.WriteBackResult
+import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.ui.connections.WriteBackPrompt
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.data.csv.CsvImporter
+import hu.laurel.sqlpulse.data.csv.CsvMapping
 import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.schema.LinkTrail
 import hu.laurel.sqlpulse.data.schema.LookupOutcome
@@ -29,11 +38,14 @@ import hu.laurel.sqlpulse.data.sql.ResultTable
 import hu.laurel.sqlpulse.data.sql.RowEdit
 import hu.laurel.sqlpulse.data.sql.RowChangedException
 import hu.laurel.sqlpulse.data.sql.RowEditor
+import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.SqlFailures
+import hu.laurel.sqlpulse.data.sql.WritesLockedException
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.TableFilterHandoff
 import hu.laurel.sqlpulse.ui.grid.asText
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import java.sql.SQLException
@@ -95,6 +107,10 @@ data class TableDetailUiState(
     val parentLinks: List<RowLink> = emptyList(),
     /** Set while the walk along the relationships is open; null when it is not. */
     val walk: WalkState? = null,
+    /** A SQLite file connection: leaving the table may first ask to write changes back. */
+    val isFileConnection: Boolean = false,
+    /** The write-back question or its outcome, while one is on screen. */
+    val writeBackPrompt: WriteBackPrompt? = null,
 )
 
 /** One table pointing at the row being looked at, and how many of its rows match. */
@@ -133,27 +149,96 @@ class TableDetailViewModel @Inject constructor(
     private val importer: CsvImporter,
     private val exports: ExportManager,
     private val sessions: SqlSessionManager,
-) : ViewModel() {
+    tableFilters: TableFilterHandoff,
+    private val writeBack: SqliteWriteBack,
+) : ViewModel(), TableDetailController {
 
     private val database: String = Uri.decode(savedStateHandle["database"] ?: "")
     private val table: String = Uri.decode(savedStateHandle["table"] ?: "")
 
     private val _uiState = MutableStateFlow(TableDetailUiState(database = database, table = table))
-    val uiState: StateFlow<TableDetailUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<TableDetailUiState> = _uiState.asStateFlow()
 
     private var undoJob: Job? = null
+
+    /** What to do once the write-back question is settled: leave the table. */
+    private var pendingLeave: (() -> Unit)? = null
+
+    override fun requestLeave(onLeave: () -> Unit) {
+        val connection = sessions.currentConnection()
+        // A question already on screen owns the back press until it is answered.
+        if (_uiState.value.writeBackPrompt != null) return
+        if (!writeBack.isSqliteFile(connection)) {
+            onLeave()
+            return
+        }
+        viewModelScope.launch {
+            if (!writeBack.status(connection).offer) {
+                onLeave()
+                return@launch
+            }
+            pendingLeave = onLeave
+            _uiState.value = _uiState.value.copy(
+                writeBackPrompt = WriteBackPrompt.Ask(fileLabel(connection), environmentIsProduction(connection)),
+            )
+        }
+    }
+
+    override fun writeBackConfirm() = runWriteBack(confirmedOverwrite = false)
+
+    override fun writeBackOverwrite() = runWriteBack(confirmedOverwrite = true)
+
+    override fun writeBackKeepLocal() {
+        _uiState.value = _uiState.value.copy(writeBackPrompt = null)
+        pendingLeave?.invoke()
+        pendingLeave = null
+    }
+
+    override fun writeBackDismiss() {
+        pendingLeave = null
+        _uiState.value = _uiState.value.copy(writeBackPrompt = null)
+    }
+
+    private fun runWriteBack(confirmedOverwrite: Boolean) {
+        val connection = sessions.currentConnection() ?: return
+        val file = fileLabel(connection)
+        _uiState.value = _uiState.value.copy(writeBackPrompt = WriteBackPrompt.Working(file))
+        viewModelScope.launch {
+            val prompt = when (val result = writeBack.write(connection, confirmedOverwrite)) {
+                is WriteBackResult.Done -> null
+                is WriteBackResult.NeedsConfirmation ->
+                    WriteBackPrompt.Changed(file, environmentIsProduction(connection), result.state == OriginalState.UNKNOWN)
+                is WriteBackResult.Refused -> WriteBackPrompt.Refused(result.reason)
+                is WriteBackResult.Failed -> WriteBackPrompt.Failed(file, result.message)
+            }
+            _uiState.value = _uiState.value.copy(writeBackPrompt = prompt)
+            if (prompt == null) {
+                pendingLeave?.invoke()
+                pendingLeave = null
+            }
+        }
+    }
+
+    private fun fileLabel(connection: ConnectionEntity?) = connection?.fileName ?: connection?.name.orEmpty()
+
+    private fun environmentIsProduction(connection: ConnectionEntity?) =
+        ConnectionEnvironment.fromName(connection?.environment).isProduction
 
     init {
         val connection = sessions.currentConnection()
         _uiState.value = _uiState.value.copy(
+            // A search hit that was tapped: the table opens on that row, with the filter visible
+            // in the bar so it can be cleared.
+            filter = tableFilters.take(database, table),
             isProduction = ConnectionColor.fromName(connection?.color) == ConnectionColor.Production,
+            isFileConnection = writeBack.isSqliteFile(connection),
         )
         select(TableTab.DATA)
         // The structure is needed for the primary key even before the Structure tab is opened.
         viewModelScope.launch { loadStructure() }
     }
 
-    fun select(tab: TableTab) {
+    override fun select(tab: TableTab) {
         _uiState.value = _uiState.value.copy(tab = tab)
         val state = _uiState.value
         val loaded = when (tab) {
@@ -170,7 +255,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Cycles the column through ascending, descending and the table's own order. */
-    fun sortBy(column: String) {
+    override fun sortBy(column: String) {
         _uiState.value = _uiState.value.copy(
             sort = TableQuery.nextSort(_uiState.value.sort, column),
             rows = null,
@@ -179,14 +264,14 @@ class TableDetailViewModel @Inject constructor(
         load(TableTab.DATA)
     }
 
-    fun setFilter(column: String?, contains: String) {
+    override fun setFilter(column: String?, contains: String) {
         val filter = column?.takeIf { contains.isNotBlank() }?.let { ColumnFilter(it, contains) }
         _uiState.value = _uiState.value.copy(filter = filter, rows = null, totalRows = null)
         load(TableTab.DATA)
     }
 
     /** Called by the grid as it nears the end of what is loaded (§7.5). */
-    fun loadMore() {
+    override fun loadMore() {
         val state = _uiState.value
         val current = state.rows ?: return
         if (state.loadingMore) return
@@ -217,7 +302,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Builds the UPDATE and holds it for confirmation; nothing runs until the user says so. */
-    fun prepareCellEdit(rowIndex: Int, columnLabel: String, newValue: String?) {
+    override fun prepareCellEdit(rowIndex: Int, columnLabel: String, newValue: String?) {
         val state = _uiState.value
         val rows = state.rows ?: return
         val structure = state.structure ?: return
@@ -239,7 +324,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun prepareRowDelete(rowIndex: Int) {
+    override fun prepareRowDelete(rowIndex: Int) {
         val state = _uiState.value
         val rows = state.rows ?: return
         val structure = state.structure ?: return
@@ -256,7 +341,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun confirmEdit() {
+    override fun confirmEdit() {
         val edit = _uiState.value.pendingEdit ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(pendingEdit = null, loading = true)
@@ -279,7 +364,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Writes the value anyway, now that the user has seen what they are overwriting. */
-    fun overwriteConflict() {
+    override fun overwriteConflict() {
         val conflict = _uiState.value.conflict ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(conflict = null, loading = true)
@@ -323,7 +408,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Reads the chosen file and works out what importing it would do. Nothing is written yet. */
-    fun prepareImport(uri: Uri) {
+    override fun prepareImport(uri: Uri) {
         val structure = _uiState.value.structure ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importing = true, error = null)
@@ -338,7 +423,7 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    override fun confirmImport() {
         val plan = _uiState.value.importPlan ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(importPlan = null, importing = true)
@@ -352,7 +437,12 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun dismissImport() {
+    override fun setImportMapping(fileIndex: Int, tableColumn: String?) {
+        val plan = _uiState.value.importPlan ?: return
+        _uiState.value = _uiState.value.copy(importPlan = CsvMapping.remap(plan, fileIndex, tableColumn))
+    }
+
+    override fun dismissImport() {
         _uiState.value = _uiState.value.copy(importPlan = null)
     }
 
@@ -360,22 +450,22 @@ class TableDetailViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(blobPreview = null)
     }
 
-    fun dismissConflict() {
+    override fun dismissConflict() {
         _uiState.value = _uiState.value.copy(conflict = null)
     }
 
-    fun dismissEdit() {
+    override fun dismissEdit() {
         _uiState.value = _uiState.value.copy(pendingEdit = null)
     }
 
     /** §7.6: the inverse statement, run without a second confirmation. */
-    fun undo() {
+    override fun undo() {
         val undo = _uiState.value.undoable?.undo ?: return
         undoJob?.cancel()
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(undoable = null)
             try {
-                rowEditor.execute(undo)
+                rowEditor.execute(undo, WriteSource.UNDO)
                 reload()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = describe(e))
@@ -389,24 +479,24 @@ class TableDetailViewModel @Inject constructor(
      * Null for a column that references nothing, and null for a NULL value: a NULL foreign key
      * points at nothing at all, and offering to open it would promise a row that cannot exist.
      */
-    fun parentLinkFor(rowIndex: Int, columnLabel: String): RowLink? =
+    override fun parentLinkFor(rowIndex: Int, columnLabel: String): RowLink? =
         linkFor(_uiState.value.parentLinks, _uiState.value.rows, rowIndex, columnLabel)
 
     /** The same question about a row of the walk, which is a different table's row. */
-    fun walkParentLinkFor(rowIndex: Int, columnLabel: String): RowLink? {
+    override fun walkParentLinkFor(rowIndex: Int, columnLabel: String): RowLink? {
         val walk = _uiState.value.walk ?: return null
         return linkFor(walk.links, walk.rows, rowIndex, columnLabel)
     }
 
     /** Opens the row a cell of the table points at. */
-    fun openParent(rowIndex: Int, columnLabel: String) {
+    override fun openParent(rowIndex: Int, columnLabel: String) {
         val rows = _uiState.value.rows ?: return
         val link = parentLinkFor(rowIndex, columnLabel) ?: return
         walkToParent(baseTrail(), rows, rowIndex, link)
     }
 
     /** The same, from a row already reached by walking. */
-    fun openParentFromWalk(rowIndex: Int, columnLabel: String) {
+    override fun openParentFromWalk(rowIndex: Int, columnLabel: String) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val link = walkParentLinkFor(rowIndex, columnLabel) ?: return
@@ -414,7 +504,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Opens the walk on a row of the table and counts what points at it. */
-    fun showChildrenOf(rowIndex: Int) {
+    override fun showChildrenOf(rowIndex: Int) {
         val rows = _uiState.value.rows ?: return
         val state = _uiState.value
         val trail = baseTrail()
@@ -431,7 +521,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** The same for a row of the walk: what points at the row now on screen. */
-    fun selectWalkRow(rowIndex: Int) {
+    override fun selectWalkRow(rowIndex: Int) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val step = walk.step ?: return
@@ -442,7 +532,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** Shows the rows of one child table that point at the selected row. */
-    fun openChildren(link: RowLink) {
+    override fun openChildren(link: RowLink) {
         val walk = _uiState.value.walk ?: return
         val rows = walk.rows ?: return
         val rowIndex = walk.selectedRow ?: return
@@ -462,7 +552,7 @@ class TableDetailViewModel @Inject constructor(
     }
 
     /** One step back along the trail; stepping off the first linked step closes the walk. */
-    fun walkBack() {
+    override fun walkBack() {
         val walk = _uiState.value.walk ?: return
         val back = walk.trail.pop()
         val step = back.current
@@ -473,7 +563,7 @@ class TableDetailViewModel @Inject constructor(
         loadStep(back, step, RowLinks.CHILD_LIMIT, expectOne = false)
     }
 
-    fun closeWalk() {
+    override fun closeWalk() {
         _uiState.value = _uiState.value.copy(walk = null)
     }
 
@@ -569,12 +659,12 @@ class TableDetailViewModel @Inject constructor(
         }.toMap()
     }
 
-    fun export(format: ExportFormat) {
+    override fun export(format: ExportFormat) {
         val rows = _uiState.value.rows ?: return
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
-                    shareIntent = exports.shareIntent(rows, format, "$database-$table", table),
+                    shareIntent = exports.shareIntent(rows, format, "$database-$table", table, sessions.dialect()),
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = describe(e))
@@ -582,11 +672,11 @@ class TableDetailViewModel @Inject constructor(
         }
     }
 
-    fun shareIntentHandled() {
+    override fun shareIntentHandled() {
         _uiState.value = _uiState.value.copy(shareIntent = null)
     }
 
-    fun dismissError() {
+    override fun dismissError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
 
@@ -670,6 +760,8 @@ class TableDetailViewModel @Inject constructor(
 
     private fun describe(e: Exception): String = when (e) {
         is SQLException -> context.explain(SqlFailures.of(e))
+        is ReadOnlyConnectionException -> context.getString(R.string.error_read_only)
+        is WritesLockedException -> context.getString(R.string.error_writes_locked)
         else -> e.message ?: e.toString()
     }
 

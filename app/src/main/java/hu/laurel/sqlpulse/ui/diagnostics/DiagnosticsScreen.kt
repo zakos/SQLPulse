@@ -1,15 +1,23 @@
 package hu.laurel.sqlpulse.ui.diagnostics
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,17 +30,24 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
+import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * The diagnostics report: what to paste into a bug report, and nothing else.
@@ -44,6 +59,7 @@ import hu.laurel.sqlpulse.ui.theme.Spacing
  * What is on screen is exactly the string that goes to the clipboard: the text is rendered once,
  * in the data layer, so nobody can be shown a redacted report and copy an unredacted one.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsDialog(
     onDismiss: () -> Unit,
@@ -53,39 +69,65 @@ fun DiagnosticsDialog(
     val context = LocalContext.current
     val text = state.report?.asText()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.diag_title)) },
-        text = {
-            DiagnosticsBody(
-                text = text,
-                loading = state.loading,
-                connected = state.connected,
-                copied = state.copied,
-                modifier = Modifier.heightIn(max = 420.dp),
-            )
-        },
-        confirmButton = {
-            Button(
-                enabled = text != null,
-                onClick = {
-                    text?.let { context.copyToClipboard(it) }
-                    viewModel.markCopied()
-                },
-            ) { Text(stringResource(R.string.diag_copy)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.diag_close)) }
-        },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        DiagnosticsCard(
+            text = text,
+            loading = state.loading,
+            connected = state.connected,
+            copied = state.copied,
+            onCopy = {
+                text?.let { context.copyToClipboard(it) }
+                viewModel.markCopied()
+            },
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The report dialog's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun DiagnosticsCard(
+    text: String?,
+    loading: Boolean,
+    connected: Boolean,
+    copied: Boolean,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = stringResource(R.string.diag_title))
+        DiagnosticsBody(
+            text = text,
+            loading = loading,
+            connected = connected,
+            copied = copied,
+            modifier = Modifier.heightIn(max = 420.dp),
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.diag_close),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.diag_copy),
+            onAction = onCopy,
+            enabled = text != null,
+        )
+    }
 }
 
 /** The same report with a top bar, for wherever a full destination suits better than a dialog. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsScreen(
     onBack: () -> Unit,
     viewModel: DiagnosticsViewModel = hiltViewModel(),
+) {
+    DiagnosticsScreenContent(onBack = onBack, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [DiagnosticsController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DiagnosticsScreenContent(
+    onBack: () -> Unit,
+    viewModel: DiagnosticsController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -94,6 +136,7 @@ fun DiagnosticsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.diag_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -126,6 +169,7 @@ fun DiagnosticsScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DiagnosticsBody(
     text: String?,
@@ -152,11 +196,52 @@ private fun DiagnosticsBody(
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.padding(top = Spacing.l))
         }
+        Text(
+            text = stringResource(R.string.diag_excluded),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+            modifier = Modifier.padding(top = Spacing.l, bottom = Spacing.s),
+        )
+        // What the report leaves out, as ticks: the promise is the point of this screen, so it is
+        // shown before the report rather than buried in the intro paragraph.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(
+                R.string.diag_excluded_hosts,
+                R.string.diag_excluded_users,
+                R.string.diag_excluded_databases,
+                R.string.diag_excluded_queries,
+                R.string.diag_excluded_secrets,
+            ).forEach { label ->
+                Row(
+                    modifier = Modifier
+                        .background(semantic.success.copy(alpha = 0.13f), Shapes.chip)
+                        .padding(horizontal = Spacing.s, vertical = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = semantic.success,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Text(stringResource(label), style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp))
+                }
+            }
+        }
         text?.let {
             Text(
                 text = it,
-                style = MonoStyles.cell,
-                modifier = Modifier.padding(top = Spacing.m),
+                style = MonoStyles.cell.copy(fontSize = 12.sp, lineHeight = 20.sp),
+                modifier = Modifier
+                    .padding(top = Spacing.l)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface, Shapes.card)
+                    .border(1.dp, semantic.hairline, Shapes.card)
+                    .padding(14.dp),
             )
         }
         if (copied) {

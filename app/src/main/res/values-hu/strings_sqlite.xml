@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SQLite adatbázisfájlok (docs/tobb-motor-terv.md, 3.2. szakasz) -->
+    <string name="sqlite_file_details">%1$s · másolva: %2$s</string>
+    <string name="sqlite_file_missing">A fájl másolata már nincs meg ezen az eszközön. Válaszd ki újra a fájlt.</string>
+    <string name="sqlite_file_unsaved">A másolat elkészült. A kapcsolat mentésekor marad meg.</string>
+    <string name="sqlite_file_wal">Ez az adatbázis WAL módban van. Csak a fő fájl másolódik, ezért a még a -wal fájlban lévő változások nincsenek a másolatban. Zárd be az adatbázist abban az appban, amelyik írta, és válaszd ki újra.</string>
+    <string name="sqlite_file_copying">A fájl másolása…</string>
+    <string name="sqlite_file_refresh">Másolat frissítése</string>
+    <string name="sqlite_file_refresh_unavailable">Az eredeti csak addig olvasható újra, amíg az Android engedi. Ha ez szürke, válaszd ki újra a fájlt.</string>
+    <string name="sqlite_refresh_title">Lecseréled a másolatot?</string>
+    <string name="sqlite_refresh_body">A másolatot az eredeti mostani állapota váltja fel. Minden változás, amit ebben az appban a másolaton végeztél, elvész.</string>
+    <string name="sqlite_refresh_confirm">Csere</string>
+    <string name="sqlite_read_only_on">Csak olvasásra nyitva: a másolatot semmi nem módosíthatja.</string>
+    <string name="sqlite_read_only_off">Írható: a változások az app másolatába kerülnek. Az eredeti fájlba soha nem íródnak vissza.</string>
+    <string name="sqlite_error_not_database">Ez nem SQLite adatbázis. Lehet, hogy titkosított, vagy más fajta fájl.</string>
+    <string name="sqlite_error_empty">A fájl üres.</string>
+    <string name="sqlite_error_copy">A fájlt nem sikerült átmásolni: %1$s</string>
+    <string name="sqlite_card_missing">%1$s · a másolat hiányzik</string>
+    <string name="sqlite_card_size">%1$s · %2$s</string>
+</resources>

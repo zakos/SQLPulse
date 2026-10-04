@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="resultedit_editable">Szerkeszthető: %1$s</string>
+    <string name="resultedit_readonly">Csak olvasható: %1$s</string>
+    <string name="resultedit_applied">A módosítás megtörtént.</string>
+    <string name="resultedit_undo">Visszavonás</string>
+    <string name="resultedit_error_title">A sor nem változott</string>
+    <string name="resultedit_close">Bezár</string>
+
+    <string name="resultedit_reason_not_select">nem SELECT</string>
+    <string name="resultedit_reason_multiple_statements">több utasítás</string>
+    <string name="resultedit_reason_cte">WITH utasításrész</string>
+    <string name="resultedit_reason_union">UNION</string>
+    <string name="resultedit_reason_join">JOIN</string>
+    <string name="resultedit_reason_subquery_in_from">allekérdezés a FROM-ban</string>
+    <string name="resultedit_reason_distinct">DISTINCT</string>
+    <string name="resultedit_reason_group_by">GROUP BY</string>
+    <string name="resultedit_reason_having">HAVING</string>
+    <string name="resultedit_reason_aggregate">összesítő függvény</string>
+    <string name="resultedit_reason_window">ablakfüggvény</string>
+    <string name="resultedit_reason_expression">számított oszlop</string>
+    <string name="resultedit_reason_no_table">nincs tábla</string>
+    <string name="resultedit_reason_unsupported">az utasítás túl összetett ahhoz, hogy egy táblához rendelhető legyen</string>
+    <string name="resultedit_reason_no_database">nincs kiválasztott adatbázis</string>
+    <string name="resultedit_reason_unknown_table">a tábla nem található</string>
+    <string name="resultedit_reason_unknown_column">ismeretlen oszlop</string>
+    <string name="resultedit_reason_column_mismatch">az oszlopok nem egyeznek a táblával</string>
+    <string name="resultedit_reason_no_key">a táblának nincs kulcsa</string>
+    <string name="resultedit_reason_key_not_selected">a kulcs nincs a találatban</string>
+    <string name="resultedit_reason_writes_locked">az írás zárolva van ezen a kapcsolaton</string>
+</resources>

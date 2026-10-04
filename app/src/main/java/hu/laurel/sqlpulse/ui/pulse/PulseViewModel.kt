@@ -4,14 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import hu.laurel.sqlpulse.data.schema.Health
-import hu.laurel.sqlpulse.data.schema.HealthRules
-import hu.laurel.sqlpulse.data.schema.MetricFormat
+import hu.laurel.sqlpulse.data.schema.MetricId
 import hu.laurel.sqlpulse.data.schema.ServerMetrics
 import hu.laurel.sqlpulse.data.schema.ServerRepository
 import hu.laurel.sqlpulse.data.schema.ServerSample
 import hu.laurel.sqlpulse.data.schema.Series
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
+import hu.laurel.sqlpulse.data.sql.dialect.MissingPrivilegeException
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,18 +36,6 @@ enum class PulseInterval(val millis: Long) {
     SLOW(15_000),
 }
 
-/** The metrics the screen shows, in the order they answer "is something wrong". */
-enum class MetricId {
-    QUERIES,
-    THREADS_RUNNING,
-    THREADS_CONNECTED,
-    LOCK_WAITS,
-    BUFFER_HIT,
-    SLOW_QUERIES,
-    TRAFFIC_OUT,
-    REPLICATION_LAG,
-}
-
 /** One tile: a number to read, a colour to glance at, and the line behind it. */
 data class Metric(
     val id: MetricId,
@@ -62,6 +50,8 @@ data class PulseUiState(
     val connected: Boolean = false,
     /** True once two samples exist; before that there is no rate to show. */
     val live: Boolean = false,
+    /** The account may not read the counters (SQL Server's VIEW SERVER STATE); sampling has stopped. */
+    val missingPrivilege: String? = null,
     val error: String? = null,
 )
 
@@ -76,10 +66,10 @@ data class PulseUiState(
 class PulseViewModel @Inject constructor(
     private val server: ServerRepository,
     sessions: SqlSessionManager,
-) : ViewModel() {
+) : ViewModel(), PulseController {
 
     private val _uiState = MutableStateFlow(PulseUiState())
-    val uiState: StateFlow<PulseUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<PulseUiState> = _uiState.asStateFlow()
 
     private var job: Job? = null
     private var previous: ServerSample? = null
@@ -98,12 +88,12 @@ class PulseViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    fun setInterval(interval: PulseInterval) {
+    override fun setInterval(interval: PulseInterval) {
         _uiState.value = _uiState.value.copy(interval = interval)
     }
 
     /** Starts sampling. Calling it twice does not start a second loop. */
-    fun start() {
+    override fun start() {
         if (job?.isActive == true) return
         job = viewModelScope.launch {
             while (isActive) {
@@ -113,7 +103,7 @@ class PulseViewModel @Inject constructor(
         }
     }
 
-    fun stop() {
+    override fun stop() {
         job?.cancel()
         job = null
     }
@@ -134,6 +124,11 @@ class PulseViewModel @Inject constructor(
         if (!_uiState.value.connected) return
         val current = try {
             server.sample()
+        } catch (e: MissingPrivilegeException) {
+            // Asking again every few seconds would only repeat the refusal.
+            stop()
+            _uiState.value = _uiState.value.copy(missingPrivilege = e.privilege, error = null)
+            return
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(error = e.message)
             return
@@ -151,79 +146,14 @@ class PulseViewModel @Inject constructor(
     }
 
     private fun record(before: ServerSample, current: ServerSample) {
-        val queries = ServerMetrics.rate(before, current, "Queries")
-            ?: ServerMetrics.rate(before, current, "Questions")
-        val threadsRunning = current.value("Threads_running")
-        val threadsConnected = current.value("Threads_connected")
-        val lockWaits = current.value("Innodb_row_lock_current_waits")
-        val hitRate = ServerMetrics.bufferPoolHitRate(before, current)
-        val slow = ServerMetrics.rate(before, current, "Slow_queries")
-        val out = ServerMetrics.rate(before, current, "Bytes_sent")
-        val lag = current.replicationLagSeconds
-
+        // The engine decides which tiles exist and how each number is made; this only keeps the lines.
+        val readings = server.pulse.readings(before, current)
         series = series.mapValues { (id, line) ->
-            when (id) {
-                MetricId.QUERIES -> line.plus(queries)
-                MetricId.THREADS_RUNNING -> line.plus(threadsRunning?.toDouble())
-                MetricId.THREADS_CONNECTED -> line.plus(threadsConnected?.toDouble())
-                MetricId.LOCK_WAITS -> line.plus(lockWaits?.toDouble())
-                MetricId.BUFFER_HIT -> line.plus(hitRate)
-                MetricId.SLOW_QUERIES -> line.plus(slow)
-                MetricId.TRAFFIC_OUT -> line.plus(out)
-                MetricId.REPLICATION_LAG -> line.plus(lag?.toDouble())
-            }
+            readings.firstOrNull { it.id == id }?.let { line.plus(it.value) } ?: line
         }
-
-        val metrics = buildList {
-            add(metric(MetricId.QUERIES, MetricFormat.rate(queries)))
-            add(
-                metric(
-                    MetricId.THREADS_RUNNING,
-                    MetricFormat.count(threadsRunning),
-                    HealthRules.threadsRunning(threadsRunning),
-                ),
-            )
-            add(metric(MetricId.THREADS_CONNECTED, MetricFormat.count(threadsConnected)))
-            add(
-                metric(
-                    MetricId.LOCK_WAITS,
-                    MetricFormat.count(lockWaits),
-                    HealthRules.lockWaits(lockWaits),
-                ),
-            )
-            add(
-                metric(
-                    MetricId.BUFFER_HIT,
-                    MetricFormat.percent(hitRate),
-                    HealthRules.bufferPoolHitRate(hitRate),
-                ),
-            )
-            add(
-                metric(
-                    MetricId.SLOW_QUERIES,
-                    MetricFormat.rate(slow),
-                    HealthRules.slowQueries(slow),
-                ),
-            )
-            add(metric(MetricId.TRAFFIC_OUT, MetricFormat.perSecond(out)))
-            // Only where there is replication at all: an empty tile on every standalone server
-            // would be a question nobody asked.
-            if (lag != null) {
-                add(
-                    metric(
-                        MetricId.REPLICATION_LAG,
-                        MetricFormat.duration(lag),
-                        HealthRules.replicationLag(lag),
-                    ),
-                )
-            }
-        }
-
+        val metrics = readings.map { Metric(it.id, it.display, it.health, series[it.id] ?: Series()) }
         _uiState.value = _uiState.value.copy(metrics = metrics, live = true, error = null)
     }
-
-    private fun metric(id: MetricId, display: String, health: Health = Health.CALM) =
-        Metric(id, display, health, series[id] ?: Series())
 
     private fun reset(keepConnected: Boolean = false) {
         previous = null

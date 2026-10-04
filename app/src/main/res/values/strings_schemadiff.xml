@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Schema comparison: two connections' databases side by side, read from the offline schema
+    cache. Kept in its own file so it never has to be merged with anyone else's strings.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="schemadiff_title">Compare schemas</string>
+    <string name="schemadiff_swap">Swap sides</string>
+    <string name="schemadiff_connection">Connection</string>
+    <string name="schemadiff_database">Database</string>
+    <string name="schemadiff_pick">Choose…</string>
+    <string name="schemadiff_no_databases">No database of this connection has been opened on this phone yet.</string>
+    <string name="schemadiff_never_listed">This database has never been opened here, so there is nothing stored to compare.</string>
+    <string name="schemadiff_live">Connected</string>
+    <string name="schemadiff_offline">Stored copy</string>
+    <!-- %1$s is how long ago, e.g. "3 days ago" -->
+    <string name="schemadiff_taken">Table list taken %1$s</string>
+    <!-- %1$d tables in the list, %2$d of which have their structure stored -->
+    <string name="schemadiff_coverage">%1$d tables · structure of %2$d</string>
+    <!-- %1$s is how long ago -->
+    <string name="schemadiff_oldest">oldest structure taken %1$s</string>
+    <string name="schemadiff_incomplete">Tables never opened have no stored structure; only their names are compared.</string>
+    <string name="schemadiff_refresh">Read everything from the server</string>
+    <!-- %1$d read so far, %2$d in all -->
+    <string name="schemadiff_refreshing">Reading structures… %1$d / %2$d</string>
+    <string name="schemadiff_refresh_failed">The refresh failed; the earlier capture is shown.</string>
+
+    <string name="schemadiff_opt_case">Ignore case</string>
+    <string name="schemadiff_opt_charset">Ignore collation</string>
+    <string name="schemadiff_opt_comments">Ignore comments</string>
+    <string name="schemadiff_opt_order">Column order</string>
+
+    <string name="schemadiff_stat_only_a">only in A</string>
+    <string name="schemadiff_stat_changed">differ</string>
+    <string name="schemadiff_stat_only_b">only in B</string>
+    <!-- %1$d tables that match, %2$d that could not be compared -->
+    <string name="schemadiff_rest">Identical: %1$d · not comparable: %2$d</string>
+    <string name="schemadiff_identical">The two schemas match in everything that was compared.</string>
+    <string name="schemadiff_waiting">Choose a connection and a database for both sides.</string>
+    <string name="schemadiff_no_connections">Save a connection first: the comparison reads its databases.</string>
+
+    <string name="schemadiff_section_table">Table</string>
+    <string name="schemadiff_section_columns">Columns</string>
+    <string name="schemadiff_section_indexes">Indexes</string>
+    <string name="schemadiff_section_keys">Foreign keys</string>
+    <string name="schemadiff_section_unchecked">Not comparable</string>
+    <string name="schemadiff_view">view</string>
+    <string name="schemadiff_gap_a">no stored structure on side A</string>
+    <string name="schemadiff_gap_b">no stored structure on side B</string>
+    <string name="schemadiff_gap_both">no stored structure on either side</string>
+    <!-- Read out with a row: the status in words, since a colour cannot be heard -->
+    <string name="schemadiff_status_only_a">only in A</string>
+    <string name="schemadiff_status_only_b">only in B</string>
+    <string name="schemadiff_status_changed">differs</string>
+
+    <string name="schemadiff_field_name">name</string>
+    <string name="schemadiff_field_kind">kind</string>
+    <string name="schemadiff_field_engine">engine</string>
+    <string name="schemadiff_field_collation">collation</string>
+    <string name="schemadiff_field_comment">comment</string>
+    <string name="schemadiff_field_type">type</string>
+    <string name="schemadiff_field_nullable">NULL</string>
+    <string name="schemadiff_field_default">default</string>
+    <string name="schemadiff_field_extra">extra</string>
+    <string name="schemadiff_field_position">position</string>
+    <string name="schemadiff_field_unique">unique</string>
+    <string name="schemadiff_field_columns">columns</string>
+    <string name="schemadiff_field_references">references</string>
+    <string name="schemadiff_field_definition">definition differs</string>
+</resources>

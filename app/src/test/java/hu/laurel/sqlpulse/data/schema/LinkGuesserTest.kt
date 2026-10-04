@@ -77,10 +77,19 @@ class LinkGuesserTest {
     }
 
     @Test
-    fun `a table pointing at itself by name is not drawn as a guess`() {
-        // parent_id in "parent" would be a self-link on every tree table; too weak to draw.
-        val links = LinkGuesser.infer(listOf(table("parent", "id", "parent_id")))
+    fun `a table is never linked to itself by its own name`() {
+        // bug_id inside the bug table is its key, not a reference.
+        val links = LinkGuesser.infer(listOf(table("bug", "id", "bug_id"), table("user", "id")))
         assertTrue(links.isEmpty())
+    }
+
+    @Test
+    fun `parent_id is the one spelling that links a table to itself`() {
+        val links = LinkGuesser.infer(listOf(table("category", "id", "parent_id")))
+        assertEquals(listOf("category" to "category"), links.map { it.from to it.to })
+        assertTrue(links.single().isSelfReference)
+        // Without a single-column key there is nothing for a parent to be.
+        assertTrue(LinkGuesser.infer(listOf(TableColumns("tree", listOf("a", "b", "parent_id"), listOf("a", "b")))).isEmpty())
     }
 
     @Test

@@ -48,7 +48,19 @@ data class ResultDiff(
     val partial: Boolean,
     val takenAt: Long,
     val comparedAt: Long,
+    /** Side A: where the snapshot was taken. Null when unknown. */
+    val beforeOrigin: SnapshotOrigin? = null,
+    /** Side B: where the later result came from. Null when unknown. */
+    val afterOrigin: SnapshotOrigin? = null,
 ) {
+    /** True when the two sides are two different connections, i.e. dev against production. */
+    val crossConnection: Boolean
+        get() = beforeOrigin != null && afterOrigin != null && beforeOrigin.isOtherConnection(afterOrigin)
+
+    /** True when the two sides did not run the same query text, which makes the result less meaningful. */
+    val queryDiffers: Boolean
+        get() = beforeOrigin != null && afterOrigin != null && beforeOrigin.queryDiffers(afterOrigin)
+
     val addedCount: Int get() = rows.count { it.kind == RowChangeKind.ADDED }
     val removedCount: Int get() = rows.count { it.kind == RowChangeKind.REMOVED }
     val changedCount: Int get() = rows.count { it.kind == RowChangeKind.CHANGED }
@@ -69,11 +81,43 @@ sealed interface ComparisonOutcome {
      */
     data class ColumnsDiffer(val before: List<String>, val after: List<String>) : ComparisonOutcome
 
+    /**
+     * The chosen key columns cannot identify rows, so nothing was compared.
+     *
+     * Reported instead of guessed (dbx does the same for a duplicate key): pairing rows on a key
+     * that repeats would match them arbitrarily and the counts would be fiction.
+     */
+    data class KeyUnusable(
+        val keyColumns: List<String>,
+        val problem: KeyProblem,
+        val side: ComparedSide,
+        /** How many rows share the offending key, or have a NULL in it. */
+        val rowCount: Int,
+        /** The key values of the first offending row. */
+        val example: List<CellValue>,
+        /** The result's columns, so the screen can offer another key. */
+        val columns: List<String> = emptyList(),
+    ) : ComparisonOutcome
+
     /** The later run produced nothing to compare — an update count, a `USE`, or an error. */
     data object NoResult : ComparisonOutcome
 
     /** The later run could not be bounded; see [SnapshotOutcome.TooWide]. */
     data class Refused(val outcome: SnapshotOutcome) : ComparisonOutcome
+}
+
+/** Which of the two results a problem was found in. */
+enum class ComparedSide { BEFORE, AFTER }
+
+enum class KeyProblem {
+    /** One or more key columns are not in the result, or are named twice. */
+    MISSING_COLUMN,
+
+    /** Two rows of one side have the same key. */
+    DUPLICATE,
+
+    /** A key value is NULL, and NULL is not an identity. */
+    NULL_VALUE,
 }
 
 /**
@@ -101,15 +145,88 @@ object ResultDiffs {
         comparedAt: Long,
         maxRows: Int = SnapshotLimits.MAX_ROWS,
         maxCells: Int = SnapshotLimits.MAX_CELLS,
+        afterOrigin: SnapshotOrigin? = null,
     ): ComparisonOutcome {
         val keyColumns = (before.strategy as? MatchStrategy.PrimaryKey)?.columns ?: emptyList()
         return when (
-            val taken = ResultSnapshots.take(after, comparedAt, keyColumns, maxRows, maxCells)
+            val taken = ResultSnapshots.take(
+                after, comparedAt, keyColumns, maxRows, maxCells, afterOrigin,
+            )
         ) {
             is SnapshotOutcome.Taken -> compare(before, taken.snapshot)
             SnapshotOutcome.NoResult -> ComparisonOutcome.NoResult
             is SnapshotOutcome.TooWide -> ComparisonOutcome.Refused(taken)
         }
+    }
+
+    /**
+     * Compares with a key the user chose, for results where none could be detected.
+     *
+     * Cf. dbx `data_compare.rs`: the key columns must exist, be non-NULL and be unique on both
+     * sides; otherwise the answer is "not compared" and says why, never a guess. [after] is taken
+     * without a key so it keeps every row it can hold; uniqueness is checked here, over the rows
+     * that were kept.
+     */
+    fun compareByKey(
+        before: ResultSnapshot,
+        after: ResultTable,
+        keyColumns: List<String>,
+        comparedAt: Long,
+        maxRows: Int = SnapshotLimits.MAX_ROWS,
+        maxCells: Int = SnapshotLimits.MAX_CELLS,
+        afterOrigin: SnapshotOrigin? = null,
+    ): ComparisonOutcome = when (
+        val taken = ResultSnapshots.take(after, comparedAt, emptyList(), maxRows, maxCells, afterOrigin)
+    ) {
+        is SnapshotOutcome.Taken -> compareByKey(before, taken.snapshot, keyColumns)
+        SnapshotOutcome.NoResult -> ComparisonOutcome.NoResult
+        is SnapshotOutcome.TooWide -> ComparisonOutcome.Refused(taken)
+    }
+
+    fun compareByKey(
+        before: ResultSnapshot,
+        after: ResultSnapshot,
+        keyColumns: List<String>,
+    ): ComparisonOutcome {
+        if (!sameColumns(before.columns, after.columns)) {
+            return ComparisonOutcome.ColumnsDiffer(before.columns, after.columns)
+        }
+        val strategy = MatchStrategy.PrimaryKey(keyColumns)
+        val indexes = ResultSnapshots.indexesFor(after.columns, strategy)
+        if (keyColumns.isEmpty() || indexes == null) {
+            return ComparisonOutcome.KeyUnusable(
+                keyColumns, KeyProblem.MISSING_COLUMN, ComparedSide.AFTER, 0, emptyList(), after.columns,
+            )
+        }
+        val left = rekey(before, strategy)
+        val right = rekey(after, strategy)
+        keyProblem(left, indexes, keyColumns, ComparedSide.BEFORE)?.let { return it.copy(columns = after.columns) }
+        keyProblem(right, indexes, keyColumns, ComparedSide.AFTER)?.let { return it.copy(columns = after.columns) }
+        return build(before, after, strategy)
+    }
+
+    /** The first reason [rows] cannot be matched on [indexes], or null when the key is sound. */
+    private fun keyProblem(
+        rows: List<SnapshotRow>,
+        indexes: List<Int>,
+        keyColumns: List<String>,
+        side: ComparedSide,
+    ): ComparisonOutcome.KeyUnusable? {
+        val nullRows = rows.count { row -> indexes.any { row.cells.getOrNull(it) is CellValue.Null } }
+        if (nullRows > 0) {
+            return ComparisonOutcome.KeyUnusable(
+                keyColumns, KeyProblem.NULL_VALUE, side, nullRows, emptyList(),
+            )
+        }
+        val counts = countByKey(rows)
+        val repeated = rows.firstOrNull { (counts[it.key] ?: 0) > 1 } ?: return null
+        return ComparisonOutcome.KeyUnusable(
+            keyColumns,
+            KeyProblem.DUPLICATE,
+            side,
+            counts.getValue(repeated.key),
+            keyValues(repeated, indexes).orEmpty(),
+        )
     }
 
     /** The same comparison between two snapshots, which is what the rules are actually about. */
@@ -128,7 +245,14 @@ object ResultDiffs {
         } else {
             MatchStrategy.WholeRow
         }
+        return build(before, after, strategy)
+    }
 
+    private fun build(
+        before: ResultSnapshot,
+        after: ResultSnapshot,
+        strategy: MatchStrategy,
+    ): ComparisonOutcome {
         val left = rekey(before, strategy)
         val right = rekey(after, strategy)
         val rows = when (strategy) {
@@ -154,6 +278,8 @@ object ResultDiffs {
                     before.sourceTruncated || after.sourceTruncated,
                 takenAt = before.takenAt,
                 comparedAt = after.takenAt,
+                beforeOrigin = before.origin,
+                afterOrigin = after.origin,
             ),
         )
     }

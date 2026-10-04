@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.paparazzi)
 }
 
 /**
@@ -18,7 +19,13 @@ plugins {
  */
 val buildNumber = (System.getenv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER"))
     ?.toIntOrNull() ?: 1
-val commitSha = System.getenv("GITHUB_SHA")?.take(7)
+
+/**
+ * The version people see. CI publishes a stable GitHub release `v<appVersion>` the first time a
+ * pull request that changes this number is merged into main; every other merge only refreshes the
+ * rolling "nightly" pre-release. Keep it a plain string on one line: the workflow reads it with sed.
+ */
+val appVersion = "0.2.0"
 
 /**
  * Signing material, taken from the environment.
@@ -72,6 +79,59 @@ val hasExternalSigning = signingKeystorePath != null &&
     signingKeyAlias != null &&
     signingKeyPassword != null
 
+/**
+ * The SQLite JDBC driver's Android natives, which its jar keeps under
+ * `org/sqlite/native/Linux-Android/<arch>/` where Android expects `lib/<abi>/`. Unpacked into a
+ * generated jniLibs directory rather than committed, so a version bump in the catalog is the whole
+ * upgrade. A task class with injected services rather than a Sync with closures, so it stays
+ * compatible with the configuration cache CI runs with.
+ */
+abstract class UnpackSqliteNatives : DefaultTask() {
+    @get:InputFiles
+    abstract val archives: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @get:Inject
+    abstract val archiveOps: ArchiveOperations
+
+    @get:Inject
+    abstract val fileOps: FileSystemOperations
+
+    @TaskAction
+    fun unpack() {
+        val abis = mapOf("aarch64" to "arm64-v8a", "arm" to "armeabi-v7a", "x86" to "x86", "x86_64" to "x86_64")
+        val jars = archives.files
+        fileOps.sync {
+            jars.forEach { from(archiveOps.zipTree(it)) }
+            include("org/sqlite/native/Linux-Android/**/*.so")
+            eachFile {
+                val arch = relativePath.segments.dropLast(1).last()
+                relativePath = RelativePath(true, abis.getValue(arch), name)
+            }
+            includeEmptyDirs = false
+            into(outputDir)
+        }
+    }
+}
+
+val sqliteAndroidNatives: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+
+val unpackSqliteNatives = tasks.register<UnpackSqliteNatives>("unpackSqliteNatives") {
+    archives.from(sqliteAndroidNatives)
+    outputDir.set(layout.buildDirectory.dir("generated/sqliteJniLibs"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(unpackSqliteNatives, UnpackSqliteNatives::outputDir)
+    }
+}
+
 android {
     namespace = "hu.laurel.sqlpulse"
     compileSdk = 35
@@ -81,7 +141,7 @@ android {
         minSdk = 28
         targetSdk = 35
         versionCode = buildNumber
-        versionName = listOfNotNull("0.1.$buildNumber", commitSha).joinToString("+")
+        versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("en", "hu")
@@ -160,12 +220,20 @@ android {
                 "META-INF/NOTICE*",
                 "META-INF/BC*",
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "META-INF/versions/11/OSGI-INF/MANIFEST.MF",
             )
         }
     }
 
     ksp {
         arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
+    lint {
+        // Lint reads the app's own sources in full. The test sources are left out: with
+        // Paparazzi's layoutlib on the test classpath, lint's Kotlin analysis crashes on them,
+        // and nothing under src/test or src/androidTest ships in the APK.
+        ignoreTestSources = true
     }
 }
 
@@ -214,6 +282,15 @@ dependencies {
     // The second driver, used only for servers older than MySQL 5.5.3: the modern one hardcodes
     // utf8mb4, which they do not have. See SqlSession for how the choice is made.
     implementation(libs.mysql.legacy.client)
+    // Further engines (docs/tobb-motor-terv.md). Only annotations are left out of pgjdbc; mssql-jdbc
+    // declares its Azure/Kerberos stack as optional, so nothing of it arrives.
+    implementation(libs.postgresql.client) { exclude(group = "org.checkerframework") }
+    implementation(libs.mssql.client)
+    // SQLite files, over the same JDBC path as every other engine. The classes come from the jar
+    // without natives; the Android .so files are unpacked into jniLibs (UnpackSqliteNatives above),
+    // because the default jar carries desktop natives only.
+    implementation(variantOf(libs.sqlite.jdbc) { classifier("without-natives") })
+    sqliteAndroidNatives(variantOf(libs.sqlite.jdbc) { classifier("natives-android") })
     implementation(libs.bouncycastle.prov)
     implementation(libs.bouncycastle.pkix)
     implementation(libs.eddsa)

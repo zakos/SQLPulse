@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.data.sql
 
+import hu.laurel.sqlpulse.data.sql.dialect.SqlGrammar
+
 /**
  * Lays a statement out over several lines so it can be read on a phone.
  *
@@ -33,8 +35,9 @@ object SqlFormatter {
     /** Second words of a two-word clause, which must not start a line of their own. */
     private val CONTINUATIONS = setOf("by")
 
-    fun format(sql: String): String {
-        val tokens = tokenize(sql)
+    /** [grammar] is the engine's: what counts as a quoted name, a string or a comment is kept whole. */
+    fun format(sql: String, grammar: SqlGrammar = SqlGrammar.MYSQL): String {
+        val tokens = tokenize(sql, grammar)
         if (tokens.isEmpty()) return sql
 
         val out = StringBuilder()
@@ -53,7 +56,7 @@ object SqlFormatter {
         }
 
         fun appendToken(text: String) {
-            if (!lineIsEmpty && needsSpaceBefore(out, text)) out.append(' ')
+            if (!lineIsEmpty && needsSpaceBefore(out, text, grammar)) out.append(' ')
             out.append(text)
             lineIsEmpty = false
         }
@@ -127,13 +130,13 @@ object SqlFormatter {
         return lower in JOIN_QUALIFIERS
     }
 
-    private fun needsSpaceBefore(out: StringBuilder, text: String): Boolean {
+    private fun needsSpaceBefore(out: StringBuilder, text: String, grammar: SqlGrammar): Boolean {
         val last = out.lastOrNull() ?: return false
         // Nothing to separate from: a fresh line, its indent, or an opening bracket.
         if (last == '(' || last == '\n' || last == ' ') return false
         if (text == "," || text == ")" || text == ";") return false
         // A bracket right after a name is a call or a list belonging to that name: count(*).
-        if (text == "(") return !(last.isLetterOrDigit() || last == '_' || last == '`')
+        if (text == "(") return !(last.isLetterOrDigit() || last == '_' || endsQuotedName(last, grammar))
         return true
     }
 
@@ -141,7 +144,7 @@ object SqlFormatter {
 
     private data class Token(val text: String, val kind: TokenKind)
 
-    private fun tokenize(sql: String): List<Token> {
+    private fun tokenize(sql: String, grammar: SqlGrammar): List<Token> {
         val tokens = mutableListOf<Token>()
         var index = 0
         while (index < sql.length) {
@@ -153,13 +156,13 @@ object SqlFormatter {
                     tokens += Token(sql.substring(start, index), TokenKind.WHITESPACE)
                 }
 
-                c == '\'' || c == '"' || c == '`' -> {
+                grammar.opensQuote(sql, index) -> {
                     val start = index
-                    index = skipQuoted(sql, index, c)
+                    index = grammar.endOfQuoted(sql, index)
                     tokens += Token(sql.substring(start, index), TokenKind.STRING)
                 }
 
-                sql.startsWith("--", index) || c == '#' -> {
+                grammar.opensLineComment(sql, index) -> {
                     val start = index
                     val newline = sql.indexOf('\n', index)
                     index = if (newline < 0) sql.length else newline
@@ -192,19 +195,7 @@ object SqlFormatter {
         return tokens
     }
 
-    private fun skipQuoted(text: String, from: Int, quote: Char): Int {
-        var index = from + 1
-        while (index < text.length) {
-            val c = text[index]
-            if (c == '\\' && quote != '`') {
-                index += 2
-                continue
-            }
-            index++
-            if (c == quote) {
-                if (index < text.length && text[index] == quote) index++ else return index
-            }
-        }
-        return index
-    }
+    /** True when [c] closes a quoted *name* (`` ` ``, `"` or `]`), after which a bracket is a call. */
+    private fun endsQuotedName(c: Char, grammar: SqlGrammar): Boolean =
+        grammar.quotes.any { (open, close) -> close == c && grammar.isIdentifierQuote(open) }
 }

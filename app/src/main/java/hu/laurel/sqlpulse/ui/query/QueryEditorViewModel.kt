@@ -8,11 +8,21 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
+import hu.laurel.sqlpulse.data.connection.WriteUnlockStore
 import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.export.FullExport
+import hu.laurel.sqlpulse.data.export.FullExporter
 import hu.laurel.sqlpulse.data.query.DraftBook
+import hu.laurel.sqlpulse.data.query.EditorPrefsRepository
+import hu.laurel.sqlpulse.data.query.KeyBar
+import hu.laurel.sqlpulse.data.query.KeyBarConfig
+import hu.laurel.sqlpulse.data.query.KeyBarItem
+import hu.laurel.sqlpulse.data.query.KeyInsertion
+import hu.laurel.sqlpulse.data.query.Snippet
+import hu.laurel.sqlpulse.data.query.SnippetEngine
 import hu.laurel.sqlpulse.data.query.QueryDraft
 import hu.laurel.sqlpulse.data.query.QueryDraftStore
 import hu.laurel.sqlpulse.data.query.QueryRepository
@@ -23,7 +33,10 @@ import hu.laurel.sqlpulse.data.snapshot.ResultDiffs
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshot
 import hu.laurel.sqlpulse.data.snapshot.ResultSnapshots
 import hu.laurel.sqlpulse.data.snapshot.SnapshotOutcome
+import hu.laurel.sqlpulse.data.snapshot.SnapshotOrigin
+import hu.laurel.sqlpulse.data.snapshot.SnapshotVault
 import hu.laurel.sqlpulse.data.sql.AffectedRowLimit
+import hu.laurel.sqlpulse.data.sql.WriteRowPreview
 import hu.laurel.sqlpulse.data.chart.ChartSpec
 import hu.laurel.sqlpulse.data.grid.ResultFilter
 import hu.laurel.sqlpulse.data.grid.ResultFilters
@@ -34,8 +47,12 @@ import hu.laurel.sqlpulse.data.sql.QueryExecutor
 import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
 import hu.laurel.sqlpulse.data.sql.WritesLockedException
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.RowEditor
 import hu.laurel.sqlpulse.data.sql.SqlFailures
 import hu.laurel.sqlpulse.data.sql.SqlFormatter
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.EngineFeature
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialect
 import hu.laurel.sqlpulse.data.sql.SqlGuards
 import hu.laurel.sqlpulse.data.sql.SqlScript
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -45,23 +62,31 @@ import hu.laurel.sqlpulse.data.sql.TableQuery
 import hu.laurel.sqlpulse.data.sql.UnguardedWriteException
 import hu.laurel.sqlpulse.data.sql.UnsupportedStatementException
 import hu.laurel.sqlpulse.ui.explain
+import hu.laurel.sqlpulse.ui.handoff.EditorHandoff
 import java.sql.SQLException
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -81,6 +106,8 @@ data class WriteConfirmation(
     val database: String?,
     /** The ceiling from settings; 0 when it is turned off. */
     val maxAffectedRows: Int,
+    /** The rows each write would change, for the statements that could be previewed. */
+    val previews: List<WriteRowPreview> = emptyList(),
 ) {
     val sql: String get() = statements.joinToString(";\n")
 
@@ -134,9 +161,18 @@ data class QueryEditorUiState(
     val databases: List<String> = emptyList(),
     val readOnly: Boolean = true,
     val connectionName: String? = null,
+    /** The live connection's id, 0 when none; tells a carried snapshot whether it is from elsewhere. */
+    val connectionId: Long = 0,
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Set while a full-result export streams to its file. */
+    val fullExport: FullExportProgress? = null,
+    /** Set when the last full export hit a hard cap, until the person has read it. */
+    val exportNotice: ExportNotice? = null,
+    /** Whether the active tab has an edit to take back, or one that was taken back. Set by the view model. */
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     /** Set while a hand-typed write waits to be confirmed (§7.4). */
     val writeConfirmation: WriteConfirmation? = null,
     /** Set when opening a tab was refused because [QueryTabs.MAX_TABS] is already open. */
@@ -153,6 +189,11 @@ data class QueryEditorUiState(
      * nothing about a result is ever written to disk (§9).
      */
     val snapshots: Map<Long, ResultSnapshot> = emptyMap(),
+    /**
+     * The snapshot carried over from another screen instance (typically another connection), from
+     * the process-wide [SnapshotVault]. A tab's own snapshot wins over it.
+     */
+    val carriedSnapshot: ResultSnapshot? = null,
     /** Set while the comparison sheet is up. */
     val comparison: ComparisonOutcome? = null,
     /** Set right after a snapshot was taken, or refused. */
@@ -167,7 +208,7 @@ data class QueryEditorUiState(
     val error: String? get() = active.error
     val errorDetail: String? get() = active.errorDetail
     val pendingParameters: List<String> get() = active.pendingParameters
-    val suggestions: List<String> get() = active.suggestions
+    val suggestions: List<CompletionItem> get() = active.suggestions
     val database: String? get() = active.database
     val switchedTo: String? get() = active.switchedTo
     val resultSort: ColumnSort? get() = active.resultSort
@@ -194,7 +235,7 @@ data class QueryEditorUiState(
     val hasSelection: Boolean get() = active.hasSelection
 
     /** The active tab's snapshot, if it has one. */
-    val snapshot: ResultSnapshot? get() = snapshots[activeTabId]
+    val snapshot: ResultSnapshot? get() = snapshots[activeTabId] ?: carriedSnapshot
 
     /** The tab a close confirmation is about, if one is open. */
     val closing: QueryTab? get() = closingTab?.let { id -> tabs.firstOrNull { it.id == id } }
@@ -214,10 +255,55 @@ class QueryEditorViewModel @Inject constructor(
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
     private val settings: SettingsRepository,
-) : ViewModel() {
+    rowEditor: RowEditor,
+    writeUnlock: WriteUnlockStore,
+    private val snapshotVault: SnapshotVault,
+    private val editorHandoff: EditorHandoff,
+    private val editorPrefs: EditorPrefsRepository,
+    private val fullExporter: FullExporter,
+) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
-    val uiState: StateFlow<QueryEditorUiState> = _uiState.asStateFlow()
+
+    /**
+     * One undo history per tab, in memory only. Created when a tab is first edited and dropped with
+     * the tab; drafts restored from disk start without one.
+     */
+    private val histories = EditHistories()
+
+    /** Bumped when a history changes whether the active tab can undo or redo, to republish the state. */
+    private val historyTick = MutableStateFlow(0)
+    private var publishedUndoRedo = false to false
+
+    override val uiState: StateFlow<QueryEditorUiState> = combine(_uiState, historyTick) { state, _ ->
+        val history = histories.peek(state.activeTabId)
+        val flags = (history?.canUndo == true) to (history?.canRedo == true)
+        publishedUndoRedo = flags
+        state.copy(canUndo = flags.first, canRedo = flags.second)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, _uiState.value)
+
+    override val snippets: StateFlow<List<Snippet>> = editorPrefs.snippets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    override val keyBar: StateFlow<List<KeyBarItem>> = editorPrefs.keyBar
+        .map { KeyBar.visible(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KeyBar.visible(KeyBarConfig.DEFAULT))
+
+    /** Editing the rows of the result in place, when the statement maps onto one table. */
+    private val editing = QueryResultEditing(
+        scope = viewModelScope,
+        schema = schema,
+        rowEditor = rowEditor,
+        sessions = sessions,
+        writeUnlock = writeUnlock,
+        describe = ::describe,
+        source = { _uiState.value.visibleResult?.let { ResultEditSource(_uiState.value.activeTabId, it) } },
+        refresh = ::refreshResult,
+    )
+    override val resultEditing: ResultEditController get() = editing
+
+    /** The live session's engine: what the editor asks about quotes, comments, parameters and EXPLAIN. */
+    private val dialect: SqlDialect get() = sessions.dialect()
 
     private val connectionId = MutableStateFlow(0L)
     private var runJob: Job? = null
@@ -243,16 +329,31 @@ class QueryEditorViewModel @Inject constructor(
     private var lastWritten: DraftBook? = null
     private var draftsRestored = false
 
-    val history: StateFlow<List<QueryHistoryEntity>> = connectionId
+    /** Completed once the saved drafts are back, so SQL handed over by another screen cannot beat them. */
+    private val draftsReady = CompletableDeferred<Unit>()
+
+    override val history: StateFlow<List<QueryHistoryEntity>> = connectionId
         .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else queries.observeHistory(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val favourites: StateFlow<List<SavedQueryEntity>> = connectionId
+    override val favourites: StateFlow<List<SavedQueryEntity>> = connectionId
         .flatMapLatest { id -> if (id == 0L) flowOf(emptyList()) else queries.observeFavourites(id) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
+        // A snapshot taken on another connection, before the user switched to this one.
+        _uiState.value = _uiState.value.copy(carriedSnapshot = snapshotVault.snapshot)
         restoreDrafts()
+        acceptHandedOverSql()
+        editing.track(_uiState.map { it.resultEditKey() }.distinctUntilChanged())
+
+        // The hint and the auto-LIMIT both read uiState.rowLimit, so following the setting here
+        // keeps them in step — and live, because the flow re-emits when the slider moves.
+        settings.settings
+            .map { it.defaultRowLimit }
+            .distinctUntilChanged()
+            .onEach { setRowLimit(it) }
+            .launchIn(viewModelScope)
 
         // The draft is written after the typing stops, not during it: a keystroke costs nothing
         // here, and the file is rewritten whole. Half a second is short enough that the only way
@@ -270,6 +371,7 @@ class QueryEditorViewModel @Inject constructor(
                         _uiState.value = _uiState.value.copy(
                             readOnly = state.connection.readOnly,
                             connectionName = state.connection.name,
+                            connectionId = state.connection.id,
                         )
                         loadDatabases()
                     }
@@ -278,7 +380,7 @@ class QueryEditorViewModel @Inject constructor(
                         connectionId.value = 0L
                         tableNames = emptyList()
                         tableDatabase = null
-                        _uiState.value = _uiState.value.copy(connectionName = null)
+                        _uiState.value = _uiState.value.copy(connectionName = null, connectionId = 0)
                     }
                 }
             }
@@ -302,14 +404,14 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** The session itself, for the bar that appears when the network moves under it. */
-    val sessionState: StateFlow<SqlSessionState> = sessions.state
+    override val sessionState: StateFlow<SqlSessionState> = sessions.state
 
     /** Asked for by the bar's button; the automatic path is the session manager's own. */
-    fun reconnect() = sessions.reconnect()
+    override fun reconnect() = sessions.reconnect()
 
     // --- Tabs -------------------------------------------------------------------------------
 
-    fun newTab() {
+    override fun newTab() {
         val state = _uiState.value
         val id = nextTabId
         val opened = QueryTabs.open(state.tabs, id, database = state.database)
@@ -322,7 +424,7 @@ class QueryEditorViewModel @Inject constructor(
         noteDraftChange()
     }
 
-    fun duplicateTab(id: Long) {
+    override fun duplicateTab(id: Long) {
         val state = _uiState.value
         val newId = nextTabId
         val tabs = QueryTabs.duplicate(state.tabs, id, newId)
@@ -335,7 +437,7 @@ class QueryEditorViewModel @Inject constructor(
         noteDraftChange()
     }
 
-    fun renameTab(id: Long, title: String) {
+    override fun renameTab(id: Long, title: String) {
         _uiState.value = _uiState.value.copy(tabs = QueryTabs.rename(_uiState.value.tabs, id, title))
         noteDraftChange()
     }
@@ -346,7 +448,7 @@ class QueryEditorViewModel @Inject constructor(
      * A tab is closed with a small control next to a label, which is exactly the kind of target a
      * thumb hits by accident; the query in it may be twenty minutes of work.
      */
-    fun requestCloseTab(id: Long) {
+    override fun requestCloseTab(id: Long) {
         val tab = _uiState.value.tabs.firstOrNull { it.id == id } ?: return
         if (tab.unsaved) {
             _uiState.value = _uiState.value.copy(closingTab = id)
@@ -355,7 +457,7 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun closeTab(id: Long) {
+    override fun closeTab(id: Long) {
         val state = _uiState.value
         val active = QueryTabs.activeAfterClose(state.tabs, id, state.activeTabId)
         _uiState.value = state.copy(
@@ -367,14 +469,16 @@ class QueryEditorViewModel @Inject constructor(
             // id later would offer a comparison between two unrelated questions.
             snapshots = state.snapshots - id,
         )
+        histories.drop(id)
+        touchHistory()
         noteDraftChange()
     }
 
-    fun dismissCloseTab() {
+    override fun dismissCloseTab() {
         _uiState.value = _uiState.value.copy(closingTab = null)
     }
 
-    fun dismissTabLimit() {
+    override fun dismissTabLimit() {
         _uiState.value = _uiState.value.copy(tabLimitReached = false)
     }
 
@@ -384,7 +488,7 @@ class QueryEditorViewModel @Inject constructor(
      * The connection has one current database, so a tab's database is a wish that is granted when
      * the tab is looked at. Without this, switching tabs would run the next query somewhere else.
      */
-    fun selectTab(id: Long) {
+    override fun selectTab(id: Long) {
         val state = _uiState.value
         if (state.tabs.none { it.id == id }) return
         _uiState.value = state.copy(activeTabId = id, tabLimitReached = false)
@@ -396,7 +500,7 @@ class QueryEditorViewModel @Inject constructor(
 
     // --- Editing ----------------------------------------------------------------------------
 
-    fun selectDatabase(database: String) {
+    override fun selectDatabase(database: String) {
         updateActive { it.copy(database = database) }
         sessions.selectDatabase(database)
         noteDraftChange()
@@ -406,7 +510,7 @@ class QueryEditorViewModel @Inject constructor(
         updateActive { it.copy(selectionStart = start, selectionEnd = end) }
     }
 
-    fun selectStatement(index: Int) {
+    override fun selectStatement(index: Int) {
         val run = _uiState.value.active.statements.getOrNull(index) ?: return
         updateActive {
             it.copy(
@@ -421,20 +525,27 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** Runs only the statement the cursor is in, leaving the rest of the script alone. */
-    fun runCurrent(parameters: Map<String, ParameterValue> = emptyMap()) {
+    override fun runCurrent(parameters: Map<String, ParameterValue>) {
         val tab = _uiState.value.active
-        val statement = SqlScript.statementAt(tab.sql, tab.selectionStart) ?: return
+        val statement = SqlScript.statementAt(tab.sql, tab.selectionStart, dialect.grammar) ?: return
         execute(listOf(statement.sql), parameters)
     }
 
-    fun setSql(sql: String) {
+    fun setSql(sql: String, kind: EditKind = EditKind.OTHER) {
+        val before = _uiState.value.active
+        val history = historyFor(before)
         updateActive { it.copy(sql = sql, error = null) }
+        history.record(EditorText(sql, before.selectionStart, before.selectionEnd), kind, nowMs())
+        touchHistory()
         refreshSuggestions()
         noteDraftChange()
     }
 
     /** One call for what a keystroke changes: the text, where the cursor landed, and the hints. */
-    fun onEditorChanged(sql: String, selectionStart: Int, selectionEnd: Int) {
+    override fun onEditorChanged(sql: String, selectionStart: Int, selectionEnd: Int) {
+        val before = _uiState.value.active
+        val history = historyFor(before)
+        val kind = EditHistory.classify(before.sql, sql)
         updateActive {
             it.copy(
                 sql = sql,
@@ -443,6 +554,8 @@ class QueryEditorViewModel @Inject constructor(
                 error = null,
             )
         }
+        history.record(EditorText(sql, selectionStart, selectionEnd), kind, nowMs())
+        touchHistory()
         refreshSuggestions()
         noteDraftChange()
     }
@@ -453,7 +566,7 @@ class QueryEditorViewModel @Inject constructor(
      * Turning it off commits: switching away from "I will decide when this is written" means the
      * work was meant to happen. Discarding is the explicit [rollback].
      */
-    fun setTransaction(open: Boolean) {
+    override fun setTransaction(open: Boolean) {
         viewModelScope.launch {
             try {
                 if (open) sessions.beginTransaction() else sessions.commit()
@@ -463,7 +576,7 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun rollback() {
+    override fun rollback() {
         viewModelScope.launch {
             try {
                 sessions.rollback()
@@ -473,18 +586,102 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun toggleEditor() {
+    override fun toggleEditor() {
         updateActive { it.copy(editorCollapsed = !it.editorCollapsed) }
     }
 
     /** Inserts text at the cursor, which is where the user is looking. */
-    fun append(text: String) {
+    override fun append(text: String) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val before = tab.sql.take(at)
         val separator = if (before.isEmpty() || before.last().isWhitespace()) "" else " "
-        replaceRange(at, at, separator + text)
+        replaceRange(at, at, separator + text, EditKind.KEY_INSERT)
     }
+
+    /** A key from the key bar: the text goes in with the spacing a keyword or operator needs. */
+    override fun insertKey(key: String) {
+        val tab = _uiState.value.active
+        val start = tab.selectionStart.coerceIn(0, tab.sql.length)
+        val end = tab.selectionEnd.coerceIn(start, tab.sql.length)
+        val text = KeyInsertion.textFor(key, tab.sql.substring(0, start), tab.sql.substring(end))
+        replaceRange(start, end, text, EditKind.KEY_INSERT)
+    }
+
+    /** Drops a snippet in at the cursor and selects its first word to fill in. */
+    override fun insertSnippet(snippet: Snippet) {
+        val tab = _uiState.value.active
+        val result = SnippetEngine.insert(tab.sql, tab.selectionStart, tab.selectionEnd, snippet.body)
+        applyEdit(result.text, result.selectionStart, result.selectionEnd, EditKind.SNIPPET)
+    }
+
+    override fun saveSnippet(id: String?, name: String, body: String) {
+        viewModelScope.launch { editorPrefs.saveSnippet(id, name, body) }
+    }
+
+    override fun deleteSnippet(id: String) {
+        viewModelScope.launch { editorPrefs.deleteSnippet(id) }
+    }
+
+    override fun undo() {
+        val history = historyFor(_uiState.value.active)
+        history.undo()?.let(::restore)
+    }
+
+    override fun redo() {
+        val history = historyFor(_uiState.value.active)
+        history.redo()?.let(::restore)
+    }
+
+    /** Puts a state the history handed back into the active tab, selection included. */
+    private fun restore(state: EditorText) {
+        updateActive {
+            it.copy(
+                sql = state.text,
+                selectionStart = state.selectionStart,
+                selectionEnd = state.selectionEnd,
+                suggestions = emptyList(),
+                error = null,
+            )
+        }
+        touchHistory()
+        refreshSuggestions()
+        noteDraftChange()
+    }
+
+    /**
+     * Hands the editor's text to the share sheet: the selection if there is one, else all of it.
+     * Only the SQL — never a result, a connection name or a database.
+     */
+    override fun shareQuery() {
+        val tab = _uiState.value.active
+        val text = if (tab.hasSelection) {
+            val start = tab.selectionStart.coerceIn(0, tab.sql.length)
+            tab.sql.substring(start, tab.selectionEnd.coerceIn(start, tab.sql.length))
+        } else {
+            tab.sql
+        }
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(shareIntent = exports.sqlIntent(text))
+            } catch (e: Exception) {
+                updateActive { it.copy(error = describe(e)) }
+            }
+        }
+    }
+
+    /** The tab's history, started from its text if it has none or the text moved without it. */
+    private fun historyFor(tab: QueryTab): EditHistory =
+        histories.of(tab.id, EditorText(tab.sql, tab.selectionStart, tab.selectionEnd))
+
+    private fun touchHistory() {
+        val history = histories.peek(_uiState.value.activeTabId)
+        val flags = (history?.canUndo == true) to (history?.canRedo == true)
+        if (flags != publishedUndoRedo) historyTick.value++
+    }
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000
 
     /**
      * Completes the word the cursor sits in.
@@ -493,25 +690,41 @@ class QueryEditorViewModel @Inject constructor(
      * give `FROM HIVASOK`, never `FROM hiv HIVASOK`. Where the word starts is the completion's own
      * answer, so a qualified `a.col` replaces only the part after the dot.
      */
-    fun complete(suggestion: String) {
+    override fun complete(item: CompletionItem) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
-        val start = SqlCompletion.contextAt(tab.sql, at).prefixStart.coerceIn(0, at)
-        replaceRange(start, at, suggestion)
+        val start = SqlCompletion.contextAt(tab.sql, at, dialect).prefixStart.coerceIn(0, at)
+        val body = item.snippetBody
+        if (item.kind == CompletionKind.SNIPPET && body != null) {
+            // The typed word is the snippet's trigger: drop it, then insert like the snippet menu
+            // does, so the first placeholder ends up selected.
+            val result = SnippetEngine.insert(tab.sql.removeRange(start, at), start, start, body)
+            applyEdit(result.text, result.selectionStart, result.selectionEnd, EditKind.SNIPPET)
+            return
+        }
+        replaceRange(start, at, item.text, EditKind.COMPLETION)
     }
 
     /** Replaces a range of the editor's text and leaves the cursor after what was inserted. */
-    private fun replaceRange(start: Int, end: Int, text: String) {
-        val caret = start + text.length
+    private fun replaceRange(start: Int, end: Int, text: String, kind: EditKind) {
+        val sql = _uiState.value.active.sql
+        applyEdit(sql.substring(0, start) + text + sql.substring(end), start + text.length, start + text.length, kind)
+    }
+
+    /** Sets the active tab's text from something other than typing, as one undo step of its own. */
+    private fun applyEdit(text: String, selectionStart: Int, selectionEnd: Int, kind: EditKind) {
+        val history = historyFor(_uiState.value.active)
         updateActive {
             it.copy(
-                sql = it.sql.substring(0, start) + text + it.sql.substring(end),
-                selectionStart = caret,
-                selectionEnd = caret,
+                sql = text,
+                selectionStart = selectionStart,
+                selectionEnd = selectionEnd,
                 suggestions = emptyList(),
                 error = null,
             )
         }
+        history.record(EditorText(text, selectionStart, selectionEnd), kind, nowMs())
+        touchHistory()
         noteDraftChange()
     }
 
@@ -521,37 +734,37 @@ class QueryEditorViewModel @Inject constructor(
      * The selection is formatted alone when there is one, so one statement of a long script can be
      * tidied without disturbing the rest.
      */
-    fun format() {
+    override fun format() {
         val tab = _uiState.value.active
         if (tab.sql.isBlank()) return
         if (tab.hasSelection) {
             val start = tab.selectionStart.coerceIn(0, tab.sql.length)
             val end = tab.selectionEnd.coerceIn(start, tab.sql.length)
-            val formatted = SqlFormatter.format(tab.sql.substring(start, end))
-            setSql(tab.sql.substring(0, start) + formatted + tab.sql.substring(end))
+            val formatted = SqlFormatter.format(tab.sql.substring(start, end), dialect.grammar)
+            setSql(tab.sql.substring(0, start) + formatted + tab.sql.substring(end), EditKind.FORMAT)
         } else {
-            setSql(SqlScript.split(tab.sql).joinToString(";\n\n") { SqlFormatter.format(it.sql) } + ";")
+            setSql(SqlScript.split(tab.sql, dialect.grammar).joinToString(";\n\n") { SqlFormatter.format(it.sql, dialect.grammar) } + ";", EditKind.FORMAT)
         }
     }
 
     /** Replaces every occurrence of [find] in the editor. Case-insensitive, like SQL itself. */
-    fun replaceAll(find: String, replacement: String) {
+    override fun replaceAll(find: String, replacement: String) {
         if (find.isEmpty()) return
         setSql(_uiState.value.active.sql.replace(find, replacement, ignoreCase = true))
     }
 
-    fun selectPanel(panel: QueryPanel) {
+    override fun selectPanel(panel: QueryPanel) {
         updateActive { it.copy(panel = panel) }
     }
 
     fun setRowLimit(limit: Int) {
-        _uiState.value = _uiState.value.copy(rowLimit = limit.coerceIn(1, MAX_ROW_LIMIT))
+        _uiState.value = _uiState.value.copy(rowLimit = EditorRowLimit.clamp(limit))
     }
 
     // --- Completion -------------------------------------------------------------------------
 
     /**
-     * Rebuilds the suggestion chips for wherever the cursor now is.
+     * Rebuilds the completion list for wherever the cursor now is.
      *
      * The strategy, in full: table names are loaded once per database and nothing else is loaded
      * in advance, so the size of the schema no longer decides what completion costs. Columns are
@@ -564,7 +777,7 @@ class QueryEditorViewModel @Inject constructor(
     private fun refreshSuggestions() {
         val tab = _uiState.value.active
         val id = tab.id
-        val context = SqlCompletion.contextAt(tab.sql, tab.selectionStart)
+        val context = SqlCompletion.contextAt(tab.sql, tab.selectionStart, dialect)
         completionJob?.cancel()
 
         // Nothing at all inside a string or a comment: whatever is being written there is prose,
@@ -576,30 +789,32 @@ class QueryEditorViewModel @Inject constructor(
 
         val database = tab.database
         completionJob = viewModelScope.launch {
-            val candidates = mutableListOf<String>()
+            val candidates = mutableListOf<CompletionItem>()
             if (database != null && context.columnTables.isNotEmpty()) {
                 candidates += columnsOf(database, context.columnTables)
             }
-            if (context.wantTables) candidates += tableNames
-            candidates += context.keywords
+            if (context.wantTables) candidates += tableNames.map { CompletionItem(it, CompletionKind.TABLE) }
+            candidates += context.keywords.map { CompletionItem(it, CompletionRanking.kindOfKeyword(it)) }
+            // Snippets only on a typed prefix: offered on an empty word they would crowd out the
+            // clause's own keywords, and a snippet is something one asks for by name.
+            if (context.prefix.isNotEmpty() && context.qualifier == null) {
+                candidates += snippets.value.map {
+                    CompletionItem(it.name, CompletionKind.SNIPPET, detail = it.body.lineSequence().first().trim(), snippetBody = it.body)
+                }
+            }
 
-            val suggestions = candidates
-                .asSequence()
-                .filter { context.prefix.isEmpty() || it.startsWith(context.prefix, ignoreCase = true) }
-                // A suggestion identical to what is already typed completes nothing.
-                .filterNot { it.equals(context.prefix, ignoreCase = true) }
-                .distinct()
-                .take(MAX_SUGGESTIONS)
-                .toList()
-            updateTab(id) { it.copy(suggestions = suggestions) }
+            updateTab(id) { it.copy(suggestions = CompletionRanking.rank(candidates, context.prefix)) }
         }
     }
 
     /** Columns of the named tables, one cached lookup each; a table that cannot be read adds none. */
-    private suspend fun columnsOf(database: String, tables: List<String>): List<String> =
+    private suspend fun columnsOf(database: String, tables: List<String>): List<CompletionItem> =
         tables.take(COLUMN_TABLES_PER_STATEMENT).flatMap { table ->
-            runCatching { schema.structure(database, table).columns.map { it.name } }
-                .getOrDefault(emptyList())
+            runCatching {
+                schema.structure(database, table).columns.map {
+                    CompletionItem(it.name, CompletionKind.COLUMN, detail = "${it.typeName} · $table")
+                }
+            }.getOrDefault(emptyList())
         }
 
     private fun loadTableNames(database: String?) {
@@ -624,7 +839,7 @@ class QueryEditorViewModel @Inject constructor(
      * A query with `:parameters` asks for their values first, rather than sending an empty string
      * to the server.
      */
-    fun run(parameters: Map<String, ParameterValue> = emptyMap()) {
+    override fun run(parameters: Map<String, ParameterValue>) {
         val tab = _uiState.value.active
         // A selection means "run this much of it", which is how a long script is worked through.
         val selected = tab.sql.substring(
@@ -632,7 +847,7 @@ class QueryEditorViewModel @Inject constructor(
             tab.selectionEnd.coerceIn(0, tab.sql.length),
         )
         val text = selected.takeIf { it.isNotBlank() } ?: tab.sql
-        execute(SqlScript.split(text).map { it.sql }, parameters)
+        execute(SqlScript.split(text, dialect.grammar).map { it.sql }, parameters)
     }
 
     /**
@@ -662,7 +877,7 @@ class QueryEditorViewModel @Inject constructor(
         val id = connectionId.value
         if (statements.isEmpty() || id == 0L || state.running) return
 
-        val needed = statements.flatMap { SqlGuards.parameters(it) }.distinct()
+        val needed = statements.flatMap { dialect.parameters(it) }.distinct()
         if (needed.isNotEmpty() && !parameters.keys.containsAll(needed)) {
             updateTab(tabId) { it.copy(pendingParameters = needed) }
             return
@@ -671,7 +886,7 @@ class QueryEditorViewModel @Inject constructor(
         // A SELECT is never held up; a write typed by hand is, every time. Row editing goes through
         // its own path and is not affected. A read-only connection refuses the write on its own,
         // and being asked to confirm something that cannot run is worse than the refusal.
-        val writes = statements.filter { SqlGuards.classify(it) == StatementKind.WRITE }
+        val writes = statements.filter { dialect.classify(it) == StatementKind.WRITE }
         if (writes.isNotEmpty() && !confirmed && !state.readOnly) {
             askToConfirm(statements, parameters, writes)
             return
@@ -788,11 +1003,17 @@ class QueryEditorViewModel @Inject constructor(
         updateActive { it.copy(error = null, errorDetail = null) }
         viewModelScope.launch {
             val connection = sessions.currentConnection()
+            val counts = writes.map { executor.estimateAffectedRows(it, parameters) }
+            // A preview that fails or cannot be derived is left out: it is information, never a gate.
+            val previews = writes.take(MAX_PREVIEWED_STATEMENTS).mapIndexedNotNull { index, sql ->
+                executor.previewWrite(sql, parameters)?.copy(totalRows = counts[index], statementIndex = index)
+            }
             _uiState.value = _uiState.value.copy(
                 running = false,
                 writeConfirmation = WriteConfirmation(
                     statements = writes,
-                    estimatedRows = estimate(writes, parameters),
+                    estimatedRows = total(counts),
+                    previews = previews,
                     connectionName = connection?.name ?: _uiState.value.connectionName,
                     environment = ConnectionEnvironment.fromName(connection?.environment),
                     database = _uiState.value.database ?: connection?.database,
@@ -808,26 +1029,18 @@ class QueryEditorViewModel @Inject constructor(
      * One uncountable statement makes the total a half-truth, and a half-truth shown as a number
      * is worse than "unknown" — so the whole estimate goes.
      */
-    private suspend fun estimate(
-        writes: List<String>,
-        parameters: Map<String, ParameterValue>,
-    ): Long? {
-        var total = 0L
-        for (sql in writes) {
-            total += executor.estimateAffectedRows(sql, parameters) ?: return null
-        }
-        return total
-    }
+    private fun total(counts: List<Long?>): Long? =
+        if (counts.any { it == null }) null else counts.sumOf { it ?: 0L }
 
     /** Runs what the dialog was asking about. */
-    fun confirmWrite() {
+    override fun confirmWrite() {
         val pending = pendingRun ?: return
         pendingRun = null
         _uiState.value = _uiState.value.copy(writeConfirmation = null)
         execute(pending.statements, pending.parameters, confirmed = true)
     }
 
-    fun dismissWriteConfirmation() {
+    override fun dismissWriteConfirmation() {
         pendingRun = null
         _uiState.value = _uiState.value.copy(writeConfirmation = null)
     }
@@ -843,7 +1056,7 @@ class QueryEditorViewModel @Inject constructor(
      * A query result is not a table page, so there is nothing to re-query: what is sorted is the
      * rows already in memory, and the label says as much when only part of the result is loaded.
      */
-    fun sortResult(column: String) {
+    override fun sortResult(column: String) {
         val tab = _uiState.value.active
         val result = tab.result ?: return
         val sort = TableQuery.nextSort(tab.resultSort, column)
@@ -856,22 +1069,50 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Runs the shown statement again after a row was written, so the grid holds what the server
+     * holds. Sorting is re-applied; the filter, the editor and the scroll position are left alone.
+     */
+    private suspend fun refreshResult(tabId: Long) {
+        val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        val index = tab.selectedStatement
+        val run = tab.statements.getOrNull(index) ?: return
+        try {
+            val table = executor.run(
+                connectionId = connectionId.value,
+                sql = run.sql,
+                parameters = tab.parameters,
+                rowLimit = _uiState.value.rowLimit,
+                readOnly = _uiState.value.readOnly,
+            ).table ?: return
+            updateTab(tabId) { current ->
+                val sort = current.resultSort
+                current.copy(
+                    statements = current.statements.mapIndexed { i, r -> if (i == index) r.copy(table = table) else r },
+                    result = if (sort == null) table else table.sortedBy(table.columns.indexOfFirst { it.label == sort.column }, sort.descending),
+                )
+            }
+        } catch (e: Exception) {
+            updateTab(tabId) { it.copy(error = describe(e)) }
+        }
+    }
+
     /** Narrows the rows on screen. Nothing is re-queried; what is not loaded stays unseen. */
-    fun setResultFilter(filter: ResultFilter) {
+    override fun setResultFilter(filter: ResultFilter) {
         updateActive { it.copy(resultFilter = filter) }
     }
 
     /** Folds the filter bar away, keeping whatever it is filtering by. */
-    fun toggleFilterBar() {
+    override fun toggleFilterBar() {
         updateActive { it.copy(filterOpen = !it.filterOpen) }
     }
 
     /** Switches between the rows and the picture of them. */
-    fun toggleChart() {
+    override fun toggleChart() {
         updateActive { it.copy(showChart = !it.showChart) }
     }
 
-    fun setChartSpec(spec: ChartSpec) {
+    override fun setChartSpec(spec: ChartSpec) {
         updateActive { it.copy(chartSpec = spec) }
     }
 
@@ -883,27 +1124,38 @@ class QueryEditorViewModel @Inject constructor(
      * syntax error on the first attempt is what an old server calls "I have never heard of this
      * word", so exactly that failure — and no other — runs the plain `EXPLAIN` instead.
      */
-    fun explain() {
+    override fun explain() {
         val sql = _uiState.value.active.sql.trim()
         if (sql.isBlank()) return
-        if (SqlGuards.classify(sql) != StatementKind.READ) {
+        // The menu entry is hidden where the engine has no plan to read; this is the guard for a
+        // stale tab or a shortcut, and it must not fall back to MySQL's wording on another engine.
+        val dialect = dialect
+        if (!dialect.supports(EngineFeature.EXPLAIN)) return
+        if (dialect.classify(sql) != StatementKind.READ) {
             updateActive { it.copy(error = context.getString(R.string.error_explain_read_only)) }
             return
         }
         // The editor keeps the query: rewriting it to "EXPLAIN ..." left the user to delete the
         // word again before running it for real.
+        val statements = SqlScript.split(sql, dialect.grammar).mapNotNull { dialect.explain(it.sql) }
+        if (statements.isEmpty()) return
         execute(
-            statements = SqlScript.split(sql).map { "$EXPLAIN_JSON${it.sql}" },
+            statements = statements,
             parameters = emptyMap(),
-            fallback = { statement, e ->
-                statement.takeIf { it.startsWith(EXPLAIN_JSON) }
-                    ?.takeIf { ExplainJson.isUnsupported(e.errorCode, e.message) }
-                    ?.let { "EXPLAIN ${it.removePrefix(EXPLAIN_JSON)}" }
+            // The plain-EXPLAIN retry is for MySQL servers older than 5.6 only.
+            fallback = if (dialect.engine != DatabaseEngine.MYSQL) {
+                null
+            } else {
+                { statement, e ->
+                    statement.takeIf { it.startsWith(EXPLAIN_JSON) }
+                        ?.takeIf { ExplainJson.isUnsupported(e.errorCode, e.message) }
+                        ?.let { "EXPLAIN ${it.removePrefix(EXPLAIN_JSON)}" }
+                }
             },
         )
     }
 
-    fun cancel() {
+    override fun cancel() {
         viewModelScope.launch {
             executor.cancel()
             runJob?.cancel()
@@ -912,14 +1164,14 @@ class QueryEditorViewModel @Inject constructor(
     }
 
     /** §7.7: CSV or JSON of what is loaded, straight into the share sheet. */
-    fun export(format: ExportFormat) {
+    override fun export(format: ExportFormat) {
         // What is exported is what is on screen. Exporting rows a filter is hiding would be a
         // file that does not match the thing the user was looking at when they asked for it.
         val result = _uiState.value.visibleResult ?: return
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(
-                    shareIntent = exports.shareIntent(result, format, "query"),
+                    shareIntent = exports.shareIntent(result, format, "query", syntax = dialect),
                 )
             } catch (e: Exception) {
                 updateActive { it.copy(error = describe(e)) }
@@ -927,15 +1179,70 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
-    fun shareIntentHandled() {
+    /** The statement behind the result on screen, as the user typed it (no app-added limit). */
+    private fun shownStatement(): String? {
+        val tab = _uiState.value.active
+        return tab.statements.getOrNull(tab.selectedStatement)?.sql
+    }
+
+    override fun canExportFull(): Boolean {
+        val state = _uiState.value
+        val sql = shownStatement() ?: return false
+        return FullExport.canOffer(sql, dialect, state.active.result, state.rowLimit)
+    }
+
+    private var fullExportJob: Job? = null
+
+    /**
+     * Exports the whole result, not the rows on screen: the same statement again, without the
+     * limit the app added, streamed row by row into the file. Cancellable, and never for a write.
+     */
+    override fun exportFull(format: ExportFormat) {
+        val sql = shownStatement() ?: return
+        if (!canExportFull() || fullExportJob?.isActive == true) return
+        val parameters = _uiState.value.active.parameters
+        fullExportJob = viewModelScope.launch {
+            _uiState.update { it.copy(fullExport = FullExportProgress(), exportNotice = null) }
+            try {
+                val result = fullExporter.export(sql, parameters, format, "query") { rows, bytes ->
+                    _uiState.update { it.copy(fullExport = FullExportProgress(rows, bytes)) }
+                }
+                _uiState.update {
+                    it.copy(
+                        shareIntent = result.intent,
+                        fullExport = null,
+                        exportNotice = result.outcome.cap?.let { cap ->
+                            ExportNotice(cap, result.outcome.rows, result.outcome.bytes)
+                        },
+                    )
+                }
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(fullExport = null) }
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(fullExport = null) }
+                updateActive { it.copy(error = describe(e)) }
+            }
+        }
+    }
+
+    override fun cancelFullExport() {
+        fullExportJob?.cancel()
+    }
+
+    override fun dismissExportNotice() {
+        _uiState.update { it.copy(exportNotice = null) }
+    }
+
+    override fun shareIntentHandled() {
         _uiState.value = _uiState.value.copy(shareIntent = null)
     }
 
-    fun dismissParameters() {
+    override fun dismissParameters() {
         updateActive { it.copy(pendingParameters = emptyList()) }
     }
 
-    fun saveFavourite(name: String) {
+    override fun saveFavourite(name: String) {
         val id = connectionId.value
         if (id == 0L) return
         val sql = _uiState.value.active.sql
@@ -945,7 +1252,7 @@ class QueryEditorViewModel @Inject constructor(
         viewModelScope.launch { queries.saveFavourite(id, name, sql) }
     }
 
-    fun deleteFavourite(favourite: SavedQueryEntity) {
+    override fun deleteFavourite(favourite: SavedQueryEntity) {
         viewModelScope.launch { queries.deleteFavourite(favourite.id) }
     }
 
@@ -955,7 +1262,8 @@ class QueryEditorViewModel @Inject constructor(
      * [saved] says whether it came from the favourites, which is what decides whether the tab is
      * then marked as holding unsaved text.
      */
-    fun load(sql: String, saved: Boolean = false) {
+    override fun load(sql: String, saved: Boolean) {
+        val history = historyFor(_uiState.value.active)
         // A query taken from the history or the favourites is meant to be read and edited, so the
         // editor unfolds even if a result was filling the screen.
         updateActive {
@@ -969,6 +1277,9 @@ class QueryEditorViewModel @Inject constructor(
                 savedSql = if (saved) sql else it.savedSql,
             )
         }
+        // Loading a favourite over text is undoable: the text it replaced is not lost.
+        history.record(EditorText(sql, sql.length, sql.length), EditKind.OTHER, nowMs())
+        touchHistory()
         noteDraftChange()
     }
 
@@ -983,7 +1294,7 @@ class QueryEditorViewModel @Inject constructor(
      * means without a key — is [ResultSnapshots]' answer, so it can be stated as an equality in a
      * test rather than demonstrated on a phone.
      */
-    fun takeSnapshot() {
+    override fun takeSnapshot() {
         val state = _uiState.value
         val tabId = state.activeTabId
         val tab = state.active
@@ -996,11 +1307,18 @@ class QueryEditorViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val keyColumns = keyColumnsOf(tab.database, result)
-            when (val outcome = ResultSnapshots.take(result, System.currentTimeMillis(), keyColumns)) {
+            val origin = currentOrigin(tab.database, tab.sql)
+            when (
+                val outcome = ResultSnapshots.take(
+                    result, System.currentTimeMillis(), keyColumns, origin = origin,
+                )
+            ) {
                 is SnapshotOutcome.Taken -> {
                     val snapshot = outcome.snapshot
+                    snapshotVault.keep(snapshot)
                     _uiState.value = _uiState.value.copy(
                         snapshots = _uiState.value.snapshots + (tabId to snapshot),
+                        carriedSnapshot = snapshot,
                         snapshotNotice = SnapshotNotice.Taken(
                             rows = snapshot.rowCount,
                             trimmedFrom = snapshot.sourceRowCount.takeIf { snapshot.truncated },
@@ -1028,32 +1346,61 @@ class QueryEditorViewModel @Inject constructor(
      * deliberately — a comparison that silently went to the server would be a write-shaped action
      * hiding behind a read-shaped one.
      */
-    fun compareWithSnapshot() {
+    override fun compareWithSnapshot() {
         val state = _uiState.value
-        val snapshot = state.snapshots[state.activeTabId] ?: return
+        val snapshot = state.snapshot ?: return
         // Both sides are what the screen shows, for the same reason taking one is.
         val result = state.visibleResult
+        val origin = currentOrigin(state.database, state.sql)
         val outcome = if (result == null) {
             ComparisonOutcome.NoResult
         } else {
-            ResultDiffs.compare(snapshot, result, System.currentTimeMillis())
+            ResultDiffs.compare(snapshot, result, System.currentTimeMillis(), afterOrigin = origin)
         }
         _uiState.value = state.copy(comparison = outcome)
     }
 
-    fun dismissComparison() {
+    /** The same comparison on key columns the user picked, for results with no detectable key. */
+    override fun compareWithSnapshotByKey(keyColumns: List<String>) {
+        val state = _uiState.value
+        val snapshot = state.snapshot ?: return
+        val result = state.visibleResult ?: return
+        val origin = currentOrigin(state.database, state.sql)
+        _uiState.value = state.copy(
+            comparison = ResultDiffs.compareByKey(
+                snapshot, result, keyColumns, System.currentTimeMillis(), afterOrigin = origin,
+            ),
+        )
+    }
+
+    /** Which connection, database and query a result belongs to, for the cross-connection sheet. */
+    private fun currentOrigin(database: String?, sql: String): SnapshotOrigin? {
+        val connection = sessions.currentConnection() ?: return null
+        return SnapshotOrigin(
+            connectionId = connection.id,
+            connectionName = connection.name,
+            environment = ConnectionEnvironment.fromName(connection.environment),
+            colorName = connection.color,
+            database = database ?: connection.database,
+            sql = sql,
+        )
+    }
+
+    override fun dismissComparison() {
         _uiState.value = _uiState.value.copy(comparison = null)
     }
 
-    fun dismissSnapshotNotice() {
+    override fun dismissSnapshotNotice() {
         _uiState.value = _uiState.value.copy(snapshotNotice = null)
     }
 
     /** Throws the snapshot away, for when the next one should be taken from a different run. */
-    fun discardSnapshot() {
+    override fun discardSnapshot() {
         val state = _uiState.value
+        snapshotVault.clear()
         _uiState.value = state.copy(
             snapshots = state.snapshots - state.activeTabId,
+            carriedSnapshot = null,
             comparison = null,
         )
     }
@@ -1083,7 +1430,7 @@ class QueryEditorViewModel @Inject constructor(
      * honest — nothing has been run in this process yet.
      */
     private fun restoreDrafts() {
-        viewModelScope.launch {
+        val job = viewModelScope.launch {
             val book = drafts.load()
             draftsRestored = true
             if (book.drafts.isEmpty()) return@launch
@@ -1107,8 +1454,44 @@ class QueryEditorViewModel @Inject constructor(
                 activeTabId = book.activeId ?: tabs.first().id,
             )
             lastWritten = book
+            // A restored draft is where this session's history starts, not something to undo past.
+            histories.clear()
+            touchHistory()
             refreshSuggestions()
         }
+        job.invokeOnCompletion { draftsReady.complete(Unit) }
+    }
+
+    /**
+     * SQL another screen asked to have opened (a slow statement, a running query). It lands in a
+     * tab of its own, and is never run: a statement from a list is something to read first.
+     */
+    private fun acceptHandedOverSql() {
+        viewModelScope.launch {
+            draftsReady.await()
+            editorHandoff.pending.filterNotNull().collect {
+                editorHandoff.take()?.let(::openHandedOverSql)
+            }
+        }
+    }
+
+    private fun openHandedOverSql(sql: String) {
+        val state = _uiState.value
+        val active = state.active
+        // A fresh, untouched tab is used as it is; stacking a new tab next to an empty one is clutter.
+        if (active.sql.isBlank() && active.result == null) {
+            load(sql)
+            return
+        }
+        val id = nextTabId
+        val opened = QueryTabs.open(state.tabs, id, sql = sql, database = state.database)
+        if (opened == null) {
+            _uiState.value = state.copy(tabLimitReached = true)
+            return
+        }
+        nextTabId++
+        _uiState.value = state.copy(tabs = opened, activeTabId = id, tabLimitReached = false)
+        noteDraftChange()
     }
 
     private fun noteDraftChange() {
@@ -1160,8 +1543,8 @@ class QueryEditorViewModel @Inject constructor(
         /** The prefix the plan is asked for with, and the one the retry strips off again. */
         const val EXPLAIN_JSON = "EXPLAIN FORMAT=JSON "
 
-        const val MAX_ROW_LIMIT = 10_000
-        const val MAX_SUGGESTIONS = 8
+        /** Three tables on a phone card is already a lot to read before pressing the button. */
+        const val MAX_PREVIEWED_STATEMENTS = 3
 
         /** Long enough that a word's worth of typing is one write, short enough to never notice. */
         const val DRAFT_DEBOUNCE_MS = 500L
@@ -1175,4 +1558,11 @@ class QueryEditorViewModel @Inject constructor(
          */
         const val COLUMN_TABLES_PER_STATEMENT = 4
     }
+}
+
+/** The editor row limit, which follows Settings -> default row limit. */
+object EditorRowLimit {
+    const val MAX = 10_000
+
+    fun clamp(limit: Int): Int = limit.coerceIn(1, MAX)
 }

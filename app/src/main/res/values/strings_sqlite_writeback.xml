@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="writeback_title">Write the changes to the original file?</string>
+    <string name="writeback_body">%1$s has changes that exist only in the app\'s copy. If you do not write them out, they stay in the app and the original file is left as it is.</string>
+    <string name="writeback_production">PRODUCTION CONNECTION</string>
+    <string name="writeback_confirm">Write</string>
+    <string name="writeback_keep_local">Only in the copy</string>
+    <string name="writeback_changed_title">The original file changed in the meantime — overwrite it?</string>
+    <string name="writeback_changed_body">%1$s was changed after the app copied it. Writing now replaces those changes with the app\'s copy.</string>
+    <string name="writeback_unknown_body">The app cannot tell whether %1$s was changed after it was copied. Writing now replaces whatever is there with the app\'s copy.</string>
+    <string name="writeback_overwrite">Overwrite</string>
+    <string name="writeback_working">Writing %1$s…</string>
+    <string name="writeback_done">Changes written to %1$s.</string>
+    <string name="writeback_failed_title">Writing failed</string>
+    <string name="writeback_failed">Could not write to %1$s: %2$s. The changes stay in the app\'s copy; try again or check the original file.</string>
+    <string name="writeback_close">OK</string>
+    <string name="writeback_refused_title">Cannot write yet</string>
+    <string name="writeback_refused_transaction">A transaction is open. Commit or roll it back first, then write out the changes.</string>
+    <string name="writeback_refused_permission">The app no longer has write access to the original file. Choose the file again in the connection editor.</string>
+    <string name="writeback_refused_nothing">There is nothing to write: the copy matches the original.</string>
+    <string name="writeback_refused_baseline">This copy was made before write-back existed, so the app cannot tell what changed. Refresh the copy from the original first.</string>
+    <string name="writeback_button">Write to original</string>
+    <string name="writeback_dirty_note">The copy has changes that are not in the original file yet.</string>
+    <string name="writeback_no_permission_note">The app has no write access to the original file, so changes stay in the copy. Choose the file again to allow writing.</string>
+    <string name="writelog_source_write_back">Write-back</string>
+</resources>

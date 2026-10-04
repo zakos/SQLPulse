@@ -79,7 +79,7 @@ class TunnelService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setSmallIcon(R.drawable.ic_stat_pulse)
             .setContentTitle(getString(R.string.tunnel_notification_title, name))
             .setContentText(getString(R.string.tunnel_notification_body, localPort, dbHost, dbPort))
             .setContentIntent(open)

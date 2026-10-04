@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="structure_default_label">default</string>
+    <string name="production_confirm_body_file">%1$s is a production database file (%2$s), and writes are allowed on it. Open it?</string>
+
+    <string name="fact_version">Version</string>
+    <string name="fact_build">Build</string>
+    <string name="fact_edition">Edition</string>
+    <string name="fact_level">Service level</string>
+    <string name="fact_host">Host name</string>
+    <string name="fact_user">User</string>
+    <string name="fact_database">Database</string>
+    <string name="fact_role">Role</string>
+    <string name="fact_uptime">Uptime</string>
+    <string name="fact_connections">Connections now</string>
+    <string name="fact_running">Running threads</string>
+    <string name="fact_max_connections">Max connections</string>
+    <string name="fact_tls">TLS</string>
+    <string name="fact_read_only">Read only</string>
+    <string name="fact_time_zone">Time zone</string>
+    <string name="fact_charset">Character set</string>
+    <string name="fact_collation">Collation</string>
+    <string name="fact_driver">JDBC driver</string>
+    <string name="fact_yes">Yes</string>
+    <string name="fact_no">No</string>
+    <string name="fact_tls_none">Not encrypted</string>
+    <string name="fact_tls_on">Encrypted</string>
+    <string name="fact_driver_modern">MariaDB Connector/J</string>
+    <string name="fact_driver_legacy">MySQL Connector/J 5.1 (for old servers)</string>
+    <string name="fact_uptime_days">%1$d d %2$d h</string>
+    <string name="fact_uptime_hours">%1$d h %2$d min</string>
+    <string name="fact_uptime_minutes">%1$d min</string>
+</resources>

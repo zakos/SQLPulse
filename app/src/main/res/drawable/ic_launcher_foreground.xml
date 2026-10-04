@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A database cylinder with the live signal running through it, ending in the green dot the
+  connection list uses for an active connection. Drawn inside the 66dp safe zone of the 108dp
+  adaptive icon grid, so no launcher mask cuts into it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Top of the cylinder. -->
+    <path
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="4"
+        android:pathData="M33,35a21,7 0,1 0,42 0a21,7 0,1 0,-42 0" />
+    <!-- Sides and bottom. -->
+    <path
+        android:strokeColor="#E8EAED"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M33,35v37c0,3.9 9.4,7 21,7s21,-3.1 21,-7V35" />
+    <!-- The middle ring, quieter than the outline. -->
+    <path
+        android:strokeColor="#E8EAED"
+        android:strokeAlpha="0.55"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M33,53.5c0,3.9 9.4,7 21,7s21,-3.1 21,-7" />
+    <!-- A background-coloured band under the signal, so it reads cleanly across the outline. -->
+    <path
+        android:strokeColor="#0F1115"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M22,56h13l6,-12l8,24l7,-17l4,5h17" />
+    <path
+        android:strokeColor="#4D9FFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M22,56h13l6,-12l8,24l7,-17l4,5h17" />
+    <path
+        android:fillColor="#0F1115"
+        android:pathData="M72,56a8,8 0,1 0,16 0a8,8 0,1 0,-16 0" />
+    <path
+        android:fillColor="#3DD68C"
+        android:pathData="M75,56a5,5 0,1 0,10 0a5,5 0,1 0,-10 0" />
+</vector>

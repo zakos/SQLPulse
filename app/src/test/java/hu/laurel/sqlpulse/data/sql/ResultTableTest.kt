@@ -93,4 +93,15 @@ class ResultTableTest {
 
         assertEquals(table, table.sortedBy(7, descending = false))
     }
+
+    @Test
+    fun `a bit column is a flag except for PostgreSQL bit strings`() {
+        // MySQL BIT and SQL Server bit read with getBoolean.
+        assertEquals(CellType.BOOLEAN, ResultTable.columnTypeOf(Types.BIT, "BIT"))
+        assertEquals(CellType.BOOLEAN, ResultTable.columnTypeOf(Types.BIT, "bit"))
+        // PostgreSQL bit(n) and bit varying hold "101", which getBoolean refuses.
+        assertEquals(CellType.TEXT, ResultTable.columnTypeOf(Types.BIT, "bit", postgres = true))
+        assertEquals(CellType.TEXT, ResultTable.columnTypeOf(Types.BIT, "varbit", postgres = true))
+        assertEquals(CellType.BOOLEAN, ResultTable.columnTypeOf(Types.BIT, "bool", postgres = true))
+    }
 }

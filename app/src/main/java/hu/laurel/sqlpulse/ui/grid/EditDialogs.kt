@@ -5,15 +5,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -29,8 +36,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellEditor
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
+import hu.laurel.sqlpulse.ui.components.DialogNote
+import hu.laurel.sqlpulse.ui.components.LabeledField
+import hu.laurel.sqlpulse.ui.components.SqlBlock
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
@@ -47,6 +62,7 @@ import kotlinx.coroutines.delay
  * enum is a list, a boolean is two buttons, and a date offers today and now. NULL stays an
  * explicit choice throughout, because an empty string is not the same thing.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CellEditDialog(
     columnLabel: String,
@@ -59,76 +75,99 @@ fun CellEditDialog(
     var text by remember { mutableStateOf(initialValue.orEmpty()) }
     var isNull by remember { mutableStateOf(initialValue == null) }
 
-    fun set(value: String) {
-        text = value
-        isNull = false
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        CellEditCard(
+            columnLabel = columnLabel,
+            editor = editor,
+            text = text,
+            isNull = isNull,
+            // Typing or picking a value makes it a value again: NULL is only what the box says.
+            onText = {
+                text = it
+                isNull = false
+            },
+            onNull = { isNull = it },
+            onConfirm = { onConfirm(if (isNull) null else text) },
+            onDismiss = onDismiss,
+        )
     }
+}
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(columnLabel) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                when (editor) {
-                    is CellEditor.Choice -> ChoiceRow(
-                        options = editor.options,
-                        selected = text.takeUnless { isNull },
-                        onSelect = ::set,
-                    )
-
-                    is CellEditor.Choices -> ChoicesRow(
-                        options = editor.options,
-                        selected = text.takeUnless { isNull }
-                            ?.split(',')
-                            ?.map { it.trim() }
-                            ?.filter { it.isNotEmpty() }
-                            .orEmpty(),
-                        // A SET is stored comma-separated, in no particular order.
-                        onToggle = { chosen -> set(chosen.joinToString(",")) },
-                    )
-
-                    else -> Unit
-                }
-
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it; isNull = false },
-                    enabled = !isNull,
-                    textStyle = MonoStyles.cell,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = if (editor is CellEditor.Number) {
-                            KeyboardType.Number
-                        } else {
-                            KeyboardType.Text
-                        },
-                    ),
-                    singleLine = editor !is CellEditor.Text,
-                    modifier = Modifier.fillMaxWidth(),
+/** The cell editor's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun CellEditCard(
+    columnLabel: String,
+    editor: CellEditor,
+    text: String,
+    isNull: Boolean,
+    onText: (String) -> Unit,
+    onNull: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = columnLabel)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            when (editor) {
+                is CellEditor.Choice -> ChoiceRow(
+                    options = editor.options,
+                    selected = text.takeUnless { isNull },
+                    onSelect = onText,
                 )
 
-                // Shortcuts for the values that are otherwise typed out by hand, wrongly.
-                val shortcuts = shortcutsFor(editor)
-                if (shortcuts.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                        shortcuts.forEach { (label, value) ->
-                            AssistChip(onClick = { set(value()) }, label = { Text(label) })
-                        }
+                is CellEditor.Choices -> ChoicesRow(
+                    options = editor.options,
+                    selected = text.takeUnless { isNull }
+                        ?.split(',')
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotEmpty() }
+                        .orEmpty(),
+                    // A SET is stored comma-separated, in no particular order.
+                    onToggle = { chosen -> onText(chosen.joinToString(",")) },
+                )
+
+                else -> Unit
+            }
+
+            OutlinedTextField(
+                value = text,
+                onValueChange = onText,
+                enabled = !isNull,
+                textStyle = MonoStyles.cell,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (editor is CellEditor.Number) {
+                        KeyboardType.Number
+                    } else {
+                        KeyboardType.Text
+                    },
+                ),
+                singleLine = editor !is CellEditor.Text,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Shortcuts for the values that are otherwise typed out by hand, wrongly.
+            val shortcuts = shortcutsFor(editor)
+            if (shortcuts.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    shortcuts.forEach { (label, value) ->
+                        AssistChip(onClick = { onText(value()) }, label = { Text(label) })
                     }
                 }
+            }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isNull, onCheckedChange = { isNull = it })
-                    Text(stringResource(R.string.cell_set_null))
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = isNull, onCheckedChange = onNull)
+                Text(stringResource(R.string.cell_set_null))
             }
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(if (isNull) null else text) }) {
-                Text(stringResource(R.string.connection_save))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.connection_save),
+            onAction = onConfirm,
+            enabled = true,
+        )
+    }
 }
 
 /**
@@ -201,6 +240,7 @@ private fun ChoicesRow(
  *
  * On a production connection a delete also requires the table name to be typed.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmStatementDialog(
     title: String,
@@ -209,70 +249,88 @@ fun ConfirmStatementDialog(
     requireTableName: String?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** Where this applies, in capitals under the title: the environment, when it is production. */
+    subtitle: String? = null,
 ) {
     var armed by remember { mutableStateOf(false) }
     var typedName by remember { mutableStateOf("") }
-    val semantic = LocalSemanticColors.current
 
     LaunchedEffect(statement) {
         delay(ARM_DELAY_MS)
         armed = true
     }
 
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ConfirmStatementCard(
+            title = title,
+            subtitle = subtitle,
+            statement = statement,
+            destructive = destructive,
+            requireTableName = requireTableName,
+            armed = armed,
+            typedName = typedName,
+            onTypedName = { typedName = it },
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The dialog's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun ConfirmStatementCard(
+    title: String,
+    subtitle: String?,
+    statement: String,
+    destructive: Boolean,
+    requireTableName: String?,
+    armed: Boolean,
+    typedName: String,
+    onTypedName: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
     val nameMatches = requireTableName == null || typedName.trim() == requireTableName
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, color = if (destructive) semantic.danger else MaterialTheme.colorScheme.onSurface) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, Shapes.button)
-                        .padding(Spacing.m),
-                ) {
-                    val whereIndex = statement.indexOf(" WHERE ")
-                    if (whereIndex >= 0) {
-                        Text(statement.substring(0, whereIndex), style = MonoStyles.cell)
-                        Text(
-                            text = statement.substring(whereIndex + 1),
-                            style = MonoStyles.cell,
-                            color = semantic.warning,
-                            textDecoration = TextDecoration.Underline,
-                        )
-                    } else {
-                        Text(statement, style = MonoStyles.cell)
-                    }
-                }
-
-                requireTableName?.let { table ->
-                    Text(
-                        text = stringResource(R.string.confirm_type_table_name, table),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.danger,
-                    )
-                    OutlinedTextField(
-                        value = typedName,
-                        onValueChange = { typedName = it },
-                        singleLine = true,
-                        textStyle = MonoStyles.cell,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+    DialogCard(danger = destructive && requireTableName != null) {
+        DialogHeading(title = title, subtitle = subtitle, danger = destructive)
+        if (!destructive) {
+            Text(
+                stringResource(R.string.confirm_transaction_note),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = semantic.textSecondary,
+            )
+        }
+        SqlBlock(statement)
+        if (!destructive) {
+            DialogNote(stringResource(R.string.confirm_optimistic_note), Icons.Default.Shield, semantic.success)
+        }
+        requireTableName?.let { table ->
+            LabeledField(
+                value = typedName,
+                onValueChange = onTypedName,
+                label = { Text(stringResource(R.string.confirm_type_table_name, table)) },
+                mono = true,
+            )
+            if (typedName.isNotEmpty() && !nameMatches) {
+                Text(
+                    stringResource(R.string.confirm_name_mismatch),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = semantic.textSecondary,
+                )
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = armed && nameMatches,
-                shape = Shapes.button,
-            ) {
-                Text(stringResource(if (destructive) R.string.row_delete else R.string.confirm_run))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(if (destructive) R.string.row_delete else R.string.confirm_run),
+            onAction = onConfirm,
+            enabled = armed && nameMatches,
+            danger = destructive,
+            actionIcon = if (destructive) Icons.Default.Delete else null,
+        )
+    }
 }
 
 /** §7.6: the first second after the dialog appears, the confirm button does nothing. */

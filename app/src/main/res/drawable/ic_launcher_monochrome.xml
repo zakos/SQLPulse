@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed icon layer (Android 13+). The launcher tints it with one colour, so the cylinder steps
+  back through alpha instead of the background-coloured band the full-colour icon uses.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.45"
+        android:strokeWidth="4"
+        android:pathData="M33,35a21,7 0,1 0,42 0a21,7 0,1 0,-42 0" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.45"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M33,35v37c0,3.9 9.4,7 21,7s21,-3.1 21,-7V35" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M22,56h13l6,-12l8,24l7,-17l4,5h17" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M75,56a5,5 0,1 0,10 0a5,5 0,1 0,-10 0" />
+</vector>

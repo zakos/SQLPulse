@@ -1,13 +1,21 @@
 package hu.laurel.sqlpulse.ui.explain
 
+import java.util.Locale
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,21 +33,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ExplainAdvice
-import hu.laurel.sqlpulse.data.sql.ExplainJson
 import hu.laurel.sqlpulse.data.sql.ExplainNodeKind
 import hu.laurel.sqlpulse.data.sql.ExplainNote
 import hu.laurel.sqlpulse.data.sql.ExplainPlan
 import hu.laurel.sqlpulse.data.sql.ExplainPlanFlag
 import hu.laurel.sqlpulse.data.sql.ExplainPlanNode
 import hu.laurel.sqlpulse.data.sql.ExplainPlanResult
+import hu.laurel.sqlpulse.data.sql.ExplainUnavailable
+import hu.laurel.sqlpulse.data.sql.MissingIndexHint
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.plan.PlanReaders
+import hu.laurel.sqlpulse.ui.components.InfoBadge
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -59,7 +71,12 @@ fun ExplainPlanSection(
     result: ResultTable,
     modifier: Modifier = Modifier,
 ) {
-    val parsed = remember(result) { ExplainJson.of(jsonPlanOf(result)) }
+    // The shape of the answer says which engine wrote it (see PlanReaders.detect); MySQL's single
+    // JSON cell goes to the reader the app always had, so its plans are drawn exactly as before.
+    val parsed = remember(result) {
+        PlanReaders.detect(result)?.read(result)
+            ?: ExplainPlanResult.Unavailable(ExplainUnavailable.UNSUPPORTED)
+    }
     when (parsed) {
         is ExplainPlanResult.Parsed -> ExplainPlanTree(parsed.plan, modifier)
         is ExplainPlanResult.Unavailable -> {
@@ -142,14 +159,25 @@ fun ExplainPlanTree(
         )
         plan.totalCost?.let { cost ->
             Text(
-                text = stringResource(R.string.plan_total_cost, cost.asCost()),
+                text = stringResource(R.string.plan_total_cost, cost.asCost(appLocale())),
                 style = MaterialTheme.typography.bodySmall,
                 color = semantic.textSecondary,
             )
         }
         if (!plan.hasCostInfo) {
             Text(
-                text = stringResource(R.string.plan_no_cost),
+                text = stringResource(
+                    if (plan.engine == DatabaseEngine.SQLITE) R.string.plan_no_cost_sqlite else R.string.plan_no_cost,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+        // MySQL's EXPLAIN is an estimate too, but it has always said nothing about it; the other
+        // engines' plans are new here and say so once.
+        if (plan.engine != DatabaseEngine.MYSQL) {
+            Text(
+                text = stringResource(R.string.plan_estimate_only),
                 style = MaterialTheme.typography.bodySmall,
                 color = semantic.textSecondary,
             )
@@ -171,10 +199,48 @@ fun ExplainPlanTree(
                 modifier = Modifier.padding(top = Spacing.xs),
             )
         }
+
+        if (plan.missingIndexes.isNotEmpty()) {
+            MissingIndexes(plan.missingIndexes)
+        }
+    }
+}
+
+/**
+ * What SQL Server says an index would have saved: text to read, nothing to tap. The app never
+ * creates an index (specification §2), so there is no statement here to copy or run either.
+ */
+@Composable
+private fun MissingIndexes(hints: List<MissingIndexHint>) {
+    val semantic = LocalSemanticColors.current
+    Column(modifier = Modifier.padding(top = Spacing.s)) {
+        Text(
+            text = stringResource(R.string.plan_missing_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        hints.forEach { hint ->
+            val keys = (hint.equalityColumns + hint.inequalityColumns).joinToString(", ")
+            val line = buildString {
+                append(stringResource(R.string.plan_missing_index, hint.table, keys))
+                if (hint.includeColumns.isNotEmpty()) {
+                    append(" ").append(stringResource(R.string.plan_missing_index_include, hint.includeColumns.joinToString(", ")))
+                }
+                hint.impactPercent?.let {
+                    append(" — ").append(stringResource(R.string.plan_missing_index_impact, LocaleFormat.decimal(it, 0, appLocale())))
+                }
+            }
+            Text(text = line, style = MonoStyles.cell, color = semantic.textSecondary)
+        }
+        Text(
+            text = stringResource(R.string.plan_missing_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
     }
 }
 
 /** One node and, when it is open, everything under it. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlanNodeRows(
     node: ExplainPlanNode,
@@ -192,12 +258,17 @@ private fun PlanNodeRows(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = (depth * 12).dp, top = Spacing.xs)
-            .clip(RoundedCornerShape(8.dp))
-            // Only the heaviest step is filled in: a whole branch in colour would say "look
-            // here" about five rows at once, which is the same as saying nothing.
-            .background(if (isHeaviest) semantic.warning.copy(alpha = 0.16f) else Color.Transparent)
+            .clip(RoundedCornerShape(12.dp))
+            // Every step is a card; only the heaviest is filled in: a whole branch in colour
+            // would say "look here" about five rows at once, which is the same as saying nothing.
+            .background(if (isHeaviest) semantic.danger.copy(alpha = 0.13f) else MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                if (isHeaviest) semantic.danger else semantic.hairline,
+                RoundedCornerShape(12.dp),
+            )
             .clickable(enabled = node.children.isNotEmpty()) { onToggle(node.id) }
-            .padding(Spacing.xs),
+            .padding(horizontal = Spacing.s, vertical = Spacing.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (node.children.isNotEmpty()) {
@@ -212,23 +283,64 @@ private fun PlanNodeRows(
             } else {
                 Spacer(modifier = Modifier.size(18.dp))
             }
-            Text(
-                text = stringResource(node.kind.labelRes()),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (onBranch) semantic.warning else semantic.textSecondary,
-            )
-            Text(
-                text = " ${node.label}",
-                style = MonoStyles.cell,
-                fontWeight = if (isHeaviest) FontWeight.Bold else FontWeight.Normal,
-            )
+            Column(modifier = Modifier.weight(1f).padding(start = Spacing.xs)) {
+                Text(
+                    text = stringResource(node.kind.labelRes()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = when {
+                        isHeaviest -> semantic.danger
+                        onBranch -> semantic.warning
+                        else -> semantic.textSecondary
+                    },
+                )
+                Text(
+                    text = node.label,
+                    style = MonoStyles.cell,
+                    fontWeight = if (isHeaviest) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+            if (isHeaviest) {
+                InfoBadge(text = stringResource(R.string.plan_expensive_badge), color = semantic.danger)
+            }
+            // This step's share of the whole plan's cost, where the server said what it is.
+            val share = node.cost?.let { own -> plan.totalCost?.takeIf { it > 0 }?.let { total -> (own / total).coerceIn(0.0, 1.0) } }
+            share?.let {
+                Text(
+                    text = LocaleFormat.percent(it, appLocale()),
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = if (isHeaviest) semantic.danger else semantic.textSecondary,
+                    modifier = Modifier.padding(start = Spacing.s),
+                )
+            }
+        }
+        node.cost?.let { own ->
+            plan.totalCost?.takeIf { it > 0 }?.let { total ->
+                val share = (own / total).coerceIn(0.0, 1.0).toFloat()
+                Box(
+                    modifier = Modifier
+                        .padding(start = 18.dp, top = Spacing.xs)
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .background(semantic.surfaceRaised, RoundedCornerShape(3.dp)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(share.coerceAtLeast(0.02f))
+                            .height(6.dp)
+                            .background(if (isHeaviest) semantic.danger else MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
+                    )
+                }
+            }
         }
 
-        val facts = node.facts()
+        val facts = node.facts(appLocale())
         if (facts.isNotEmpty()) {
-            Row(
-                modifier = Modifier.padding(start = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+            // Wraps over lines: six short facts side by side each got a sliver of the width, and
+            // broke into a column of one word per line.
+            FlowRow(
+                modifier = Modifier.padding(start = 18.dp, top = Spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 facts.forEach { (labelRes, value) ->
                     Text(
@@ -238,15 +350,6 @@ private fun PlanNodeRows(
                     )
                 }
             }
-        }
-
-        if (isHeaviest) {
-            Text(
-                text = stringResource(R.string.plan_expensive),
-                style = MaterialTheme.typography.labelSmall,
-                color = semantic.warning,
-                modifier = Modifier.padding(start = 18.dp),
-            )
         }
 
         node.flags.mapNotNull { it.textRes() }.forEach { textRes ->
@@ -295,21 +398,21 @@ private fun PlanNodeRows(
 }
 
 /** The numbers worth putting on the row itself, in the order they answer "is this step the one". */
-private fun ExplainPlanNode.facts(): List<Pair<Int, String>> = buildList {
+private fun ExplainPlanNode.facts(locale: Locale): List<Pair<Int, String>> = buildList {
     accessType?.let { add(R.string.plan_label_access to it) }
     when {
         usedKey != null -> add(R.string.plan_label_key to usedKey)
         kind == ExplainNodeKind.TABLE -> add(R.string.plan_label_no_key to "")
     }
-    rowsExamined?.let { add(R.string.plan_label_rows_examined to it.grouped()) }
-    rowsProduced?.let { add(R.string.plan_label_rows_produced to it.grouped()) }
-    filteredPercent?.let { add(R.string.plan_label_filtered to "${it.asCost()}%") }
-    cost?.let { add(R.string.plan_label_cost to it.asCost()) }
+    rowsExamined?.let { add(R.string.plan_label_rows_examined to it.grouped(locale)) }
+    rowsProduced?.let { add(R.string.plan_label_rows_produced to it.grouped(locale)) }
+    filteredPercent?.let { add(R.string.plan_label_filtered to "${it.asCost(locale)}%") }
+    cost?.let { add(R.string.plan_label_cost to it.asCost(locale)) }
 }
 
-private fun Long.grouped(): String = "%,d".format(this)
+private fun Long.grouped(locale: Locale): String = LocaleFormat.integer(this, locale)
 
-private fun Double.asCost(): String = "%,.2f".format(this)
+private fun Double.asCost(locale: Locale): String = LocaleFormat.decimal(this, 2, locale)
 
 @StringRes
 private fun ExplainNodeKind.labelRes(): Int = when (this) {
@@ -322,6 +425,8 @@ private fun ExplainNodeKind.labelRes(): Int = when (this) {
     ExplainNodeKind.UNION -> R.string.plan_node_union
     ExplainNodeKind.SUBQUERY -> R.string.plan_node_subquery
     ExplainNodeKind.MATERIALISED -> R.string.plan_node_materialised
+    ExplainNodeKind.JOIN -> R.string.plan_node_join
+    ExplainNodeKind.OPERATION -> R.string.plan_node_operation
 }
 
 /**
@@ -334,6 +439,8 @@ private fun ExplainPlanFlag.textRes(): Int? = when (this) {
     ExplainPlanFlag.COVERING_INDEX -> R.string.plan_flag_covering
     ExplainPlanFlag.JOIN_BUFFER -> R.string.plan_flag_join_buffer
     ExplainPlanFlag.DEPENDENT -> R.string.plan_flag_dependent
+    ExplainPlanFlag.KEY_LOOKUP -> R.string.plan_flag_key_lookup
+    ExplainPlanFlag.AUTO_INDEX -> R.string.plan_flag_auto_index
     ExplainPlanFlag.FULL_TABLE_SCAN,
     ExplainPlanFlag.FULL_INDEX_SCAN,
     ExplainPlanFlag.NO_INDEX,
@@ -351,4 +458,6 @@ private fun ExplainNote.textRes(): Int = when (this) {
     ExplainNote.FILESORT -> R.string.explain_filesort
     ExplainNote.TEMPORARY_TABLE -> R.string.explain_temporary
     ExplainNote.MANY_ROWS -> R.string.explain_many_rows
+    ExplainNote.KEY_LOOKUP -> R.string.explain_key_lookup
+    ExplainNote.AUTOMATIC_INDEX -> R.string.explain_automatic_index
 }

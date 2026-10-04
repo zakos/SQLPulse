@@ -1,7 +1,11 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -10,18 +14,27 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -50,8 +63,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
@@ -69,11 +89,17 @@ import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ColumnEditors
 import hu.laurel.sqlpulse.data.sql.ColumnFilter
 import hu.laurel.sqlpulse.data.sql.EditKind
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
+import hu.laurel.sqlpulse.ui.components.DialogNote
+import hu.laurel.sqlpulse.ui.components.SectionCaption
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.grid.CellEditDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
 import hu.laurel.sqlpulse.ui.grid.CellSheet
 import hu.laurel.sqlpulse.ui.grid.ConfirmStatementDialog
+import hu.laurel.sqlpulse.ui.grid.ExportSheet
 import hu.laurel.sqlpulse.ui.grid.LinkChildEntry
 import hu.laurel.sqlpulse.ui.grid.LinkOffer
 import hu.laurel.sqlpulse.ui.grid.LinkWalkSheet
@@ -85,14 +111,25 @@ import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TableDetailScreen(
     onBack: () -> Unit,
     onOpenTable: (database: String, table: String) -> Unit,
     viewModel: TableDetailViewModel = hiltViewModel(),
+) {
+    TableDetailScreenContent(onBack = onBack, onOpenTable = onOpenTable, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [TableDetailController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TableDetailScreenContent(
+    onBack: () -> Unit,
+    onOpenTable: (database: String, table: String) -> Unit,
+    viewModel: TableDetailController,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -127,10 +164,16 @@ fun TableDetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undo()
     }
 
+    // Every way out of the table goes through the write-back check; it only intercepts a SQLite
+    // file connection, and the check itself decides whether there is anything to ask.
+    val leave = { viewModel.requestLeave(onBack) }
+    androidx.activity.compose.BackHandler(enabled = state.isFileConnection) { leave() }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHost) },
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = {
                     Column {
                         Text(state.table, style = MaterialTheme.typography.titleMedium)
@@ -142,7 +185,7 @@ fun TableDetailScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { leave() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cancel))
                     }
                 },
@@ -160,26 +203,15 @@ fun TableDetailScreen(
                         }
                     }
                     if (state.tab == TableTab.DATA && state.rows != null) {
-                        Box {
-                            IconButton(onClick = { exportMenuOpen = true }) {
-                                Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
-                            }
-                            DropdownMenu(
-                                expanded = exportMenuOpen,
-                                onDismissRequest = { exportMenuOpen = false },
-                            ) {
-                                // One entry per format, in the order they are reached for:
-                                // a spreadsheet, a shell, a program, another database.
-                                ExportFormat.entries.forEach { format ->
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(format.labelRes())) },
-                                        onClick = {
-                                            exportMenuOpen = false
-                                            viewModel.export(format)
-                                        },
-                                    )
-                                }
-                            }
+                        IconButton(onClick = { exportMenuOpen = true }) {
+                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export))
+                        }
+                        if (exportMenuOpen) {
+                            ExportSheet(
+                                rowCount = state.rows?.rowCount ?: 0,
+                                onExport = viewModel::export,
+                                onDismiss = { exportMenuOpen = false },
+                            )
                         }
                     }
                 },
@@ -187,7 +219,12 @@ fun TableDetailScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = state.tab.ordinal) {
+            TabRow(
+                selectedTabIndex = state.tab.ordinal,
+                // On the screen's own ground, like the top bar above it; the indicator carries the choice.
+                containerColor = MaterialTheme.colorScheme.background,
+                divider = { HorizontalDivider(color = semantic.hairline) },
+            ) {
                 TableTab.entries.forEach { tab ->
                     Tab(
                         selected = tab == state.tab,
@@ -253,7 +290,11 @@ fun TableDetailScreen(
                             item { TableCollationRow(collation) }
                         }
                         items(structure.columns, key = { "column:" + it.name }) { column ->
-                            ColumnRow(column, structure.collation)
+                            ColumnRow(
+                                column,
+                                structure.collation,
+                                structure.foreignKeys.firstOrNull { it.column == column.name },
+                            )
                             HorizontalDivider(color = semantic.hairline)
                         }
                         if (structure.indexes.isNotEmpty()) {
@@ -308,13 +349,32 @@ fun TableDetailScreen(
                                 )
                             }
                         }
+                        // Code is not wrapped: a wrapped CREATE TABLE stops being readable as one.
+                        // The scroll is horizontal, with a thumb so it is visible that there is more.
+                        val hScroll = rememberScrollState()
+                        val thumb = semantic.textSecondary.copy(alpha = 0.5f)
                         Text(
                             text = ddl,
                             style = MonoStyles.cell,
+                            softWrap = false,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .drawWithContent {
+                                    drawContent()
+                                    val total = hScroll.maxValue + size.width
+                                    if (hScroll.maxValue > 0) {
+                                        val w = size.width * size.width / total
+                                        val x = (size.width - w) * hScroll.value / hScroll.maxValue
+                                        drawRoundRect(
+                                            thumb,
+                                            topLeft = androidx.compose.ui.geometry.Offset(x, size.height - 6.dp.toPx()),
+                                            size = androidx.compose.ui.geometry.Size(w, 3.dp.toPx()),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                                        )
+                                    }
+                                }
                                 .verticalScroll(rememberScrollState())
-                                .horizontalScroll(rememberScrollState())
+                                .horizontalScroll(hScroll)
                                 .padding(Spacing.l),
                         )
                     }
@@ -445,6 +505,7 @@ fun TableDetailScreen(
             requireTableName = state.table.takeIf { destructive && state.isProduction },
             onConfirm = viewModel::confirmEdit,
             onDismiss = viewModel::dismissEdit,
+            subtitle = stringResource(R.string.environment_production_short).uppercase().takeIf { state.isProduction },
         )
     }
 
@@ -454,38 +515,56 @@ fun TableDetailScreen(
             table = state.table,
             onConfirm = viewModel::confirmImport,
             onDismiss = viewModel::dismissImport,
+            onMap = viewModel::setImportMapping,
+        )
+    }
+
+    state.writeBackPrompt?.let { prompt ->
+        hu.laurel.sqlpulse.ui.connections.WriteBackDialog(
+            prompt = prompt,
+            onWrite = viewModel::writeBackConfirm,
+            onOverwrite = viewModel::writeBackOverwrite,
+            onKeepLocal = viewModel::writeBackKeepLocal,
+            onDismiss = viewModel::writeBackDismiss,
         )
     }
 
     state.conflict?.let { conflict ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissConflict,
-            title = { Text(stringResource(R.string.conflict_title)) },
-            text = {
-                Text(
-                    if (conflict.rowExists) {
-                        stringResource(
-                            R.string.conflict_body,
-                            conflict.currentValue ?: "NULL",
-                        )
-                    } else {
-                        stringResource(R.string.conflict_row_gone)
-                    },
-                )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissConflict) {
+            ConflictCard(
+                rowExists = conflict.rowExists,
+                currentValue = conflict.currentValue,
+                onOverwrite = viewModel::overwriteConflict,
+                onDismiss = viewModel::dismissConflict,
+            )
+        }
+    }
+}
+
+/**
+ * Someone else changed the cell between opening the editor and saving. Overwriting is offered only
+ * while there is still a row to write to, and is red because it discards the other person's value.
+ */
+@Composable
+fun ConflictCard(rowExists: Boolean, currentValue: String?, onOverwrite: () -> Unit, onDismiss: () -> Unit) {
+    DialogCard(danger = rowExists) {
+        DialogHeading(title = stringResource(R.string.conflict_title), danger = rowExists)
+        Text(
+            if (rowExists) {
+                stringResource(R.string.conflict_body, currentValue ?: "NULL")
+            } else {
+                stringResource(R.string.conflict_row_gone)
             },
-            confirmButton = {
-                // Only offered while there is still a row to write to.
-                if (conflict.rowExists) {
-                    Button(onClick = viewModel::overwriteConflict) {
-                        Text(stringResource(R.string.conflict_overwrite))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissConflict) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.conflict_overwrite),
+            onAction = onOverwrite,
+            enabled = true,
+            danger = true,
+            showAction = rowExists,
         )
     }
 }
@@ -505,8 +584,9 @@ private fun FilterBar(
     var text by remember(filter?.column) { mutableStateOf(filter?.contains.orEmpty()) }
     val column = filter?.column ?: columns.firstOrNull() ?: return
 
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s),
     ) {
@@ -532,7 +612,9 @@ private fun FilterBar(
                 text = it
                 onFilter(column, it)
             },
-            label = { Text(stringResource(R.string.filter_contains)) },
+            label = {
+                Text(stringResource(if (filter?.exact == true) R.string.filter_equals else R.string.filter_contains))
+            },
             singleLine = true,
             trailingIcon = {
                 if (text.isNotEmpty()) {
@@ -549,14 +631,26 @@ private fun FilterBar(
             modifier = Modifier.weight(1f),
         )
     }
+    // A hit on a composite key narrows on more than the box shows; say so rather than hide it.
+    if (filter != null && filter.also.isNotEmpty()) {
+        Text(
+            text = stringResource(
+                R.string.filter_also,
+                filter.also.joinToString(", ") { (name, value) -> "$name = $value" },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalSemanticColors.current.textSecondary,
+            modifier = Modifier.padding(top = Spacing.xs),
+        )
+    }
+    }
 }
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(
+    SectionCaption(
         text = title,
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(start = Spacing.l, top = Spacing.l, bottom = Spacing.s),
+        modifier = Modifier.padding(start = Spacing.l, top = Spacing.xl, bottom = Spacing.s),
     )
 }
 
@@ -568,52 +662,88 @@ private fun SectionHeader(title: String) {
  * all. Its expression follows on a line of its own, shortened — the whole of it is in the DDL tab.
  */
 @Composable
-private fun ColumnRow(column: SchemaColumn, tableCollation: String?) {
+private fun ColumnRow(column: SchemaColumn, tableCollation: String?, foreignKey: ForeignKey?) {
     val semantic = LocalSemanticColors.current
     val generated = column.generatedKind
     val collation = SchemaExtras.columnCollation(tableCollation, column.collation)
+    // As in the design: a mark for what the column is to the table — key, link, computed — then
+    // its name with its type beside it, and the rules under it.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.l, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(column.name, style = MonoStyles.cell)
-                if (column.isPrimaryKey) {
-                    Text(
-                        stringResource(R.string.structure_primary_key),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.success,
-                    )
-                }
-                if (generated != null) {
-                    Text(
-                        text = stringResource(
-                            when (generated) {
-                                GeneratedKind.VIRTUAL -> R.string.structure_generated_virtual
-                                GeneratedKind.STORED -> R.string.structure_generated_stored
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.textSecondary,
-                    )
-                }
+        val mark = when {
+            column.isPrimaryKey -> Triple(Icons.Default.Key, semantic.warning, R.string.structure_primary_key)
+            foreignKey != null -> Triple(Icons.Default.Link, MaterialTheme.colorScheme.primary, R.string.structure_foreign_key)
+            generated != null -> Triple(Icons.Default.Bolt, semantic.cellDate, R.string.structure_generated)
+            else -> null
+        }
+        Box(modifier = Modifier.padding(top = 2.dp).size(16.dp)) {
+            mark?.let { (icon, tint, label) ->
+                Icon(icon, contentDescription = stringResource(label), tint = tint, modifier = Modifier.size(16.dp))
             }
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.Bottom) {
+                Text(column.name, style = MonoStyles.cell.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium))
+                Text(
+                    column.typeName,
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = semantic.cellDate,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // The empty string must not read as "no default": it is shown as '' in mono, an explicit
+            // NULL default as NULL, and a column without any default says nothing about one.
+            val defaultLabel = stringResource(R.string.structure_default_label)
+            val monoDefault = MonoStyles.cell.toSpanStyle().copy(fontSize = 12.sp)
             Text(
-                text = buildString {
-                    append(column.typeName)
-                    if (!column.nullable) append(" · NOT NULL")
-                    column.defaultValue?.let { append(" · DEFAULT $it") }
-                    column.extra?.let { append(" · $it") }
+                text = buildAnnotatedString {
+                    append(if (column.nullable) "NULL" else "NOT NULL")
+                    column.defaultValue?.let { value ->
+                        append(" · $defaultLabel ")
+                        withStyle(monoDefault) {
+                            append(
+                                when {
+                                    value.isEmpty() -> "''"
+                                    value.equals("NULL", ignoreCase = true) -> "NULL"
+                                    else -> value
+                                },
+                            )
+                        }
+                    }
                 },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                 color = semantic.textSecondary,
             )
-            column.generationExpression?.let { expression ->
+            // AUTO_INCREMENT and the like, but not a generated column's marker: that has its own line.
+            column.extra?.takeIf { it.isNotBlank() && generated == null }?.let {
+                Text(it.uppercase(), style = MonoStyles.cell.copy(fontSize = 12.sp), color = MaterialTheme.colorScheme.primary)
+            }
+            foreignKey?.let { fk ->
                 Text(
-                    text = "= ${SchemaExtras.shorten(expression)}",
-                    style = MonoStyles.cell,
-                    color = semantic.textSecondary,
+                    text = buildString {
+                        append("→ ${fk.referencedTable}.${fk.referencedColumn}")
+                        fk.onDelete?.let { append(" · ON DELETE $it") }
+                    },
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (generated != null) {
+                Text(
+                    text = buildString {
+                        append("GENERATED")
+                        column.generationExpression?.let { append(": ${SchemaExtras.shorten(it)}") }
+                        append(" · ")
+                        append(if (generated == GeneratedKind.STORED) "STORED" else "VIRTUAL")
+                    },
+                    style = MonoStyles.cell.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
             // Only where it differs from the table's: a column collating differently is what
@@ -763,68 +893,17 @@ private fun ForeignKeyRow(foreignKey: ForeignKey, onClick: () -> Unit) {
  * how many rows, which columns are filled, which of the file's columns are ignored, and which
  * lines did not parse. An import that cannot work says why instead of offering a button.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ImportDialog(
     plan: ImportPlan,
     table: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onMap: (Int, String?) -> Unit,
 ) {
-    val semantic = LocalSemanticColors.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.import_title, table)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(stringResource(R.string.import_rows, plan.rowCount))
-                Text(
-                    text = stringResource(
-                        R.string.import_columns,
-                        plan.match.matched.values.joinToString(", "),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
-                if (plan.match.unmatched.isNotEmpty()) {
-                    Text(
-                        text = stringResource(
-                            R.string.import_ignored,
-                            plan.match.unmatched.joinToString(", "),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.warning,
-                    )
-                }
-                if (plan.table.malformedRows > 0) {
-                    Text(
-                        text = stringResource(R.string.import_malformed, plan.table.malformedRows),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = semantic.warning,
-                    )
-                }
-                if (!plan.match.canImport) {
-                    Text(
-                        text = if (plan.match.blocking.isEmpty()) {
-                            stringResource(R.string.import_no_columns)
-                        } else {
-                            stringResource(
-                                R.string.import_blocking,
-                                plan.match.blocking.joinToString(", "),
-                            )
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (plan.match.canImport && plan.rowCount > 0) {
-                Button(onClick = onConfirm) { Text(stringResource(R.string.import_run)) }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ImportPlanCard(plan = plan, table = table, onConfirm = onConfirm, onDismiss = onDismiss, onMap = onMap)
+    }
 }
+

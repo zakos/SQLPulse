@@ -4,6 +4,9 @@ import hu.laurel.sqlpulse.data.sql.SqlHighlighter
 import hu.laurel.sqlpulse.data.sql.SqlScript
 import hu.laurel.sqlpulse.data.sql.SqlToken
 import hu.laurel.sqlpulse.data.sql.TokenRole
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.MySqlDialect
+import hu.laurel.sqlpulse.data.sql.dialect.SqlSyntax
 
 /** The part of a statement the cursor is standing in. */
 enum class SqlClause {
@@ -66,9 +69,9 @@ data class CompletionContext(
  */
 object SqlCompletion {
 
-    fun contextAt(text: String, cursor: Int): CompletionContext {
+    fun contextAt(text: String, cursor: Int, syntax: SqlSyntax = MySqlDialect): CompletionContext {
         val at = cursor.coerceIn(0, text.length)
-        val statement = SqlScript.statementAt(text, at)
+        val statement = SqlScript.statementAt(text, at, syntax.grammar)
 
         // Everything of the current statement up to the cursor. Looking only backwards is what
         // makes an unterminated string or comment detect itself: the text before the cursor holds
@@ -81,7 +84,7 @@ object SqlCompletion {
         }
         val before = text.substring(start, at)
 
-        if (insideStringOrComment(before)) {
+        if (insideStringOrComment(before, syntax)) {
             return CompletionContext(
                 prefix = "",
                 prefixStart = at,
@@ -102,7 +105,7 @@ object SqlCompletion {
             else -> text.substring(statement.start, statement.end.coerceAtMost(text.length))
         }
 
-        val words = words(before)
+        val words = words(before, syntax)
         // The word the cursor is touching is the one being typed, not a word of the statement:
         // "WHERE" half-typed must not be read as "we are already in the WHERE clause".
         val typing = words.lastOrNull()?.takeIf { it.end == before.length && it.identifier }
@@ -119,7 +122,7 @@ object SqlCompletion {
         }
 
         val clause = clauseOf(settled)
-        val tables = tablesIn(words(whole))
+        val tables = tablesIn(words(whole, syntax))
 
         // A table name belongs right after the keyword that introduces one, or after a comma that
         // separates two of them. After `FROM hivasok` the next thing is a keyword or an alias, and
@@ -143,7 +146,7 @@ object SqlCompletion {
             qualifier = qualifier,
             wantTables = wantTables,
             columnTables = columnTables.distinct(),
-            keywords = if (qualifier != null) emptyList() else KEYWORDS_AFTER[clause].orEmpty(),
+            keywords = if (qualifier != null) emptyList() else keywordsAfter(clause, syntax.engine),
             tables = tables,
         )
     }
@@ -162,22 +165,35 @@ object SqlCompletion {
      * which is the whole question here. A token that reaches the end of the text without its
      * closing quote, comment terminator or newline is one the cursor is standing in.
      */
-    private fun insideStringOrComment(before: String): Boolean {
-        val last = SqlHighlighter.tokenize(before).lastOrNull() ?: return false
+    private fun insideStringOrComment(before: String, syntax: SqlSyntax): Boolean {
+        val last = SqlHighlighter.tokenize(before, syntax.grammar, syntax.keywords).lastOrNull() ?: return false
         if (last.end != before.length) return false
         return when (last.role) {
-            TokenRole.STRING, TokenRole.QUOTED_IDENTIFIER -> !closed(before, last)
-            TokenRole.COMMENT -> !closed(before, last)
+            TokenRole.STRING, TokenRole.QUOTED_IDENTIFIER -> !closed(before, last, syntax)
+            TokenRole.COMMENT -> !closed(before, last, syntax)
             else -> false
         }
     }
 
-    private fun closed(text: String, token: SqlToken): Boolean = when {
+    private fun closed(text: String, token: SqlToken, syntax: SqlSyntax): Boolean = when {
         text.startsWith("/*", token.start) ->
             token.end - token.start >= 4 && text.regionMatches(token.end - 2, "*/", 0, 2)
         // A line comment's token stops at the newline, so one that runs to the end never closed.
-        text.startsWith("--", token.start) || text[token.start] == '#' -> false
-        else -> token.end - token.start >= 2 && text[token.end - 1] == text[token.start]
+        syntax.grammar.opensLineComment(text, token.start) -> false
+        // `$tag$ … $tag$`: closed only by a second copy of the opening tag.
+        syntax.grammar.dollarQuotes && text[token.start] == '$' -> {
+            val tagEnd = text.indexOf('$', token.start + 1)
+            val tagLength = tagEnd - token.start + 1
+            tagEnd in 0 until token.end &&
+                token.end - token.start >= 2 * tagLength &&
+                text.regionMatches(token.end - tagLength, text, token.start, tagLength)
+        }
+        else -> {
+            val open = text[token.start]
+            // `[name]` closes with `]`, not with another `[`.
+            val closing = syntax.grammar.quotes[open] ?: open
+            token.end - token.start >= 2 && text[token.end - 1] == closing
+        }
     }
 
     /** One word of a statement: an identifier, a keyword, or one of the punctuation marks that matter. */
@@ -200,8 +216,8 @@ object SqlCompletion {
      * as invisible here as it is there. A backtick-quoted identifier arrives unquoted, because
      * `` `order` `` is a table called order.
      */
-    private fun words(sql: String): List<Word> {
-        val marked = SqlHighlighter.tokenize(sql).associateBy { it.start }
+    private fun words(sql: String, syntax: SqlSyntax): List<Word> {
+        val marked = SqlHighlighter.tokenize(sql, syntax.grammar, syntax.keywords).associateBy { it.start }
         val out = mutableListOf<Word>()
         var index = 0
         while (index < sql.length) {
@@ -367,6 +383,31 @@ object SqlCompletion {
         "delete", "replace", "for", "asc", "desc", "when", "then", "else", "end", "case", "is",
         "null", "in", "like", "between", "distinct", "with", "force", "use", "ignore", "index",
     )
+
+    /**
+     * [KEYWORDS_AFTER] for [engine]: the MySQL lists with the words the engine does not have taken
+     * out and its own put in (T-SQL pages with TOP and OFFSET, not LIMIT; PRAGMA is SQLite's).
+     * MySQL's lists come back untouched.
+     */
+    internal fun keywordsAfter(clause: SqlClause, engine: DatabaseEngine): List<String> {
+        val base = KEYWORDS_AFTER[clause].orEmpty()
+        if (engine == DatabaseEngine.MYSQL) return base
+        if (clause == SqlClause.NONE) {
+            return when (engine) {
+                DatabaseEngine.POSTGRESQL -> listOf("SELECT", "INSERT INTO", "UPDATE", "DELETE FROM", "WITH", "SHOW", "EXPLAIN")
+                DatabaseEngine.SQLITE -> listOf("SELECT", "INSERT INTO", "UPDATE", "DELETE FROM", "REPLACE INTO", "WITH", "EXPLAIN", "PRAGMA")
+                DatabaseEngine.SQLSERVER -> listOf("SELECT", "INSERT INTO", "UPDATE", "DELETE FROM", "MERGE", "WITH", "EXEC", "USE")
+                DatabaseEngine.MYSQL -> base
+            }
+        }
+        if (engine != DatabaseEngine.SQLSERVER) return base
+        val withoutLimit = base.filter { it != "LIMIT" }
+        return when (clause) {
+            SqlClause.SELECT -> listOf("TOP") + withoutLimit
+            SqlClause.ORDER_BY -> withoutLimit + "OFFSET"
+            else -> withoutLimit
+        }
+    }
 
     /**
      * What may follow each clause.

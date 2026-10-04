@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Szerver és Pulzus képernyő PostgreSQL-en és SQL Serveren -->
+    <string name="server_kill_gone">A(z) %1$d. kapcsolat már nincs meg.</string>
+    <string name="server_kill_own">Ez az alkalmazás saját kapcsolata; a megszakítása elvágná a képernyőt a szervertől.</string>
+    <string name="server_needs_privilege">Ehhez a panelhez %1$s jogosultság kell, ennek a fióknak pedig nincs. Kérd a szerver üzemeltetőjét, hogy adja meg.</string>
+    <string name="server_terminate_title">Lezárod a(z) %1$d. munkamenetet?</string>
+    <string name="server_terminate">Munkamenet lezárása</string>
+    <string name="server_terminate_note">A munkamenet lezárása a nyitott tranzakcióját is visszagörgeti, és bontja a kapcsolatot. Akkor használd, ha az utasítás megszakítása nem elég.</string>
+    <string name="server_show_idle">Tétlen munkamenetek</string>
+
+    <string name="repl_standby">Készenléti szerver</string>
+    <string name="repl_not_replica_mssql_body">Ezen a kiszolgálón nincs rendelkezésre állási csoport (vagy ez a belépés nem látja), így nincs mit jelenteni.</string>
+    <string name="repl_no_privilege_pg_body">A replikáció többi szerverének megtekintéséhez superuser vagy a pg_read_all_stats (pg_monitor) szerep kell. Ez nem mond semmit arról, hogy a szerver replikál-e.</string>
+    <string name="repl_no_privilege_mssql_body">A rendelkezésre állási csoport állapotához VIEW SERVER STATE jogosultság kell. Ez nem mond semmit arról, hogy a szerver tagja-e csoportnak.</string>
+
+    <string name="slow_ext_missing_title">A pg_stat_statements nincs telepítve</string>
+    <string name="slow_ext_missing_body">A PostgreSQL csak a pg_stat_statements bővítményen át vezet utasítás-statisztikát. Egy adatbázis-adminisztrátornak fel kell vennie a shared_preload_libraries-be (újraindítás), és ki kell adnia a CREATE EXTENSION pg_stat_statements parancsot ebben az adatbázisban. Az app sosem módosít a szerveren.</string>
+    <string name="slow_ext_not_loaded_title">A pg_stat_statements nincs betöltve</string>
+    <string name="slow_ext_not_loaded_body">A bővítmény létezik ebben az adatbázisban, de a szervert nem a shared_preload_libraries-ben szereplő bővítménnyel indították, ezért semmit sem rögzít. Vedd fel oda, és indítsd újra a szervert.</string>
+    <string name="slow_no_privilege_mssql_body">Ehhez VIEW SERVER STATE jogosultság kell.</string>
+    <string name="slow_rows_sent">%1$s sor</string>
+    <string name="slow_blocks">%1$s blokk olvasva</string>
+    <string name="slow_hint_dollar">Normalizált utasítások. Koppints egyre, és megnyílik a szerkesztőben; semmi sem fut le. Minden $1, $2 … :p1, :p2 … lesz, és futtatáskor a szerkesztő kérdezi meg az értékeket. A másolás ikon az eredeti szöveget másolja.</string>
+
+    <string name="pulse_no_privilege">A Pulzus a szerver számlálóit olvassa, amihez %1$s jogosultság kell. Ennek a fióknak nincs meg.</string>
+    <string name="pulse_cache_hit">Olvasás a gyorsítótárból</string>
+    <string name="pulse_pg_active">Aktív lekérdezések</string>
+    <string name="pulse_pg_idle_in_xact">Tétlen tranzakció</string>
+    <string name="pulse_pg_commits">Véglegesítések</string>
+    <string name="pulse_pg_rollbacks">Visszagörgetések</string>
+    <string name="pulse_pg_tuples_read">Olvasott sorok</string>
+    <string name="pulse_pg_tuples_written">Írt sorok</string>
+    <string name="pulse_pg_deadlocks">Holtpontok</string>
+    <string name="pulse_ms_batch_requests">Kötegkérések</string>
+    <string name="pulse_ms_transactions">Tranzakciók</string>
+    <string name="pulse_ms_blocked">Blokkolt kérés</string>
+    <string name="pulse_ms_lock_waits">Zár-várakozás</string>
+    <string name="pulse_ms_page_life">Oldal-élet</string>
+    <string name="pulse_unit_seconds_now">másodperc, éppen most</string>
+</resources>

@@ -1,34 +1,42 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import android.net.Uri
+import java.text.DateFormat
+import java.util.Date
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,10 +49,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
@@ -54,23 +71,43 @@ import hu.laurel.sqlpulse.data.connection.SaveRefusal
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.HairlineCard
+import hu.laurel.sqlpulse.ui.components.LabeledField
+import hu.laurel.sqlpulse.ui.components.SectionCaption
+import hu.laurel.sqlpulse.ui.components.SegmentedChoice
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
+import hu.laurel.sqlpulse.data.sql.dialect.SqlDialects
+import hu.laurel.sqlpulse.ui.engine.labelRes
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
+import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 
 /**
  * Connection editor (§7.2): connection, SSH, MySQL — in that order, because that is the order in
  * which things fail. Save stays disabled until a key is chosen.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionEditorScreen(
     onBack: () -> Unit,
     onOpenKeyStore: () -> Unit,
     viewModel: ConnectionEditorViewModel = hiltViewModel(),
+) {
+    ConnectionEditorScreenContent(onBack = onBack, onOpenKeyStore = onOpenKeyStore, viewModel = viewModel)
+}
+
+/** The screen itself, drawn from whatever [ConnectionEditorController] it is handed. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectionEditorScreenContent(
+    onBack: () -> Unit,
+    onOpenKeyStore: () -> Unit,
+    viewModel: ConnectionEditorController,
 ) {
     val form by viewModel.form.collectAsStateWithLifecycle()
     val keys by viewModel.keys.collectAsStateWithLifecycle()
@@ -79,11 +116,13 @@ fun ConnectionEditorScreen(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val readOnlyOffer by viewModel.readOnlyOffer.collectAsStateWithLifecycle()
     val hostKeyPrompt by viewModel.hostKeyPrompt.collectAsStateWithLifecycle()
+    val writeBackPrompt by viewModel.writeBackPrompt.collectAsStateWithLifecycle()
     val semantic = LocalSemanticColors.current
 
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = sqlPulseTopBarColors(),
                 title = {
                     Text(
                         stringResource(
@@ -98,6 +137,37 @@ fun ConnectionEditorScreen(
                 },
             )
         },
+        // Test and save stay at hand at the bottom however long the form gets, as in the design.
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .drawBehind { drawRect(semantic.hairline, size = size.copy(height = 1.dp.toPx())) }
+                    .navigationBarsPadding()
+                    .padding(horizontal = Spacing.l, vertical = Spacing.m),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+            ) {
+                // Testing a file would only report that a file exists; there is no link to try.
+                if (form.engine.hasServer) {
+                    OutlinedButton(
+                        onClick = { if (tunnel is TunnelState.Active) viewModel.stopTest() else viewModel.test() },
+                        enabled = form.canSave,
+                        shape = Shapes.button,
+                        modifier = Modifier.height(48.dp),
+                    ) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(stringResource(R.string.connection_test), modifier = Modifier.padding(start = Spacing.s))
+                    }
+                }
+                Button(
+                    onClick = { viewModel.save { onBack() } },
+                    enabled = form.canSave,
+                    shape = Shapes.button,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                ) { Text(stringResource(R.string.connection_save)) }
+            }
+        },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -107,8 +177,11 @@ fun ConnectionEditorScreen(
                 .padding(Spacing.l),
             verticalArrangement = Arrangement.spacedBy(Spacing.l),
         ) {
+            // First, because it decides which of the fields below exist at all.
+            EngineSection(engine = form.engine, onSelect = viewModel::setEngine)
+
             Section(stringResource(R.string.connections_title)) {
-                OutlinedTextField(
+                LabeledField(
                     value = form.name,
                     onValueChange = { value -> viewModel.update { it.copy(name = value) } },
                     label = { Text(stringResource(R.string.connection_name)) },
@@ -135,18 +208,12 @@ fun ConnectionEditorScreen(
                     stringResource(R.string.connection_environment),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    ConnectionEnvironment.ORDER.forEachIndexed { index, candidate ->
-                        SegmentedButton(
-                            selected = form.environment == candidate,
-                            onClick = { viewModel.setEnvironment(candidate) },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = ConnectionEnvironment.ORDER.size,
-                            ),
-                        ) { Text(stringResource(candidate.shortLabel())) }
-                    }
-                }
+                SegmentedChoice(
+                    options = ConnectionEnvironment.ORDER,
+                    selected = form.environment,
+                    label = { stringResource(it.shortLabel()) },
+                    onSelect = viewModel::setEnvironment,
+                )
                 if (form.environment.isProduction) {
                     Text(
                         stringResource(
@@ -180,21 +247,30 @@ fun ConnectionEditorScreen(
                 }
             }
 
+            // A file on the phone has no network path, so no tunnel and no server fields.
+            if (form.engine.hasServer) {
             Section(stringResource(R.string.section_ssh)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.ssh_use_tunnel),
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                        modifier = Modifier.weight(1f).padding(end = Spacing.m),
+                    )
                     Switch(
                         checked = form.useSsh,
                         onCheckedChange = viewModel::setUseSsh,
-                    )
-                    Text(
-                        stringResource(R.string.ssh_use_tunnel),
-                        modifier = Modifier.padding(start = Spacing.s),
                     )
                 }
                 if (!form.useSsh) {
                     // Stated plainly once: the port has to be reachable from the phone's network.
                     Text(
-                        stringResource(R.string.ssh_direct_note),
+                        stringResource(
+                            when (form.engine) {
+                                DatabaseEngine.MYSQL -> R.string.ssh_direct_note
+                                DatabaseEngine.SQLSERVER -> R.string.sqlserver_ssh_direct_note
+                                else -> R.string.ssh_direct_note_generic
+                            },
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = semantic.warning,
                     )
@@ -203,15 +279,16 @@ fun ConnectionEditorScreen(
 
             if (form.useSsh) {
                 Section(stringResource(R.string.section_ssh_details)) {
-                OutlinedTextField(
+                LabeledField(
                     value = form.sshHost,
                     onValueChange = { value -> viewModel.update { it.copy(sshHost = value) } },
                     label = { Text(stringResource(R.string.ssh_host)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    mono = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    OutlinedTextField(
+                    LabeledField(
                         value = form.sshPort,
                         onValueChange = { value -> viewModel.update { it.copy(sshPort = value) } },
                         label = { Text(stringResource(R.string.ssh_port)) },
@@ -220,28 +297,31 @@ fun ConnectionEditorScreen(
                             keyboardType = KeyboardType.Number,
                         ),
                         modifier = Modifier.weight(1f),
+                        mono = true,
                     )
-                    OutlinedTextField(
+                    LabeledField(
                         value = form.sshUser,
                         onValueChange = { value -> viewModel.update { it.copy(sshUser = value) } },
                         label = { Text(stringResource(R.string.ssh_user)) },
                         singleLine = true,
                         modifier = Modifier.weight(2f),
+                        mono = true,
                     )
                 }
 
                 // The optional first hop, for a network where the SSH host is not reachable from
                 // outside. Left empty, nothing about the connection changes.
-                OutlinedTextField(
+                LabeledField(
                     value = form.jumpHost,
                     onValueChange = { value -> viewModel.update { it.copy(jumpHost = value) } },
                     label = { Text(stringResource(R.string.ssh_jump_host)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    mono = true,
                 )
                 if (form.jumpHost.isNotBlank()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                        OutlinedTextField(
+                        LabeledField(
                             value = form.jumpPort,
                             onValueChange = { value -> viewModel.update { it.copy(jumpPort = value) } },
                             label = { Text(stringResource(R.string.ssh_port)) },
@@ -250,13 +330,15 @@ fun ConnectionEditorScreen(
                                 keyboardType = KeyboardType.Number,
                             ),
                             modifier = Modifier.weight(1f),
+                            mono = true,
                         )
-                        OutlinedTextField(
+                        LabeledField(
                             value = form.jumpUser,
                             onValueChange = { value -> viewModel.update { it.copy(jumpUser = value) } },
                             label = { Text(stringResource(R.string.ssh_user)) },
                             singleLine = true,
                             modifier = Modifier.weight(2f),
+                            mono = true,
                         )
                     }
 
@@ -264,15 +346,16 @@ fun ConnectionEditorScreen(
                     // one may carry its own credential. Off keeps the old arrangement, which is
                     // what every connection saved so far has.
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.ssh_jump_separate_credential),
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            modifier = Modifier.weight(1f).padding(end = Spacing.m),
+                        )
                         Switch(
                             checked = form.jumpSeparateCredential,
                             onCheckedChange = { value ->
                                 viewModel.update { it.copy(jumpSeparateCredential = value) }
                             },
-                        )
-                        Text(
-                            stringResource(R.string.ssh_jump_separate_credential),
-                            modifier = Modifier.padding(start = Spacing.s),
                         )
                     }
                     Text(
@@ -288,27 +371,19 @@ fun ConnectionEditorScreen(
                     )
 
                     if (form.jumpSeparateCredential) {
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            SshAuthMethod.entries.forEachIndexed { index, method ->
-                                SegmentedButton(
-                                    selected = form.jumpAuthMethod == method,
-                                    onClick = { viewModel.update { it.copy(jumpAuthMethod = method) } },
-                                    shape = SegmentedButtonDefaults.itemShape(
-                                        index,
-                                        SshAuthMethod.entries.size,
-                                    ),
-                                ) {
-                                    Text(
-                                        stringResource(
-                                            when (method) {
-                                                SshAuthMethod.KEY -> R.string.ssh_auth_key
-                                                SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
-                                            },
-                                        ),
-                                    )
-                                }
-                            }
-                        }
+                        SegmentedChoice(
+                            options = SshAuthMethod.entries,
+                            selected = form.jumpAuthMethod,
+                            label = { method ->
+                                stringResource(
+                                    when (method) {
+                                        SshAuthMethod.KEY -> R.string.ssh_auth_key
+                                        SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
+                                    },
+                                )
+                            },
+                            onSelect = { method -> viewModel.update { it.copy(jumpAuthMethod = method) } },
+                        )
                         when (form.jumpAuthMethod) {
                             SshAuthMethod.KEY -> {
                                 Text(
@@ -330,7 +405,7 @@ fun ConnectionEditorScreen(
                                 }
                             }
 
-                            SshAuthMethod.PASSWORD -> OutlinedTextField(
+                            SshAuthMethod.PASSWORD -> LabeledField(
                                 value = form.jumpPassword,
                                 onValueChange = { value ->
                                     viewModel.update {
@@ -346,24 +421,19 @@ fun ConnectionEditorScreen(
                     }
                 }
 
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    SshAuthMethod.entries.forEachIndexed { index, method ->
-                        SegmentedButton(
-                            selected = form.sshAuthMethod == method,
-                            onClick = { viewModel.update { it.copy(sshAuthMethod = method) } },
-                            shape = SegmentedButtonDefaults.itemShape(index, SshAuthMethod.entries.size),
-                        ) {
-                            Text(
-                                stringResource(
-                                    when (method) {
-                                        SshAuthMethod.KEY -> R.string.ssh_auth_key
-                                        SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
-                                    },
-                                ),
-                            )
-                        }
-                    }
-                }
+                SegmentedChoice(
+                    options = SshAuthMethod.entries,
+                    selected = form.sshAuthMethod,
+                    label = { method ->
+                        stringResource(
+                            when (method) {
+                                SshAuthMethod.KEY -> R.string.ssh_auth_key
+                                SshAuthMethod.PASSWORD -> R.string.ssh_auth_password
+                            },
+                        )
+                    },
+                    onSelect = { method -> viewModel.update { it.copy(sshAuthMethod = method) } },
+                )
 
                 when (form.sshAuthMethod) {
                     SshAuthMethod.KEY -> {
@@ -383,7 +453,7 @@ fun ConnectionEditorScreen(
                     }
 
                     SshAuthMethod.PASSWORD -> {
-                        OutlinedTextField(
+                        LabeledField(
                             value = form.sshPassword,
                             onValueChange = { value ->
                                 viewModel.update {
@@ -405,8 +475,22 @@ fun ConnectionEditorScreen(
                 }
             }
 
-            Section(stringResource(R.string.section_mysql)) {
-                OutlinedTextField(
+            }
+
+            if (!form.engine.hasServer) {
+                FileSection(
+                    form = form,
+                    onChoose = viewModel::chooseFile,
+                    onRefresh = viewModel::refreshFile,
+                    onWriteBack = viewModel::writeBackToOriginal,
+                    onReadOnly = { value -> viewModel.update { it.copy(readOnly = value) } },
+                )
+            } else Section(
+                stringResource(
+                    if (form.engine == DatabaseEngine.MYSQL) R.string.section_mysql else R.string.engine_section_server,
+                ),
+            ) {
+                LabeledField(
                     value = form.dbHost,
                     onValueChange = { value -> viewModel.update { it.copy(dbHost = value) } },
                     label = {
@@ -418,9 +502,10 @@ fun ConnectionEditorScreen(
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    mono = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    OutlinedTextField(
+                    LabeledField(
                         value = form.dbPort,
                         onValueChange = { value -> viewModel.update { it.copy(dbPort = value) } },
                         label = { Text(stringResource(R.string.db_port)) },
@@ -429,103 +514,133 @@ fun ConnectionEditorScreen(
                             keyboardType = KeyboardType.Number,
                         ),
                         modifier = Modifier.weight(1f),
+                        mono = true,
                     )
-                    OutlinedTextField(
+                    LabeledField(
                         value = form.database,
                         onValueChange = { value -> viewModel.update { it.copy(database = value) } },
                         label = { Text(stringResource(R.string.db_name)) },
                         singleLine = true,
                         modifier = Modifier.weight(2f),
+                        mono = true,
                     )
                 }
-                OutlinedTextField(
+                LabeledField(
                     value = form.dbUser,
                     onValueChange = { value -> viewModel.update { it.copy(dbUser = value) } },
-                    label = { Text(stringResource(R.string.db_user)) },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (form.engine) {
+                                    DatabaseEngine.MYSQL -> R.string.db_user
+                                    DatabaseEngine.SQLSERVER -> R.string.sqlserver_db_user
+                                    else -> R.string.db_user_generic
+                                },
+                            ),
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    mono = true,
                 )
-                OutlinedTextField(
+                LabeledField(
                     value = form.password,
                     onValueChange = { value ->
                         viewModel.update { it.copy(password = value, passwordTouched = true) }
                     },
-                    label = { Text(stringResource(R.string.db_password)) },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (form.engine) {
+                                    DatabaseEngine.MYSQL -> R.string.db_password
+                                    DatabaseEngine.SQLSERVER -> R.string.sqlserver_db_password
+                                    else -> R.string.db_password_generic
+                                },
+                            ),
+                        )
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.db_read_only),
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                        modifier = Modifier.weight(1f).padding(end = Spacing.m),
+                    )
                     Switch(
                         checked = form.readOnly,
                         onCheckedChange = { value -> viewModel.update { it.copy(readOnly = value) } },
                     )
+                }
+                if (form.engine == DatabaseEngine.SQLSERVER) {
+                    // The driver does not enforce the flag: say what does, in the place it is set.
                     Text(
-                        stringResource(R.string.db_read_only),
-                        modifier = Modifier.padding(start = Spacing.s),
+                        stringResource(R.string.sqlserver_read_only_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.warning,
                     )
                 }
 
                 TlsSection(
+                    title = when (form.engine) {
+                        DatabaseEngine.MYSQL -> R.string.tls_mode
+                        DatabaseEngine.SQLSERVER -> R.string.sqlserver_tls_title
+                        else -> R.string.tls_mode_generic
+                    },
                     mode = form.sslMode,
                     certificate = form.caCertificate,
                     onMode = { value -> viewModel.update { it.copy(sslMode = value) } },
                     onImport = viewModel::importCertificate,
                     onClear = viewModel::clearCertificate,
+                    caOptional = form.engine == DatabaseEngine.SQLSERVER,
                 )
             }
 
-            Section(stringResource(R.string.section_timeouts)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    OutlinedTextField(
-                        value = form.connectTimeout,
-                        onValueChange = { value ->
-                            viewModel.update { it.copy(connectTimeout = value.filter(Char::isDigit)) }
-                        },
-                        label = { Text(stringResource(R.string.timeout_connect)) },
-                        isError = !ConnectionTimeouts.isValid(form.connectTimeout),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = form.queryTimeout,
-                        onValueChange = { value ->
-                            viewModel.update { it.copy(queryTimeout = value.filter(Char::isDigit)) }
-                        },
-                        label = { Text(stringResource(R.string.timeout_query)) },
-                        isError = !ConnectionTimeouts.isValid(form.queryTimeout),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
+            // A file has no connect step to time out; the query timeout is left at its default.
+            if (form.engine.hasServer) {
+                Section(stringResource(R.string.section_timeouts)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                        LabeledField(
+                            value = form.connectTimeout,
+                            onValueChange = { value ->
+                                viewModel.update { it.copy(connectTimeout = value.filter(Char::isDigit)) }
+                            },
+                            label = { Text(stringResource(R.string.timeout_connect)) },
+                            isError = !ConnectionTimeouts.isValid(form.connectTimeout),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            mono = true,
+                        )
+                        LabeledField(
+                            value = form.queryTimeout,
+                            onValueChange = { value ->
+                                viewModel.update { it.copy(queryTimeout = value.filter(Char::isDigit)) }
+                            },
+                            label = { Text(stringResource(R.string.timeout_query)) },
+                            isError = !ConnectionTimeouts.isValid(form.queryTimeout),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            mono = true,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.timeout_note, ConnectionTimeouts.MAX_SECONDS),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = semantic.textSecondary,
                     )
                 }
-                Text(
-                    stringResource(R.string.timeout_note, ConnectionTimeouts.MAX_SECONDS),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = semantic.textSecondary,
-                )
             }
 
-            TestResult(tunnel = tunnel, serverVersion = serverVersion)
+            if (form.engine.hasServer) TestResult(tunnel = tunnel, serverVersion = serverVersion)
 
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                OutlinedButton(
-                    onClick = { if (tunnel is TunnelState.Active) viewModel.stopTest() else viewModel.test() },
-                    enabled = form.canSave,
-                    shape = Shapes.button,
-                ) { Text(stringResource(R.string.connection_test)) }
-
-                Button(
-                    onClick = { viewModel.save { onBack() } },
-                    enabled = form.canSave,
-                    shape = Shapes.button,
-                ) { Text(stringResource(R.string.connection_save)) }
-            }
         }
 
         hostKeyPrompt?.let { prompt ->
@@ -536,27 +651,263 @@ fun ConnectionEditorScreen(
             )
         }
 
+        writeBackPrompt?.let { prompt ->
+            WriteBackDialog(
+                prompt = prompt,
+                onWrite = viewModel::writeBackToOriginal,
+                onOverwrite = viewModel::writeBackOverwrite,
+                onKeepLocal = viewModel::writeBackDismiss,
+                onDismiss = viewModel::writeBackDismiss,
+            )
+        }
+
         // Offered, not done: the switch stays the user's, and saying no leaves the connection
         // writable — it will simply ask for an unlock before the first write.
         if (readOnlyOffer) {
-            AlertDialog(
-                onDismissRequest = viewModel::dismissReadOnlyOffer,
-                title = { Text(stringResource(R.string.policy_read_only_offer_title)) },
-                text = { Text(stringResource(R.string.policy_read_only_offer_body)) },
-                confirmButton = {
-                    TextButton(onClick = viewModel::acceptReadOnlyOffer) {
-                        Text(stringResource(R.string.policy_read_only_offer_accept))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::dismissReadOnlyOffer) {
-                        Text(stringResource(R.string.policy_read_only_offer_decline))
-                    }
+            BasicAlertDialog(onDismissRequest = viewModel::dismissReadOnlyOffer) {
+                ReadOnlyOfferCard(
+                    onAccept = viewModel::acceptReadOnlyOffer,
+                    onDecline = viewModel::dismissReadOnlyOffer,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Which database product the connection talks to. Every engine is listed; one whose
+ * implementation has not landed yet (SqlDialect.connectable) says so here, and the form cannot be
+ * saved while it is selected — phase 2 of docs/tobb-motor-terv.md flips that per engine.
+ */
+@Composable
+private fun EngineSection(engine: DatabaseEngine, onSelect: (DatabaseEngine) -> Unit) {
+    val semantic = LocalSemanticColors.current
+    Section(stringResource(R.string.engine_section)) {
+        SegmentedChoice(
+            options = DatabaseEngine.ORDER,
+            selected = engine,
+            label = { stringResource(it.labelRes()) },
+            onSelect = onSelect,
+        )
+        val note = when (engine) {
+            DatabaseEngine.MYSQL -> R.string.engine_mysql_note
+            DatabaseEngine.SQLSERVER -> R.string.engine_sqlserver_note
+            DatabaseEngine.SQLITE -> R.string.engine_sqlite_note
+            DatabaseEngine.POSTGRESQL -> R.string.engine_postgresql_note
+        }
+        note?.let {
+            Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+        }
+        if (engine == DatabaseEngine.SQLSERVER) {
+            // What is different about SQL Server, said once where the engine is chosen.
+            for (line in listOf(R.string.sqlserver_auth_note, R.string.sqlserver_database_note, R.string.sqlserver_script_note)) {
+                Text(stringResource(line), style = MaterialTheme.typography.bodySmall, color = semantic.textSecondary)
+            }
+        }
+        if (!SqlDialects.forEngine(engine).connectable) {
+            Text(
+                stringResource(R.string.engine_coming_soon, stringResource(engine.labelRes())),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
+    }
+}
+
+/**
+ * The database file of a SQLite connection: what was picked, the app's copy of it, and whether the
+ * copy may be written to. The picker copies the file into app storage (LocalDatabaseFiles), so
+ * everything shown here is about that copy; the original is never touched.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FileSection(
+    form: ConnectionForm,
+    onChoose: (Uri) -> Unit,
+    onRefresh: () -> Unit,
+    onWriteBack: () -> Unit,
+    onReadOnly: (Boolean) -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    var confirmRefresh by rememberSaveable { mutableStateOf(false) }
+    // The picker filters by MIME type, and databases have no reliable one, so `*/*` is the real
+    // filter and the specific types only put the likely files first on providers that know them.
+    val picker = rememberLauncherForActivityResult(OpenWritableDocument()) { uri ->
+        uri?.let(onChoose)
+    }
+    val fileName = form.fileName
+    val hasCopy = form.fileSize != null || form.fileStaged != null
+
+    Section(stringResource(R.string.engine_section_file)) {
+        Text(
+            fileName ?: stringResource(R.string.engine_file_none),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (fileName == null) semantic.textSecondary else MaterialTheme.colorScheme.onSurface,
+        )
+        when {
+            form.fileBusy -> Text(
+                stringResource(R.string.sqlite_file_copying),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+
+            form.fileSize != null && form.fileCopiedAt != null -> Text(
+                stringResource(
+                    R.string.sqlite_file_details,
+                    LocaleFormat.byteSize(form.fileSize, appLocale()),
+                    LocaleFormat.dateTime(form.fileCopiedAt, appLocale()),
+                ),
+                style = MonoStyles.cell.copy(fontSize = 12.sp),
+                color = semantic.textSecondary,
+            )
+
+            fileName != null && !hasCopy -> Text(
+                stringResource(R.string.sqlite_file_missing),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
+        if (form.fileStaged != null) {
+            Text(
+                stringResource(R.string.sqlite_file_unsaved),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+        if (form.fileWal) {
+            Text(
+                stringResource(R.string.sqlite_file_wal),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            OutlinedButton(
+                onClick = { picker.launch(SQLITE_MIME_TYPES) },
+                enabled = !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.engine_file_choose)) }
+            OutlinedButton(
+                // A writable copy may hold changes of the user's own, which a refresh would throw
+                // away: that one asks first.
+                onClick = { if (!form.fileDirty) onRefresh() else confirmRefresh = true },
+                enabled = form.fileCanRefresh && !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.sqlite_file_refresh)) }
+        }
+        if (form.fileDirty) {
+            Text(
+                stringResource(R.string.writeback_dirty_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.warning,
+            )
+            OutlinedButton(
+                onClick = onWriteBack,
+                // A copy chosen in this editor and not saved yet is not the one that holds the changes.
+                enabled = form.fileCanWrite && form.fileStaged == null && !form.fileBusy,
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.writeback_button)) }
+            if (!form.fileCanWrite) {
+                Text(
+                    stringResource(R.string.writeback_no_permission_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = semantic.textSecondary,
+                )
+            }
+        }
+        if (fileName != null && !form.fileCanRefresh) {
+            Text(
+                stringResource(R.string.sqlite_file_refresh_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+                color = semantic.textSecondary,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.db_read_only),
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                modifier = Modifier.weight(1f).padding(end = Spacing.m),
+            )
+            Switch(checked = form.readOnly, onCheckedChange = onReadOnly)
+        }
+        Text(
+            stringResource(if (form.readOnly) R.string.sqlite_read_only_on else R.string.sqlite_read_only_off),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (form.readOnly) semantic.textSecondary else semantic.warning,
+        )
+        Text(
+            stringResource(R.string.engine_file_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
+    }
+
+    if (confirmRefresh) {
+        BasicAlertDialog(onDismissRequest = { confirmRefresh = false }) {
+            RefreshCopyCard(
+                onCancel = { confirmRefresh = false },
+                onConfirm = {
+                    confirmRefresh = false
+                    onRefresh()
                 },
             )
         }
     }
 }
+
+/** The offer to make a production connection read-only; declining leaves it writable. */
+@Composable
+fun ReadOnlyOfferCard(onAccept: () -> Unit, onDecline: () -> Unit) {
+    DialogCard {
+        DialogHeading(title = stringResource(R.string.policy_read_only_offer_title))
+        Text(stringResource(R.string.policy_read_only_offer_body), style = MaterialTheme.typography.bodyMedium)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.policy_read_only_offer_decline),
+            onCancel = onDecline,
+            actionLabel = stringResource(R.string.policy_read_only_offer_accept),
+            onAction = onAccept,
+            enabled = true,
+        )
+    }
+}
+
+/** The question before a refresh replaces a copy that may have been written to. */
+@Composable
+fun RefreshCopyCard(onCancel: () -> Unit, onConfirm: () -> Unit) {
+    DialogCard(danger = true) {
+        DialogHeading(title = stringResource(R.string.sqlite_refresh_title))
+        Text(stringResource(R.string.sqlite_refresh_body), style = MaterialTheme.typography.bodyMedium)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onCancel,
+            actionLabel = stringResource(R.string.sqlite_refresh_confirm),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
+}
+
+/**
+ * The system picker, asking for write access as well as read: without it the app could copy the
+ * file in but never write the changes back. Providers that cannot grant it still hand the file over
+ * and the connection simply stays copy-only (LocalDatabaseFiles.rememberAccess).
+ */
+class OpenWritableDocument : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: android.content.Context, input: Array<String>): android.content.Intent =
+        super.createIntent(context, input).addFlags(
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+        )
+}
+
+private val SQLITE_MIME_TYPES = arrayOf(
+    "application/vnd.sqlite3",
+    "application/x-sqlite3",
+    "application/x-sqlite",
+    "application/octet-stream",
+    "*/*",
+)
 
 /**
  * How the MySQL connection itself is protected (research summary, §1).
@@ -566,11 +917,14 @@ fun ConnectionEditorScreen(
  */
 @Composable
 private fun TlsSection(
+    @androidx.annotation.StringRes title: Int,
     mode: SslMode,
     certificate: String?,
     onMode: (SslMode) -> Unit,
     onImport: (Uri, String) -> Unit,
     onClear: () -> Unit,
+    /** SQL Server verifies against the phone's own CAs when no file is imported (Azure SQL). */
+    caOptional: Boolean = false,
 ) {
     val semantic = LocalSemanticColors.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -578,68 +932,64 @@ private fun TlsSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(stringResource(R.string.tls_mode), style = MaterialTheme.typography.bodyMedium)
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            SslMode.entries.forEach { candidate ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onMode(candidate) }
-                        .padding(vertical = Spacing.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    androidx.compose.material3.RadioButton(
-                        selected = candidate == mode,
-                        onClick = { onMode(candidate) },
-                    )
-                    Column(modifier = Modifier.padding(start = Spacing.s)) {
-                        Text(
-                            stringResource(
-                                when (candidate) {
-                                    SslMode.DISABLED -> R.string.tls_disabled
-                                    SslMode.REQUIRED -> R.string.tls_required
-                                    SslMode.VERIFY_CA -> R.string.tls_verify_ca
-                                    SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity
-                                },
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            stringResource(
-                                when (candidate) {
-                                    SslMode.DISABLED -> R.string.tls_disabled_note
-                                    SslMode.REQUIRED -> R.string.tls_required_note
-                                    SslMode.VERIFY_CA -> R.string.tls_verify_ca_note
-                                    SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity_note
-                                },
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = semantic.textSecondary,
-                        )
-                    }
-                }
-            }
-        }
+        Text(stringResource(title), style = MaterialTheme.typography.bodyMedium)
+        // Four short names on one track, and the chosen one explained under it: the explanation is
+        // what matters, but only for the mode that is on.
+        SegmentedChoice(
+            options = SslMode.entries,
+            selected = mode,
+            label = { candidate ->
+                stringResource(
+                    when (candidate) {
+                        SslMode.DISABLED -> R.string.tls_disabled_short
+                        SslMode.REQUIRED -> R.string.tls_required_short
+                        SslMode.VERIFY_CA -> R.string.tls_verify_ca_short
+                        SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity_short
+                    },
+                )
+            },
+            onSelect = onMode,
+        )
+        Text(
+            stringResource(
+                when (mode) {
+                    SslMode.DISABLED -> R.string.tls_disabled_note
+                    SslMode.REQUIRED -> R.string.tls_required_note
+                    SslMode.VERIFY_CA -> R.string.tls_verify_ca_note
+                    SslMode.VERIFY_IDENTITY -> R.string.tls_verify_identity_note
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = semantic.textSecondary,
+        )
 
         if (mode.verifiesCertificate) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-            ) {
-                OutlinedButton(
-                    onClick = { picker.launch(arrayOf("*/*")) },
-                    shape = Shapes.button,
-                ) { Text(stringResource(R.string.tls_import_ca)) }
-                certificate?.let {
-                    Text(it, style = MonoStyles.cell, modifier = Modifier.weight(1f))
+            // The imported CA on a line of its own, so a long file name never squeezes the buttons.
+            certificate?.let {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+                ) {
+                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = semantic.success, modifier = Modifier.size(18.dp))
+                    Text(
+                        it,
+                        style = MonoStyles.cell,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
                     TextButton(onClick = onClear) { Text(stringResource(R.string.cancel)) }
                 }
             }
+            OutlinedButton(
+                onClick = { picker.launch(arrayOf("*/*")) },
+                shape = Shapes.button,
+            ) { Text(stringResource(R.string.tls_import_ca)) }
             if (certificate == null) {
                 Text(
-                    stringResource(R.string.tls_ca_required),
+                    stringResource(if (caOptional) R.string.sqlserver_tls_public_note else R.string.tls_ca_required),
                     style = MaterialTheme.typography.bodySmall,
-                    color = semantic.warning,
+                    color = if (caOptional) semantic.textSecondary else semantic.warning,
                 )
             }
         }
@@ -649,27 +999,38 @@ private fun TlsSection(
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        HairlineCard {
-            Column(
-                modifier = Modifier.padding(Spacing.l),
-                verticalArrangement = Arrangement.spacedBy(Spacing.m),
-            ) { content() }
-        }
+        // Flat, as in the design: a caption and the fields under it. Boxes around boxes only
+        // made the form longer.
+        SectionCaption(title, modifier = Modifier.padding(top = Spacing.m))
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) { content() }
     }
 }
 
 @Composable
 private fun ColorPicker(selected: ConnectionColor, onSelect: (ConnectionColor) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+    val ground = MaterialTheme.colorScheme.surface
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         ConnectionColor.entries.forEach { option ->
-            Surface(
+            val chosen = option == selected
+            // The swatch is 36dp, its touch target the full 44; the chosen one gets a ring set
+            // off from it by a gap of the card's own colour, so it reads without the fill changing.
+            Box(
                 modifier = Modifier
-                    .size(if (option == selected) 32.dp else 24.dp)
-                    .clickable { onSelect(option) },
-                shape = CircleShape,
-                color = option.value,
-            ) {}
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .selectable(selected = chosen, role = Role.RadioButton) { onSelect(option) }
+                    .semantics { contentDescription = option.name },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .then(if (chosen) Modifier.border(2.dp, option.value, CircleShape) else Modifier)
+                        .padding(if (chosen) 4.dp else 0.dp)
+                        .background(option.value, CircleShape)
+                        .then(if (chosen) Modifier.border(1.dp, ground, CircleShape) else Modifier),
+                )
+            }
         }
     }
 }

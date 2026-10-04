@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Data comparison between two connections (time machine across connections). -->
+    <string name="datacompare_stat_only_a">only in A</string>
+    <string name="datacompare_stat_only_b">only in B</string>
+    <string name="datacompare_stat_identical">identical</string>
+    <string name="datacompare_rows">%1$d rows</string>
+    <string name="datacompare_identical">The two sides are identical as far as this comparison can see.</string>
+    <string name="datacompare_partial">Only part of the result is compared: A has %1$d rows, B has %2$d rows.</string>
+    <string name="datacompare_query_differs">The two sides did not run the same query, so a difference may come from the query rather than the data.</string>
+
+    <string name="datacompare_key_choose">Choose key columns</string>
+    <string name="datacompare_key_hint">Pick the columns that identify a row, for example id. Rows are then matched across the two sides and a changed row shows which cells moved.</string>
+    <string name="datacompare_key_apply">Compare by key</string>
+
+    <string name="datacompare_side_a">in A</string>
+    <string name="datacompare_side_b">in B</string>
+    <string name="datacompare_unusable_duplicate">Not compared: the key %1$s is not unique %2$s — %3$d rows share the value %4$s.</string>
+    <string name="datacompare_unusable_null">Not compared: the key %1$s is NULL in %3$d rows %2$s, and NULL does not identify a row.</string>
+    <string name="datacompare_unusable_missing">Not compared: the key column(s) %1$s are not in both results.</string>
+    <string name="datacompare_unusable_hint">Rows are never paired on a key that repeats, because the counts would be guesses. Choose other columns, or narrow the query.</string>
+
+    <string name="datacompare_columns_only_a">Only in A: %1$s</string>
+    <string name="datacompare_columns_only_b">Only in B: %1$s</string>
+    <string name="datacompare_columns_order">The columns have the same names but not in the same order or number.</string>
+</resources>

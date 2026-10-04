@@ -55,4 +55,24 @@ class SessionHeaderTest {
     fun `a connection with no database named still has something to show`() {
         assertEquals("deploy@gate.example.com → db01:3306", header(database = "").target)
     }
+
+    @Test
+    fun `a file connection names the file, with no host, port or tunnel`() {
+        val header = sessionHeader(
+            connectionName = "Survey",
+            tunnelled = false,
+            sshUser = "",
+            sshHost = "",
+            dbHost = "",
+            dbPort = 0,
+            file = "survey.db",
+            database = "",
+            currentDatabase = "main",
+            dbUser = "",
+            environment = ConnectionEnvironment.UNSET,
+            readOnly = true,
+        )
+        assertEquals("survey.db", header.server)
+        assertEquals("survey.db/main", header.target)
+    }
 }

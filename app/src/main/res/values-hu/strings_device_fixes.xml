@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="structure_default_label">alap:</string>
+    <string name="production_confirm_body_file">A(z) %1$s éles adatbázisfájl (%2$s), és írni is lehet rajta. Megnyitod?</string>
+
+    <string name="fact_version">Verzió</string>
+    <string name="fact_build">Kiadás</string>
+    <string name="fact_edition">Kiadás (edition)</string>
+    <string name="fact_level">Szolgáltatási szint</string>
+    <string name="fact_host">Gépnév</string>
+    <string name="fact_user">Felhasználó</string>
+    <string name="fact_database">Adatbázis</string>
+    <string name="fact_role">Szerep</string>
+    <string name="fact_uptime">Üzemidő</string>
+    <string name="fact_connections">Kapcsolatok most</string>
+    <string name="fact_running">Futó szálak</string>
+    <string name="fact_max_connections">Legtöbb kapcsolat</string>
+    <string name="fact_tls">TLS</string>
+    <string name="fact_read_only">Csak olvasható</string>
+    <string name="fact_time_zone">Időzóna</string>
+    <string name="fact_charset">Karakterkészlet</string>
+    <string name="fact_collation">Rendezés</string>
+    <string name="fact_driver">JDBC-illesztő</string>
+    <string name="fact_yes">Igen</string>
+    <string name="fact_no">Nem</string>
+    <string name="fact_tls_none">Nincs titkosítás</string>
+    <string name="fact_tls_on">Titkosított</string>
+    <string name="fact_driver_modern">MariaDB Connector/J</string>
+    <string name="fact_driver_legacy">MySQL Connector/J 5.1 (régi szerverhez)</string>
+    <string name="fact_uptime_days">%1$d nap %2$d óra</string>
+    <string name="fact_uptime_hours">%1$d óra %2$d perc</string>
+    <string name="fact_uptime_minutes">%1$d perc</string>
+</resources>

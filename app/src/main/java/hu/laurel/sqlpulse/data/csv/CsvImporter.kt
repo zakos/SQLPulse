@@ -5,6 +5,14 @@ import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import hu.laurel.sqlpulse.data.schema.SchemaColumn
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
+import hu.laurel.sqlpulse.data.sql.NoSqlSessionException
+import hu.laurel.sqlpulse.data.sql.PreparedSql
+import hu.laurel.sqlpulse.data.sql.ReadOnlyConnectionException
+import hu.laurel.sqlpulse.data.sql.WriteGate
+import hu.laurel.sqlpulse.data.sql.WritesLockedException
+import hu.laurel.sqlpulse.data.writelog.WriteLogEntries
+import hu.laurel.sqlpulse.data.writelog.WriteLogger
+import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.di.IoDispatcher
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -22,8 +30,20 @@ data class ImportPlan(
     val table: CsvTable,
     val match: ColumnMatch,
     val separator: Char,
+    /**
+     * Entry `i` is the table column file column `i` is written into, or null when it is left out.
+     * Starts as the by-name match and is what the person edits on the mapping card.
+     */
+    val mapping: List<String?> = table.header.map { match.matched[it] },
+    /** The table's columns: what the mapping may point at, and what its values are checked against. */
+    val columns: List<SchemaColumn> = emptyList(),
 ) {
     val rowCount: Int get() = table.rows.size
+
+    /** Problems with the mapping; computed once per plan, because it reads every row. */
+    val issues: List<MappingIssue> by lazy { CsvMapping.check(this) }
+
+    val canImport: Boolean get() = match.canImport && issues.none { it.kind.blocking }
 }
 
 /**
@@ -37,6 +57,8 @@ data class ImportPlan(
 class CsvImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessions: SqlSessionManager,
+    private val writeGate: WriteGate,
+    private val writeLog: WriteLogger,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -68,7 +90,7 @@ class CsvImporter @Inject constructor(
             if (total > MAX_ROWS) throw ImportTooLargeException(total, MAX_ROWS)
 
             val table = CsvTable(header, rows, malformed)
-            ImportPlan(table, CsvImport.match(header, columns), separator)
+            ImportPlan(table, CsvImport.match(header, columns), separator, columns = columns)
         }
     }
 
@@ -79,16 +101,45 @@ class CsvImporter @Inject constructor(
      * key on row 400 — must not leave the table with 399 rows nobody asked for.
      */
     suspend fun execute(database: String, table: String, plan: ImportPlan): Int {
+        // Two file columns into one table column would silently keep only one of them.
+        require(plan.issues.none { it.kind == MappingIssueKind.DUPLICATE_TARGET }) {
+            "two file columns are mapped to the same table column"
+        }
         val statements = CsvImport.statements(
             database = database,
             table = table,
-            match = plan.match,
-            header = plan.table.header,
+            mapping = plan.mapping,
             rows = plan.table.rows,
+            syntax = sessions.dialect(),
         )
         if (statements.isEmpty()) return 0
+        writeGate.check()
 
-        return sessions.withConnection { connection ->
+        val started = System.currentTimeMillis()
+        // One entry per import, not per row: what matters is that these N rows went into this
+        // table in one transaction, and a 5 000-row file would otherwise bury the rest of the log.
+        val summary = WriteLogEntries.csvImport(database, table, plan.rowCount, statements.first().sql)
+        try {
+            val written = run(statements)
+            writeLog.record(
+                WriteSource.CSV_IMPORT, summary, written, null, started,
+                System.currentTimeMillis() - started, inTransaction = false,
+            )
+            return written
+        } catch (e: Exception) {
+            if (e !is ReadOnlyConnectionException && e !is WritesLockedException && e !is NoSqlSessionException) {
+                // Rolled back as a whole, so nothing was written; 0 says that.
+                writeLog.record(
+                    WriteSource.CSV_IMPORT, summary, 0, e, started,
+                    System.currentTimeMillis() - started, inTransaction = false,
+                )
+            }
+            throw e
+        }
+    }
+
+    private suspend fun run(statements: List<PreparedSql>): Int =
+        sessions.withConnection { connection ->
             val previousAutoCommit = connection.autoCommit
             connection.autoCommit = false
             try {
@@ -110,7 +161,6 @@ class CsvImporter @Inject constructor(
                 runCatching { connection.autoCommit = previousAutoCommit }
             }
         }
-    }
 
     private companion object {
         /**

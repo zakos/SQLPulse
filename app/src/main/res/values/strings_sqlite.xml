@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SQLite database files (docs/tobb-motor-terv.md, section 3.2) -->
+    <string name="sqlite_file_details">%1$s · copied %2$s</string>
+    <string name="sqlite_file_missing">The copy of this file is not on this device any more. Choose the file again.</string>
+    <string name="sqlite_file_unsaved">The copy is made. It is kept when you save the connection.</string>
+    <string name="sqlite_file_wal">This database uses WAL mode. Only the main file is copied, so changes that still sit in its -wal file are not in the copy. Close the database in the app that wrote it, then choose it again.</string>
+    <string name="sqlite_file_copying">Copying the file…</string>
+    <string name="sqlite_file_refresh">Refresh copy</string>
+    <string name="sqlite_file_refresh_unavailable">The original can only be read again while Android still allows it. If this is greyed out, choose the file again.</string>
+    <string name="sqlite_refresh_title">Replace the copy?</string>
+    <string name="sqlite_refresh_body">The copy is replaced by the original as it is now. Any change you made to the copy in this app is lost.</string>
+    <string name="sqlite_refresh_confirm">Replace</string>
+    <string name="sqlite_read_only_on">Opened read-only: nothing can change the copy.</string>
+    <string name="sqlite_read_only_off">Writable: changes go into the app\'s copy of the file. They are never written back to the original.</string>
+    <string name="sqlite_error_not_database">That is not a SQLite database. It may be encrypted, or another kind of file.</string>
+    <string name="sqlite_error_empty">That file is empty.</string>
+    <string name="sqlite_error_copy">The file could not be copied: %1$s</string>
+    <string name="sqlite_card_missing">%1$s · copy missing</string>
+    <string name="sqlite_card_size">%1$s · %2$s</string>
+</resources>

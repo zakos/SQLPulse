@@ -42,10 +42,10 @@ data class SchemaMapUiState(
 class SchemaMapViewModel @Inject constructor(
     private val schema: SchemaRepository,
     private val sessions: SqlSessionManager,
-) : ViewModel() {
+) : ViewModel(), SchemaMapController {
 
     private val _uiState = MutableStateFlow(SchemaMapUiState())
-    val uiState: StateFlow<SchemaMapUiState> = _uiState.asStateFlow()
+    override val uiState: StateFlow<SchemaMapUiState> = _uiState.asStateFlow()
 
     init {
         load()
@@ -86,11 +86,11 @@ class SchemaMapViewModel @Inject constructor(
         }
     }
 
-    fun select(table: String?) {
+    override fun select(table: String?) {
         _uiState.value = _uiState.value.copy(selected = table)
     }
 
-    fun setShowGuesses(show: Boolean) {
+    override fun setShowGuesses(show: Boolean) {
         _uiState.value = _uiState.value.copy(showGuesses = show)
         rebuild()
     }

@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.data.sql
 
 import hu.laurel.sqlpulse.data.backup.JsonException
 import hu.laurel.sqlpulse.data.backup.JsonValue
+import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 
 /**
  * What a node in the plan is. The tabular `EXPLAIN` has one row per table and nothing else; the
@@ -35,6 +36,18 @@ enum class ExplainNodeKind {
 
     /** A subquery whose result is written to a temporary table and then read back. */
     MATERIALISED,
+
+    /**
+     * A join that is not a nested loop: PostgreSQL's hash and merge joins, SQL Server's merge,
+     * hash and adaptive joins. MySQL does not name its join algorithm as a step of its own.
+     */
+    JOIN,
+
+    /**
+     * Any other step an engine puts in the plan (a hash build, a limit, a parallel gather, a
+     * scalar computation). The step's own name is the label; it has no table or index to show.
+     */
+    OPERATION,
 }
 
 /** A property of one step worth marking, beyond what its numbers already say. */
@@ -62,6 +75,15 @@ enum class ExplainPlanFlag {
 
     /** The subquery is re-run for each row of the query around it. */
     DEPENDENT,
+
+    /**
+     * Each row found in an index is followed by a second look-up in the table (SQL Server's key
+     * or RID lookup) because the index does not carry every column the query needs.
+     */
+    KEY_LOOKUP,
+
+    /** SQLite builds a temporary index for this step because no permanent one fits. */
+    AUTO_INDEX,
 }
 
 /**
@@ -127,10 +149,31 @@ data class ExplainPlan(
      * highlight that is always on highlights nothing.
      */
     val expensiveBranch: List<String>,
+    /** Which engine wrote the plan; the sentences about costs differ (SQLite has none). */
+    val engine: DatabaseEngine = DatabaseEngine.MYSQL,
+    /**
+     * Indexes the server says would have made this query cheaper. Text to read, never run: the
+     * app does not create indexes (specification §2).
+     */
+    val missingIndexes: List<MissingIndexHint> = emptyList(),
 ) {
     /** The step at the end of the expensive branch: the one actually worth looking at. */
     val expensiveNodeId: String? get() = expensiveBranch.lastOrNull()
 }
+
+/**
+ * An index SQL Server's optimiser wished it had, from the plan's `MissingIndexes` element.
+ *
+ * Column names are kept as the server wrote them, without the brackets.
+ */
+data class MissingIndexHint(
+    val table: String,
+    val equalityColumns: List<String>,
+    val inequalityColumns: List<String>,
+    val includeColumns: List<String>,
+    /** The percentage of the query's cost the server expects the index to remove. */
+    val impactPercent: Double?,
+)
 
 /** The outcome of trying to read a plan as JSON. */
 sealed interface ExplainPlanResult {
@@ -427,7 +470,7 @@ object ExplainJson {
      * vocabulary of warnings would mean two sets of translated sentences saying the same thing,
      * and the extra detail is already visible in the tree itself.
      */
-    private fun notesOf(nodes: List<ExplainPlanNode>): List<ExplainNote> {
+    internal fun notesOf(nodes: List<ExplainPlanNode>): List<ExplainNote> {
         val notes = linkedSetOf<ExplainNote>()
         nodes.forEach { node ->
             if (ExplainPlanFlag.FULL_TABLE_SCAN in node.flags) notes += ExplainNote.FULL_TABLE_SCAN
@@ -438,6 +481,9 @@ object ExplainJson {
             }
             if (ExplainPlanFlag.FILESORT in node.flags) notes += ExplainNote.FILESORT
             if (ExplainPlanFlag.TEMPORARY_TABLE in node.flags) notes += ExplainNote.TEMPORARY_TABLE
+            // Set only by the other engines' readers; MySQL's plan never carries these two.
+            if (ExplainPlanFlag.KEY_LOOKUP in node.flags) notes += ExplainNote.KEY_LOOKUP
+            if (ExplainPlanFlag.AUTO_INDEX in node.flags) notes += ExplainNote.AUTOMATIC_INDEX
             val rows = node.rowsExamined
             if (rows != null && rows >= MANY_ROWS) notes += ExplainNote.MANY_ROWS
         }
@@ -455,7 +501,7 @@ object ExplainJson {
      * Returns nothing when the winner is not a real winner: a plan of a single step, or one where
      * every step measures zero. A highlight that is always on carries no information.
      */
-    private fun expensiveBranch(root: ExplainPlanNode, hasCost: Boolean): List<String> {
+    internal fun expensiveBranch(root: ExplainPlanNode, hasCost: Boolean): List<String> {
         fun weight(node: ExplainPlanNode): Double =
             if (hasCost) node.cost ?: 0.0 else (node.rowsExamined?.toDouble() ?: 0.0)
 
