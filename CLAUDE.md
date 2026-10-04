@@ -300,8 +300,12 @@ E. A funkció-összevetésből (`docs/funkcio-osszevetes.md`) — 2026-10-03: a 
 - [ ] Készüléken kipróbálni: pgjdbc/mssql-jdbc TLS Androidon, SQLite fájlválasztó, SSH-alagút PG/MSSQL-lel.
 - [ ] SQL Server: `GO` elválasztó nem támogatott; varbinary/text/ntext/xml cellaszerkesztés hibázhat;
       Azure AD nincs. PostgreSQL: a jsonb `?` operátort a driver paraméternek veszi.
-- [ ] (folyamatban) SQLite visszaírás: döntés (2026-10-04) — a tábla nézetből kilépéskor, ha volt írás,
-      az app kérdezze meg, kiírja-e az eredeti fájlba. Marad: kulcs nélküli tábla csak olvasható; WAL-fájlok nem másolódnak.
+- [x] SQLite visszaírás (2026-10-04): tábla nézetből kilépéskor rákérdez, ha a másolat „piszkos”
+      (`<id>.sqlite.baseline` mtime/méret alapján); kézi gomb a kapcsolatszerkesztőben; írás előtt
+      ellenőrzi, nem változott-e az eredeti; írási naplóba `WRITE_BACK`. `data/connection/WriteBack.kt`.
+      Korlát: régi kapcsolatoknál csak olvasási jog van → újra ki kell választani a fájlt; régi
+      másolatnak nincs alapvonala → frissítés után működik; SAF-on nincs atomi csere.
+- [ ] SQLite: kulcs nélküli tábla csak olvasható; WAL-fájlok nem másolódnak.
 - [ ] Döntésre vár: a diagram csak IQR-kiugrókat jelöl (a lap a z-szabályt is listázza).
 - [ ] Oracle: nem kérték.
 
