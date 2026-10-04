@@ -45,7 +45,7 @@ class QueryEditorShots {
 
     private fun editorState() = QueryEditorUiState(
         tabs = listOf(
-            QueryTab(id = 1, title = "napi bevétel", sql = SQL, database = "billing", suggestions = listOf("customer_id", "currency", "created_by")),
+            QueryTab(id = 1, title = "napi bevétel", sql = SQL, database = "billing", suggestions = listOf(hu.laurel.sqlpulse.ui.query.CompletionItem("customer_id", hu.laurel.sqlpulse.ui.query.CompletionKind.COLUMN))),
             QueryTab(id = 2, title = "lejárt számlák"),
             QueryTab(id = 3, title = "ügyfél keresés"),
         ),
@@ -125,7 +125,7 @@ class FakeQueryController(
     override fun cancel() = Unit
     override fun closeTab(id: Long) = Unit
     override fun compareWithSnapshot() = Unit
-    override fun complete(suggestion: String) = Unit
+    override fun complete(item: hu.laurel.sqlpulse.ui.query.CompletionItem) = Unit
     override fun confirmWrite() = Unit
     override fun deleteFavourite(favourite: SavedQueryEntity) = Unit
     override fun discardSnapshot() = Unit

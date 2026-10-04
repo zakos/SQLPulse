@@ -39,12 +39,21 @@ class ExportManager @Inject constructor(
         /** The engine the rows came from: INSERT exports quote names and values the way it reads them. */
         syntax: SqlSyntax = MySqlDialect,
     ): Intent = withContext(io) {
-        val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
-        val file = File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
+        val file = newFile(baseName, format)
         file.writeText(ResultSerializer.serialize(table, format, tableName, syntax))
+        shareIntent(file, format)
+    }
 
+    /** An empty file in the export cache, for a writer that streams into it. */
+    fun newFile(baseName: String, format: ExportFormat): File {
+        val directory = File(context.cacheDir, EXPORT_DIRECTORY).apply { mkdirs() }
+        return File(directory, "${safeName(baseName)}-${System.currentTimeMillis()}.${format.extension}")
+    }
+
+    /** The share sheet's intent for a file made by [newFile]. */
+    fun shareIntent(file: File, format: ExportFormat): Intent {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
-        Intent(Intent.ACTION_SEND).apply {
+        return Intent(Intent.ACTION_SEND).apply {
             type = format.mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

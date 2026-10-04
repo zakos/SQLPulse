@@ -90,8 +90,23 @@ data class ResultTable(
          * we stop early rather than letting a runaway query fill the heap (§10).
          */
         fun from(resultSet: ResultSet, maxRows: Int): ResultTable {
+            val columns = columnsOf(resultSet)
+            val rows = ArrayList<List<CellValue>>()
+            var truncated = false
+            while (resultSet.next()) {
+                if (rows.size >= maxRows) {
+                    truncated = true
+                    break
+                }
+                rows += readRow(resultSet, columns)
+            }
+            return ResultTable(columns, rows, truncated)
+        }
+
+        /** The columns of [resultSet], as the grid and the exports describe them. */
+        fun columnsOf(resultSet: ResultSet): List<ColumnMeta> {
             val meta = resultSet.metaData
-            val columns = (1..meta.columnCount).map { index ->
+            return (1..meta.columnCount).map { index ->
                 ColumnMeta(
                     label = meta.getColumnLabel(index),
                     type = columnTypeOf(
@@ -103,20 +118,11 @@ data class ResultTable(
                     table = meta.getTableName(index)?.takeIf { it.isNotBlank() },
                 )
             }
-
-            val rows = ArrayList<List<CellValue>>()
-            var truncated = false
-            while (resultSet.next()) {
-                if (rows.size >= maxRows) {
-                    truncated = true
-                    break
-                }
-                rows += columns.indices.map { column ->
-                    readCell(resultSet, column + 1, columns[column].type)
-                }
-            }
-            return ResultTable(columns, rows, truncated)
         }
+
+        /** The row [resultSet] is positioned on. Shared with the streaming export, so both read cells alike. */
+        fun readRow(resultSet: ResultSet, columns: List<ColumnMeta>): List<CellValue> =
+            columns.indices.map { column -> readCell(resultSet, column + 1, columns[column].type) }
 
         private fun readCell(resultSet: ResultSet, index: Int, type: CellType): CellValue =
             when (type) {

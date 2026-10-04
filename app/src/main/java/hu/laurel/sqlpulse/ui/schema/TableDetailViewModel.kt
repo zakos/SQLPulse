@@ -13,6 +13,7 @@ import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
 import hu.laurel.sqlpulse.data.writelog.WriteSource
 import hu.laurel.sqlpulse.data.csv.CsvImporter
+import hu.laurel.sqlpulse.data.csv.CsvMapping
 import hu.laurel.sqlpulse.data.csv.ImportPlan
 import hu.laurel.sqlpulse.data.schema.LinkTrail
 import hu.laurel.sqlpulse.data.schema.LookupOutcome
@@ -359,6 +360,11 @@ class TableDetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(importing = false, error = describe(e))
             }
         }
+    }
+
+    override fun setImportMapping(fileIndex: Int, tableColumn: String?) {
+        val plan = _uiState.value.importPlan ?: return
+        _uiState.value = _uiState.value.copy(importPlan = CsvMapping.remap(plan, fileIndex, tableColumn))
     }
 
     override fun dismissImport() {

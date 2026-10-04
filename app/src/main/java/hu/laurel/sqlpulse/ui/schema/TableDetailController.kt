@@ -17,6 +17,9 @@ interface TableDetailController {
     fun dismissEdit()
     fun dismissError()
     fun dismissImport()
+
+    /** Sends file column [fileIndex] to [tableColumn], or leaves it out when that is null. */
+    fun setImportMapping(fileIndex: Int, tableColumn: String?) = Unit
     fun export(format: ExportFormat)
     fun loadMore()
     fun openChildren(link: RowLink)

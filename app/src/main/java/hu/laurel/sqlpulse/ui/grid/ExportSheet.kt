@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -36,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hu.laurel.sqlpulse.R
 import hu.laurel.sqlpulse.data.export.ExportFormat
+import hu.laurel.sqlpulse.data.export.FullExport
+import hu.laurel.sqlpulse.data.format.LocaleFormat
+import hu.laurel.sqlpulse.ui.appLocale
 import hu.laurel.sqlpulse.ui.components.DialogNote
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -44,8 +48,9 @@ import hu.laurel.sqlpulse.ui.theme.Spacing
 
 /**
  * Export (§7.7), as a sheet: pick the format, then share. What goes into the file is what is on
- * screen — the sheet says how many rows that is, because a filter can be hiding some — and the
- * file exists only until the share sheet has taken it.
+ * screen — the sheet says how many rows that is, because a filter can be hiding some — or, when
+ * the app cut the result with its own limit, the full result re-run without it. The file exists
+ * only until the share sheet has taken it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +58,12 @@ fun ExportSheet(
     rowCount: Int,
     onExport: (ExportFormat) -> Unit,
     onDismiss: () -> Unit,
+    /** True when the result on screen is only part of the answer and can be exported in full. */
+    fullAvailable: Boolean = false,
+    onExportFull: (ExportFormat) -> Unit = {},
 ) {
     var selected by remember { mutableStateOf(ExportFormat.CSV) }
+    var full by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(),
@@ -66,9 +75,12 @@ fun ExportSheet(
             selected = selected,
             onSelect = { selected = it },
             onShare = {
-                onExport(selected)
+                if (full && fullAvailable) onExportFull(selected) else onExport(selected)
                 onDismiss()
             },
+            fullAvailable = fullAvailable,
+            full = full,
+            onFullChange = { full = it },
         )
     }
 }
@@ -80,6 +92,9 @@ fun ExportSheetContent(
     selected: ExportFormat,
     onSelect: (ExportFormat) -> Unit,
     onShare: () -> Unit,
+    fullAvailable: Boolean = false,
+    full: Boolean = false,
+    onFullChange: (Boolean) -> Unit = {},
 ) {
     val semantic = LocalSemanticColors.current
     val accent = MaterialTheme.colorScheme.primary
@@ -122,10 +137,30 @@ fun ExportSheetContent(
                 }
             }
         }
-        Text(
-            stringResource(R.string.export_rows_on_screen, rowCount),
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-        )
+        if (fullAvailable) {
+            Column(modifier = Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                ScopeOption(
+                    label = stringResource(R.string.export_scope_screen, rowCount),
+                    selected = !full,
+                    onClick = { onFullChange(false) },
+                )
+                ScopeOption(
+                    label = stringResource(R.string.export_scope_full),
+                    detail = stringResource(
+                        R.string.export_scope_full_note,
+                        LocaleFormat.integer(FullExport.MAX_ROWS, appLocale()),
+                        FullExport.MAX_BYTES / (1024 * 1024),
+                    ),
+                    selected = full,
+                    onClick = { onFullChange(true) },
+                )
+            }
+        } else {
+            Text(
+                stringResource(R.string.export_rows_on_screen, rowCount),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+            )
+        }
         DialogNote(stringResource(R.string.export_temp_note), Icons.Default.Shield, semantic.textSecondary)
         Button(
             onClick = onShare,
@@ -134,6 +169,35 @@ fun ExportSheetContent(
         ) {
             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(R.string.export_share), modifier = Modifier.padding(start = Spacing.s))
+        }
+    }
+}
+
+/** One of the two scopes, as a radio row: what goes in the file, and for the full one what it costs. */
+@Composable
+private fun ScopeOption(label: String, selected: Boolean, onClick: () -> Unit, detail: String? = null) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Shapes.button)
+            .background(if (selected) accent.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
+            .border(1.dp, if (selected) accent else MaterialTheme.colorScheme.outline, Shapes.button)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = Spacing.m, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium))
+            if (detail != null) {
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = LocalSemanticColors.current.textSecondary,
+                )
+            }
         }
     }
 }

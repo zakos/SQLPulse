@@ -13,6 +13,8 @@ import hu.laurel.sqlpulse.data.db.QueryHistoryEntity
 import hu.laurel.sqlpulse.data.db.SavedQueryEntity
 import hu.laurel.sqlpulse.data.export.ExportFormat
 import hu.laurel.sqlpulse.data.export.ExportManager
+import hu.laurel.sqlpulse.data.export.FullExport
+import hu.laurel.sqlpulse.data.export.FullExporter
 import hu.laurel.sqlpulse.data.query.DraftBook
 import hu.laurel.sqlpulse.data.query.EditorPrefsRepository
 import hu.laurel.sqlpulse.data.query.KeyBar
@@ -66,6 +68,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +86,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -162,6 +166,10 @@ data class QueryEditorUiState(
     /** True while a manual transaction is open: nothing is written until it is committed. */
     val inTransaction: Boolean = false,
     val shareIntent: Intent? = null,
+    /** Set while a full-result export streams to its file. */
+    val fullExport: FullExportProgress? = null,
+    /** Set when the last full export hit a hard cap, until the person has read it. */
+    val exportNotice: ExportNotice? = null,
     /** Whether the active tab has an edit to take back, or one that was taken back. Set by the view model. */
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
@@ -200,7 +208,7 @@ data class QueryEditorUiState(
     val error: String? get() = active.error
     val errorDetail: String? get() = active.errorDetail
     val pendingParameters: List<String> get() = active.pendingParameters
-    val suggestions: List<String> get() = active.suggestions
+    val suggestions: List<CompletionItem> get() = active.suggestions
     val database: String? get() = active.database
     val switchedTo: String? get() = active.switchedTo
     val resultSort: ColumnSort? get() = active.resultSort
@@ -252,6 +260,7 @@ class QueryEditorViewModel @Inject constructor(
     private val snapshotVault: SnapshotVault,
     private val editorHandoff: EditorHandoff,
     private val editorPrefs: EditorPrefsRepository,
+    private val fullExporter: FullExporter,
 ) : ViewModel(), QueryEditorController {
 
     private val _uiState = MutableStateFlow(QueryEditorUiState())
@@ -681,11 +690,19 @@ class QueryEditorViewModel @Inject constructor(
      * give `FROM HIVASOK`, never `FROM hiv HIVASOK`. Where the word starts is the completion's own
      * answer, so a qualified `a.col` replaces only the part after the dot.
      */
-    override fun complete(suggestion: String) {
+    override fun complete(item: CompletionItem) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val start = SqlCompletion.contextAt(tab.sql, at, dialect).prefixStart.coerceIn(0, at)
-        replaceRange(start, at, suggestion, EditKind.COMPLETION)
+        val body = item.snippetBody
+        if (item.kind == CompletionKind.SNIPPET && body != null) {
+            // The typed word is the snippet's trigger: drop it, then insert like the snippet menu
+            // does, so the first placeholder ends up selected.
+            val result = SnippetEngine.insert(tab.sql.removeRange(start, at), start, start, body)
+            applyEdit(result.text, result.selectionStart, result.selectionEnd, EditKind.SNIPPET)
+            return
+        }
+        replaceRange(start, at, item.text, EditKind.COMPLETION)
     }
 
     /** Replaces a range of the editor's text and leaves the cursor after what was inserted. */
@@ -747,7 +764,7 @@ class QueryEditorViewModel @Inject constructor(
     // --- Completion -------------------------------------------------------------------------
 
     /**
-     * Rebuilds the suggestion chips for wherever the cursor now is.
+     * Rebuilds the completion list for wherever the cursor now is.
      *
      * The strategy, in full: table names are loaded once per database and nothing else is loaded
      * in advance, so the size of the schema no longer decides what completion costs. Columns are
@@ -772,30 +789,32 @@ class QueryEditorViewModel @Inject constructor(
 
         val database = tab.database
         completionJob = viewModelScope.launch {
-            val candidates = mutableListOf<String>()
+            val candidates = mutableListOf<CompletionItem>()
             if (database != null && context.columnTables.isNotEmpty()) {
                 candidates += columnsOf(database, context.columnTables)
             }
-            if (context.wantTables) candidates += tableNames
-            candidates += context.keywords
+            if (context.wantTables) candidates += tableNames.map { CompletionItem(it, CompletionKind.TABLE) }
+            candidates += context.keywords.map { CompletionItem(it, CompletionRanking.kindOfKeyword(it)) }
+            // Snippets only on a typed prefix: offered on an empty word they would crowd out the
+            // clause's own keywords, and a snippet is something one asks for by name.
+            if (context.prefix.isNotEmpty() && context.qualifier == null) {
+                candidates += snippets.value.map {
+                    CompletionItem(it.name, CompletionKind.SNIPPET, detail = it.body.lineSequence().first().trim(), snippetBody = it.body)
+                }
+            }
 
-            val suggestions = candidates
-                .asSequence()
-                .filter { context.prefix.isEmpty() || it.startsWith(context.prefix, ignoreCase = true) }
-                // A suggestion identical to what is already typed completes nothing.
-                .filterNot { it.equals(context.prefix, ignoreCase = true) }
-                .distinct()
-                .take(MAX_SUGGESTIONS)
-                .toList()
-            updateTab(id) { it.copy(suggestions = suggestions) }
+            updateTab(id) { it.copy(suggestions = CompletionRanking.rank(candidates, context.prefix)) }
         }
     }
 
     /** Columns of the named tables, one cached lookup each; a table that cannot be read adds none. */
-    private suspend fun columnsOf(database: String, tables: List<String>): List<String> =
+    private suspend fun columnsOf(database: String, tables: List<String>): List<CompletionItem> =
         tables.take(COLUMN_TABLES_PER_STATEMENT).flatMap { table ->
-            runCatching { schema.structure(database, table).columns.map { it.name } }
-                .getOrDefault(emptyList())
+            runCatching {
+                schema.structure(database, table).columns.map {
+                    CompletionItem(it.name, CompletionKind.COLUMN, detail = "${it.typeName} · $table")
+                }
+            }.getOrDefault(emptyList())
         }
 
     private fun loadTableNames(database: String?) {
@@ -1160,6 +1179,61 @@ class QueryEditorViewModel @Inject constructor(
         }
     }
 
+    /** The statement behind the result on screen, as the user typed it (no app-added limit). */
+    private fun shownStatement(): String? {
+        val tab = _uiState.value.active
+        return tab.statements.getOrNull(tab.selectedStatement)?.sql
+    }
+
+    override fun canExportFull(): Boolean {
+        val state = _uiState.value
+        val sql = shownStatement() ?: return false
+        return FullExport.canOffer(sql, dialect, state.active.result, state.rowLimit)
+    }
+
+    private var fullExportJob: Job? = null
+
+    /**
+     * Exports the whole result, not the rows on screen: the same statement again, without the
+     * limit the app added, streamed row by row into the file. Cancellable, and never for a write.
+     */
+    override fun exportFull(format: ExportFormat) {
+        val sql = shownStatement() ?: return
+        if (!canExportFull() || fullExportJob?.isActive == true) return
+        val parameters = _uiState.value.active.parameters
+        fullExportJob = viewModelScope.launch {
+            _uiState.update { it.copy(fullExport = FullExportProgress(), exportNotice = null) }
+            try {
+                val result = fullExporter.export(sql, parameters, format, "query") { rows, bytes ->
+                    _uiState.update { it.copy(fullExport = FullExportProgress(rows, bytes)) }
+                }
+                _uiState.update {
+                    it.copy(
+                        shareIntent = result.intent,
+                        fullExport = null,
+                        exportNotice = result.outcome.cap?.let { cap ->
+                            ExportNotice(cap, result.outcome.rows, result.outcome.bytes)
+                        },
+                    )
+                }
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(fullExport = null) }
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(fullExport = null) }
+                updateActive { it.copy(error = describe(e)) }
+            }
+        }
+    }
+
+    override fun cancelFullExport() {
+        fullExportJob?.cancel()
+    }
+
+    override fun dismissExportNotice() {
+        _uiState.update { it.copy(exportNotice = null) }
+    }
+
     override fun shareIntentHandled() {
         _uiState.value = _uiState.value.copy(shareIntent = null)
     }
@@ -1471,7 +1545,6 @@ class QueryEditorViewModel @Inject constructor(
 
         /** Three tables on a phone card is already a lot to read before pressing the button. */
         const val MAX_PREVIEWED_STATEMENTS = 3
-        const val MAX_SUGGESTIONS = 8
 
         /** Long enough that a word's worth of typing is one write, short enough to never notice. */
         const val DRAFT_DEBOUNCE_MS = 500L
