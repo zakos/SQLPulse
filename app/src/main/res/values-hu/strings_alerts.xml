@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="alerts_open">Riasztások</string>
+    <string name="alerts_title">Riasztások</string>
+    <string name="alerts_scope_note">Csak amíg a kapcsolat él és az app nincs zárolva. Az app zárolása bontja a kapcsolatot, és a riasztások is leállnak. Amíg egy szabály be van kapcsolva, a szervert %1$d másodpercenként kérdezi az app (csak olvasás).</string>
+    <string name="alerts_no_session">Nyiss meg egy kapcsolatot, hogy beállíthasd a riasztásait.</string>
+    <string name="alerts_notifications_off">Az SQLPulse-nak nincs engedélye értesítésre, ezért a riasztások csak itt, az appban látszanak.</string>
+    <string name="alerts_notification_settings">Értesítési beállítások</string>
+    <string name="alerts_rules_caption">A kapcsolat szabályai</string>
+    <string name="alerts_rule_summary">%1$s fölött, egymás után %2$d mintán át</string>
+    <string name="alerts_threshold">Küszöb</string>
+    <string name="alerts_sustain_label">Hány egymás utáni minta után szóljon</string>
+    <string name="alerts_cooldown_label">Szünet két értesítés között</string>
+    <string name="alerts_minutes">%1$d perc</string>
+    <string name="alerts_state_off">Kikapcsolva</string>
+    <string name="alerts_state_waiting">Bekapcsolva, mintára vár</string>
+    <string name="alerts_state_ok">Rendben</string>
+    <string name="alerts_state_ok_last">Rendben, utolsó riasztás: %1$s</string>
+    <string name="alerts_state_firing">Riaszt %1$s óta</string>
+    <string name="alerts_channel">Riasztások</string>
+    <string name="alerts_notification_title">Riasztás: %1$s</string>
+    <string name="alerts_notification_body">%1$s: %2$s (határ: %3$s)</string>
+    <string name="alerts_notification_public">SQLPulse riasztás</string>
+</resources>

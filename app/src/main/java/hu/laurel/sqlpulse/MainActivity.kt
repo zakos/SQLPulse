@@ -47,6 +47,8 @@ import hu.laurel.sqlpulse.data.shortcuts.ShortcutRequests
 import hu.laurel.sqlpulse.security.ActivityHolder
 import hu.laurel.sqlpulse.security.BiometricUnlock
 import hu.laurel.sqlpulse.security.LockManager
+import hu.laurel.sqlpulse.data.alerts.AlertNotifier
+import hu.laurel.sqlpulse.data.alerts.AlertRequests
 import hu.laurel.sqlpulse.ui.SqlPulseApp
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.Spacing
@@ -80,6 +82,9 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
+    @Inject
+    lateinit var alertRequests: AlertRequests
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Protected from the first frame; the setting can relax it a moment later.
@@ -106,7 +111,7 @@ class MainActivity : FragmentActivity() {
                 if (locked) {
                     LockScreen(onUnlock = ::requestUnlock)
                 } else {
-                    SqlPulseApp(connectRequests = shortcutRequests.pending)
+                    SqlPulseApp(connectRequests = shortcutRequests.pending, alertRequests = alertRequests)
                 }
             }
         }
@@ -124,6 +129,11 @@ class MainActivity : FragmentActivity() {
      */
     private fun handleLauncherIntent(intent: Intent?) {
         ShortcutPlan.parse(intent)?.let { shortcutRequests.post(it) }
+        // A tapped alert: only the wish is kept; the app opens Pulse after the normal unlock.
+        if (intent?.getBooleanExtra(AlertNotifier.EXTRA_OPEN_PULSE, false) == true) {
+            alertRequests.post()
+            intent.removeExtra(AlertNotifier.EXTRA_OPEN_PULSE)
+        }
     }
 
     /** Every touch restarts the inactivity timer (§6). */

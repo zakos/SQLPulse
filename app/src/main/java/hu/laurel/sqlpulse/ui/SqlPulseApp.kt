@@ -26,6 +26,8 @@ import hu.laurel.sqlpulse.ui.backup.BackupScreen
 import hu.laurel.sqlpulse.ui.keys.KeyStoreScreen
 import hu.laurel.sqlpulse.ui.map.SchemaMapScreen
 import hu.laurel.sqlpulse.ui.pulse.PulseScreen
+import hu.laurel.sqlpulse.data.alerts.AlertRequests
+import kotlinx.coroutines.flow.MutableStateFlow
 import hu.laurel.sqlpulse.ui.query.QueryEditorScreen
 import hu.laurel.sqlpulse.ui.search.DatabaseSearchScreen
 import hu.laurel.sqlpulse.ui.settings.SettingsScreen
@@ -62,12 +64,21 @@ object Routes {
 }
 
 @Composable
-fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow()) {
+fun SqlPulseApp(connectRequests: Flow<ShortcutRequest?> = emptyFlow(), alertRequests: AlertRequests? = null) {
     val navController = rememberNavController()
 
     // A launcher shortcut lands on the list, wherever the user was; the list then does the connecting.
     LaunchedEffect(connectRequests) {
         connectRequests.filterNotNull().collect { navController.popBackStack(Routes.CONNECTIONS, false) }
+    }
+
+    // A tapped alert notification: this host only exists after the unlock, so the request waits for it.
+    val openPulse by (alertRequests?.pending ?: MutableStateFlow(false)).collectAsStateWithLifecycle()
+    LaunchedEffect(openPulse) {
+        if (openPulse) {
+            alertRequests?.consume()
+            navController.navigate(Routes.PULSE) { launchSingleTop = true }
+        }
     }
 
     // What the open connection's engine can do; every screen below reads it to hide what it cannot

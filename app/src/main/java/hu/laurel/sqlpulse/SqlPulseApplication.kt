@@ -5,6 +5,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
+import hu.laurel.sqlpulse.data.alerts.AlertMonitor
 import hu.laurel.sqlpulse.data.crypto.CryptoProviders
 import hu.laurel.sqlpulse.data.crypto.KeystoreCrypto
 import hu.laurel.sqlpulse.data.db.QueryHistoryDao
@@ -43,6 +44,10 @@ class SqlPulseApplication : Application() {
     @Inject
     lateinit var launcherShortcuts: LauncherShortcuts
 
+    /** Watches the session for alert rules; it samples only while a session is open and a rule is on. */
+    @Inject
+    lateinit var alertMonitor: AlertMonitor
+
     @Inject
     @ApplicationScope
     lateinit var scope: CoroutineScope
@@ -56,6 +61,7 @@ class SqlPulseApplication : Application() {
         exports.clearExports()
 
         launcherShortcuts.start()
+        alertMonitor.start()
 
         // §9: query history is kept for 30 days, then dropped.
         scope.launch {

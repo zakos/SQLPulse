@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="alerts_open">Alerts</string>
+    <string name="alerts_title">Alerts</string>
+    <string name="alerts_scope_note">Only while the connection is alive and the app is not locked. Locking the app closes the connection, and the alerts stop with it. While a rule is on, the server is asked every %1$d seconds (read-only).</string>
+    <string name="alerts_no_session">Open a connection to set up its alerts.</string>
+    <string name="alerts_notifications_off">Notifications are not allowed for SQLPulse, so alerts show only here, in the app.</string>
+    <string name="alerts_notification_settings">Notification settings</string>
+    <string name="alerts_rules_caption">Rules for this connection</string>
+    <string name="alerts_rule_summary">above %1$s for %2$d samples in a row</string>
+    <string name="alerts_threshold">Threshold</string>
+    <string name="alerts_sustain_label">Samples in a row before it fires</string>
+    <string name="alerts_cooldown_label">Quiet time between notifications</string>
+    <string name="alerts_minutes">%1$d min</string>
+    <string name="alerts_state_off">Off</string>
+    <string name="alerts_state_waiting">On, waiting for samples</string>
+    <string name="alerts_state_ok">OK</string>
+    <string name="alerts_state_ok_last">OK, last alert at %1$s</string>
+    <string name="alerts_state_firing">Firing since %1$s</string>
+    <string name="alerts_channel">Alerts</string>
+    <string name="alerts_notification_title">Alert: %1$s</string>
+    <string name="alerts_notification_body">%1$s: %2$s (limit %3$s)</string>
+    <string name="alerts_notification_public">SQLPulse alert</string>
+</resources>

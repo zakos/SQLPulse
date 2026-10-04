@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,6 +27,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -36,8 +40,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.data.alerts.AlertText
 import hu.laurel.sqlpulse.data.schema.Health
 import hu.laurel.sqlpulse.data.schema.MetricId
+import hu.laurel.sqlpulse.ui.alerts.AlertsController
+import hu.laurel.sqlpulse.ui.alerts.AlertsSheet
+import hu.laurel.sqlpulse.ui.alerts.AlertsViewModel
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.SegmentedChoice
 import hu.laurel.sqlpulse.ui.components.Sparkline
@@ -56,8 +64,9 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
 fun PulseScreen(
     onBack: () -> Unit,
     viewModel: PulseViewModel = hiltViewModel(),
+    alerts: AlertsViewModel = hiltViewModel(),
 ) {
-    PulseScreenContent(onBack = onBack, viewModel = viewModel)
+    PulseScreenContent(onBack = onBack, viewModel = viewModel, alerts = alerts)
 }
 
 /** The screen itself, drawn from whatever [PulseController] it is handed. */
@@ -66,8 +75,11 @@ fun PulseScreen(
 fun PulseScreenContent(
     onBack: () -> Unit,
     viewModel: PulseController,
+    /** The alert rules of this connection; null hides the bell (screenshots of the tiles alone). */
+    alerts: AlertsController? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showAlerts by remember { mutableStateOf(false) }
     val semantic = LocalSemanticColors.current
 
     // Sampling runs only while this screen is on top: every reading is a round trip through the
@@ -82,6 +94,16 @@ fun PulseScreenContent(
             TopAppBar(
                 colors = sqlPulseTopBarColors(),
                 title = { Text(stringResource(R.string.pulse_title)) },
+                actions = {
+                    if (alerts != null) {
+                        IconButton(onClick = { showAlerts = true }) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = stringResource(R.string.alerts_open),
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -93,6 +115,9 @@ fun PulseScreenContent(
             )
         },
     ) { padding ->
+        if (showAlerts && alerts != null) {
+            AlertsSheet(controller = alerts, onDismiss = { showAlerts = false })
+        }
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s),
@@ -237,30 +262,8 @@ private fun PulseInterval.labelRes(): Int = when (this) {
 }
 
 @StringRes
-private fun MetricId.labelRes(): Int = when (this) {
-    MetricId.QUERIES -> R.string.pulse_queries
-    MetricId.THREADS_RUNNING -> R.string.pulse_threads_running
-    MetricId.THREADS_CONNECTED -> R.string.pulse_threads_connected
-    MetricId.LOCK_WAITS -> R.string.pulse_lock_waits
-    MetricId.BUFFER_HIT -> R.string.pulse_buffer_hit
-    MetricId.SLOW_QUERIES -> R.string.pulse_slow_queries
-    MetricId.TRAFFIC_OUT -> R.string.pulse_traffic_out
-    MetricId.REPLICATION_LAG -> R.string.pulse_replication_lag
-    MetricId.PG_CONNECTIONS, MetricId.MS_USER_CONNECTIONS -> R.string.pulse_threads_connected
-    MetricId.PG_ACTIVE -> R.string.pulse_pg_active
-    MetricId.PG_IDLE_IN_XACT -> R.string.pulse_pg_idle_in_xact
-    MetricId.PG_COMMITS -> R.string.pulse_pg_commits
-    MetricId.PG_ROLLBACKS -> R.string.pulse_pg_rollbacks
-    MetricId.PG_CACHE_HIT, MetricId.MS_CACHE_HIT -> R.string.pulse_cache_hit
-    MetricId.PG_TUPLES_READ -> R.string.pulse_pg_tuples_read
-    MetricId.PG_TUPLES_WRITTEN -> R.string.pulse_pg_tuples_written
-    MetricId.PG_DEADLOCKS -> R.string.pulse_pg_deadlocks
-    MetricId.MS_BATCH_REQUESTS -> R.string.pulse_ms_batch_requests
-    MetricId.MS_TRANSACTIONS -> R.string.pulse_ms_transactions
-    MetricId.MS_BLOCKED -> R.string.pulse_ms_blocked
-    MetricId.MS_LOCK_WAITS -> R.string.pulse_ms_lock_waits
-    MetricId.MS_PAGE_LIFE -> R.string.pulse_ms_page_life
-}
+internal fun MetricId.labelRes(): Int = AlertText.metricLabel(this)
+
 
 /** What the number is counted in — the tile is unreadable without it. */
 @StringRes
