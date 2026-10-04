@@ -138,6 +138,29 @@ fun SqlBlock(statement: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Verbatim text in a code block without SQL highlighting: fingerprints, public keys, GRANT lines,
+ * a process's statement. [edge] colours the outline where the block is something to compare.
+ */
+@Composable
+fun MonoBlock(
+    text: String,
+    modifier: Modifier = Modifier,
+    edge: androidx.compose.ui.graphics.Color = LocalSemanticColors.current.hairline,
+    style: androidx.compose.ui.text.TextStyle = MonoStyles.fingerprint,
+) {
+    Text(
+        text,
+        style = style,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background, Shapes.button)
+            .border(1.dp, edge, Shapes.button)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    )
+}
+
 /** The two buttons at the foot of a dialog: the way out in white on an outline, and the action. */
 @Composable
 fun DialogButtons(
@@ -148,19 +171,23 @@ fun DialogButtons(
     enabled: Boolean,
     danger: Boolean = false,
     actionIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    /** False where the only way out is the cancel button, e.g. a blocked host key. */
+    showAction: Boolean = true,
+    /** False where the action is the only button, e.g. a notice that is merely acknowledged. */
+    showCancel: Boolean = true,
 ) {
     val semantic = LocalSemanticColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Spacing.s, Alignment.End),
     ) {
-        androidx.compose.material3.OutlinedButton(
+        if (showCancel) androidx.compose.material3.OutlinedButton(
             onClick = onCancel,
             shape = Shapes.button,
             modifier = Modifier.height(48.dp),
             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         ) { Text(cancelLabel) }
-        androidx.compose.material3.Button(
+        if (showAction) androidx.compose.material3.Button(
             onClick = onAction,
             enabled = enabled,
             shape = Shapes.button,

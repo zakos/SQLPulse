@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.backup
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -249,7 +251,7 @@ private fun ImportSection(
                 text = stringResource(
                     R.string.backup_file_made,
                     metadata.appVersion.ifBlank { metadata.app },
-                    DateFormat.getDateTimeInstance().format(Date(metadata.createdAtEpochMs)),
+                    LocaleFormat.dateTime(metadata.createdAtEpochMs, appLocale()),
                 ),
                 style = MaterialTheme.typography.bodyMedium,
             )

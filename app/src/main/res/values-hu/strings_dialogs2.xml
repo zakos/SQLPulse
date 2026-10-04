@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dialog_close">Bezárás</string>
+    <string name="host_key_changed_headline">A szerver kulcsa megváltozott — lehetséges lehallgatás</string>
+    <string name="host_key_changed_explanation">A szerver máshogy azonosítja magát, mint legutóbb. Ez történik akkor, ha újratelepítették vagy lecserélték — de így néz ki az is, ha valaki belehallgat a kapcsolatba. A kapcsolat blokkolva marad: csak akkor oldd fel a kapcsolatszerkesztőben, ha tudod, melyikről van szó.</string>
+    <string name="host_key_stored_label">Tárolt fingerprint</string>
+    <string name="host_key_offered_label">Most kapott fingerprint</string>
+</resources>

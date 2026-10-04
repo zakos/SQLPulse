@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.query
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -55,7 +57,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TableRows
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -855,42 +856,24 @@ fun QueryEditorContent(
     }
 
     state.closing?.let { tab ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissCloseTab,
-            title = { Text(stringResource(R.string.query_tab_close_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    Text(stringResource(R.string.query_tab_close_body))
-                    Text(
-                        text = tab.sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
-                        style = MonoStyles.cell,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = { viewModel.closeTab(tab.id) }) {
-                    Text(stringResource(R.string.query_tab_close_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissCloseTab) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissCloseTab) {
+            TabCloseCard(
+                firstLine = tab.sql.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty(),
+                onConfirm = { viewModel.closeTab(tab.id) },
+                onDismiss = viewModel::dismissCloseTab,
+            )
+        }
     }
 
     if (state.tabLimitReached) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissTabLimit,
-            title = { Text(stringResource(R.string.query_tab_limit_title)) },
-            text = { Text(stringResource(R.string.query_tab_limit_body, QueryTabs.MAX_TABS)) },
-            confirmButton = {
-                Button(onClick = viewModel::dismissTabLimit) { Text(stringResource(R.string.cancel)) }
-            },
-        )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissTabLimit) {
+            NoticeCard(
+                title = stringResource(R.string.query_tab_limit_title),
+                body = stringResource(R.string.query_tab_limit_body, QueryTabs.MAX_TABS),
+                closeLabel = stringResource(R.string.cancel),
+                onClose = viewModel::dismissTabLimit,
+            )
+        }
     }
 
     if (renameDialogOpen) {
@@ -913,16 +896,14 @@ fun QueryEditorContent(
     }
 
     state.snapshotNotice?.let { notice ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissSnapshotNotice,
-            title = { Text(stringResource(R.string.snapshot_notice_title)) },
-            text = { Text(snapshotNoticeText(notice)) },
-            confirmButton = {
-                Button(onClick = viewModel::dismissSnapshotNotice) {
-                    Text(stringResource(R.string.snapshot_close))
-                }
-            },
-        )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissSnapshotNotice) {
+            NoticeCard(
+                title = stringResource(R.string.snapshot_notice_title),
+                body = snapshotNoticeText(notice),
+                closeLabel = stringResource(R.string.snapshot_close),
+                onClose = viewModel::dismissSnapshotNotice,
+            )
+        }
     }
 
     if (favouriteDialogOpen) {
@@ -1133,6 +1114,7 @@ private fun ResultPanel(
 @Composable
 private fun HistoryPanel(history: List<QueryHistoryEntity>, onLoad: (String) -> Unit) {
     val semantic = LocalSemanticColors.current
+    val locale = appLocale()
     if (history.isEmpty()) {
         Placeholder(R.string.query_history_empty)
         return
@@ -1147,8 +1129,8 @@ private fun HistoryPanel(history: List<QueryHistoryEntity>, onLoad: (String) -> 
             ) {
                 Text(entry.sql, style = MonoStyles.cell, maxLines = 2)
                 Text(
-                    text = "${DateFormat.getDateTimeInstance().format(Date(entry.executedAt))} · " +
-                        "${entry.durationMs} ms · ${entry.rowCount}",
+                    text = "${LocaleFormat.dateTime(entry.executedAt, locale)} · " +
+                        "${LocaleFormat.integer(entry.durationMs.toLong(), locale)} ms · ${LocaleFormat.integer(entry.rowCount.toLong(), locale)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = semantic.textSecondary,
                 )
@@ -1202,6 +1184,7 @@ private fun FavouritesPanel(
  * Each value carries a type, because text is not always what was meant: an empty box for a number
  * is "no value", and NULL is a value no amount of typing can express.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ParameterDialog(
     names: List<String>,
@@ -1209,49 +1192,67 @@ private fun ParameterDialog(
     onDismiss: () -> Unit,
 ) {
     val values = remember(names) { mutableStateMapOf<String, ParameterValue>() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.query_parameters_title)) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(Spacing.m),
-            ) {
-                names.forEach { name ->
-                    val value = values[name] ?: ParameterValue()
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        OutlinedTextField(
-                            value = value.text,
-                            onValueChange = { values[name] = value.copy(text = it) },
-                            label = { Text(name) },
-                            // NULL has nothing to type, so the field says so by being closed.
-                            enabled = value.type != ParameterType.NULL,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-                        ) {
-                            ParameterType.entries.forEach { type ->
-                                FilterChip(
-                                    selected = value.type == type,
-                                    onClick = { values[name] = value.copy(type = type) },
-                                    label = { Text(stringResource(type.labelRes())) },
-                                )
-                            }
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        ParameterCard(
+            names = names,
+            values = values,
+            onValue = { name, value -> values[name] = value },
+            onRun = { onRun(names.associateWith { values[it] ?: ParameterValue() }) },
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The parameter form's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun ParameterCard(
+    names: List<String>,
+    values: Map<String, ParameterValue>,
+    onValue: (String, ParameterValue) -> Unit,
+    onRun: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = stringResource(R.string.query_parameters_title))
+        Column(
+            modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.m),
+        ) {
+            names.forEach { name ->
+                val value = values[name] ?: ParameterValue()
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    OutlinedTextField(
+                        value = value.text,
+                        onValueChange = { onValue(name, value.copy(text = it)) },
+                        label = { Text(name) },
+                        // NULL has nothing to type, so the field says so by being closed.
+                        enabled = value.type != ParameterType.NULL,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                    ) {
+                        ParameterType.entries.forEach { type ->
+                            FilterChip(
+                                selected = value.type == type,
+                                onClick = { onValue(name, value.copy(type = type)) },
+                                label = { Text(stringResource(type.labelRes())) },
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = { onRun(names.associateWith { values[it] ?: ParameterValue() }) }) {
-                Text(stringResource(R.string.query_run))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.query_run),
+            onAction = onRun,
+            enabled = true,
+        )
+    }
 }
 
 @StringRes
@@ -1352,25 +1353,84 @@ fun WriteConfirmCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FavouriteNameDialog(onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.query_favourite_add)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.query_favourite_name)) },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onSave(name) }) { Text(stringResource(R.string.connection_save)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        NameCard(
+            title = stringResource(R.string.query_favourite_add),
+            label = stringResource(R.string.query_favourite_name),
+            name = name,
+            onName = { name = it },
+            onSave = { onSave(name) },
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** A dialog that asks for one name (a favourite, a tab), apart from its window for screenshots. */
+@Composable
+fun NameCard(
+    title: String,
+    label: String,
+    name: String,
+    onName: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = title)
+        OutlinedTextField(
+            value = name,
+            onValueChange = onName,
+            label = { Text(label) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.connection_save),
+            onAction = onSave,
+            enabled = true,
+        )
+    }
+}
+
+/** Closing a tab throws its text away, so the card shows which tab it is, by its first line. */
+@Composable
+fun TabCloseCard(firstLine: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    DialogCard(danger = true) {
+        DialogHeading(title = stringResource(R.string.query_tab_close_title), danger = true)
+        Text(stringResource(R.string.query_tab_close_body), style = MaterialTheme.typography.bodyMedium)
+        if (firstLine.isNotEmpty()) SqlBlock(firstLine)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.query_tab_close_confirm),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
+}
+
+/** A message that is only acknowledged: a title, a few sentences and one button. */
+@Composable
+fun NoticeCard(title: String, body: String, closeLabel: String, onClose: () -> Unit) {
+    DialogCard {
+        DialogHeading(title = title)
+        Text(body, style = MaterialTheme.typography.bodyMedium)
+        DialogButtons(
+            cancelLabel = "",
+            onCancel = {},
+            actionLabel = closeLabel,
+            onAction = onClose,
+            enabled = true,
+            showCancel = false,
+        )
+    }
 }
 
 /** §8: an empty state always says why and offers one way out. */
@@ -1687,25 +1747,20 @@ private fun QueryTabBar(
 private fun tabLabel(tab: QueryTab, index: Int): String =
     QueryTabs.label(tab) ?: stringResource(R.string.query_tab_untitled, index + 1)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TabNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.query_tab_rename)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.query_tab_rename_label)) },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onSave(name) }) { Text(stringResource(R.string.connection_save)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        NameCard(
+            title = stringResource(R.string.query_tab_rename),
+            label = stringResource(R.string.query_tab_rename_label),
+            name = name,
+            onName = { name = it },
+            onSave = { onSave(name) },
+            onDismiss = onDismiss,
+        )
+    }
 }
 
 /**

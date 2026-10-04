@@ -14,7 +14,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -63,6 +62,7 @@ import kotlinx.coroutines.delay
  * enum is a list, a boolean is two buttons, and a date offers today and now. NULL stays an
  * explicit choice throughout, because an empty string is not the same thing.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CellEditDialog(
     columnLabel: String,
@@ -75,76 +75,99 @@ fun CellEditDialog(
     var text by remember { mutableStateOf(initialValue.orEmpty()) }
     var isNull by remember { mutableStateOf(initialValue == null) }
 
-    fun set(value: String) {
-        text = value
-        isNull = false
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        CellEditCard(
+            columnLabel = columnLabel,
+            editor = editor,
+            text = text,
+            isNull = isNull,
+            // Typing or picking a value makes it a value again: NULL is only what the box says.
+            onText = {
+                text = it
+                isNull = false
+            },
+            onNull = { isNull = it },
+            onConfirm = { onConfirm(if (isNull) null else text) },
+            onDismiss = onDismiss,
+        )
     }
+}
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(columnLabel) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                when (editor) {
-                    is CellEditor.Choice -> ChoiceRow(
-                        options = editor.options,
-                        selected = text.takeUnless { isNull },
-                        onSelect = ::set,
-                    )
-
-                    is CellEditor.Choices -> ChoicesRow(
-                        options = editor.options,
-                        selected = text.takeUnless { isNull }
-                            ?.split(',')
-                            ?.map { it.trim() }
-                            ?.filter { it.isNotEmpty() }
-                            .orEmpty(),
-                        // A SET is stored comma-separated, in no particular order.
-                        onToggle = { chosen -> set(chosen.joinToString(",")) },
-                    )
-
-                    else -> Unit
-                }
-
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it; isNull = false },
-                    enabled = !isNull,
-                    textStyle = MonoStyles.cell,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = if (editor is CellEditor.Number) {
-                            KeyboardType.Number
-                        } else {
-                            KeyboardType.Text
-                        },
-                    ),
-                    singleLine = editor !is CellEditor.Text,
-                    modifier = Modifier.fillMaxWidth(),
+/** The cell editor's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun CellEditCard(
+    columnLabel: String,
+    editor: CellEditor,
+    text: String,
+    isNull: Boolean,
+    onText: (String) -> Unit,
+    onNull: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = columnLabel)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            when (editor) {
+                is CellEditor.Choice -> ChoiceRow(
+                    options = editor.options,
+                    selected = text.takeUnless { isNull },
+                    onSelect = onText,
                 )
 
-                // Shortcuts for the values that are otherwise typed out by hand, wrongly.
-                val shortcuts = shortcutsFor(editor)
-                if (shortcuts.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                        shortcuts.forEach { (label, value) ->
-                            AssistChip(onClick = { set(value()) }, label = { Text(label) })
-                        }
+                is CellEditor.Choices -> ChoicesRow(
+                    options = editor.options,
+                    selected = text.takeUnless { isNull }
+                        ?.split(',')
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotEmpty() }
+                        .orEmpty(),
+                    // A SET is stored comma-separated, in no particular order.
+                    onToggle = { chosen -> onText(chosen.joinToString(",")) },
+                )
+
+                else -> Unit
+            }
+
+            OutlinedTextField(
+                value = text,
+                onValueChange = onText,
+                enabled = !isNull,
+                textStyle = MonoStyles.cell,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (editor is CellEditor.Number) {
+                        KeyboardType.Number
+                    } else {
+                        KeyboardType.Text
+                    },
+                ),
+                singleLine = editor !is CellEditor.Text,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Shortcuts for the values that are otherwise typed out by hand, wrongly.
+            val shortcuts = shortcutsFor(editor)
+            if (shortcuts.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    shortcuts.forEach { (label, value) ->
+                        AssistChip(onClick = { onText(value()) }, label = { Text(label) })
                     }
                 }
+            }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isNull, onCheckedChange = { isNull = it })
-                    Text(stringResource(R.string.cell_set_null))
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = isNull, onCheckedChange = onNull)
+                Text(stringResource(R.string.cell_set_null))
             }
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(if (isNull) null else text) }) {
-                Text(stringResource(R.string.connection_save))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.connection_save),
+            onAction = onConfirm,
+            enabled = true,
+        )
+    }
 }
 
 /**

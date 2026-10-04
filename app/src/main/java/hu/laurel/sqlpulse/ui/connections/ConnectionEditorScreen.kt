@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.connections
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import android.net.Uri
 import java.text.DateFormat
 import java.util.Date
@@ -27,7 +29,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,7 +71,6 @@ import hu.laurel.sqlpulse.data.connection.SaveRefusal
 import hu.laurel.sqlpulse.data.sql.SslMode
 import hu.laurel.sqlpulse.ssh.SshAuthMethod
 import hu.laurel.sqlpulse.ssh.TunnelState
-import hu.laurel.sqlpulse.data.schema.formatByteSize
 import hu.laurel.sqlpulse.ui.components.DialogButtons
 import hu.laurel.sqlpulse.ui.components.DialogCard
 import hu.laurel.sqlpulse.ui.components.DialogHeading
@@ -652,21 +652,12 @@ fun ConnectionEditorScreenContent(
         // Offered, not done: the switch stays the user's, and saying no leaves the connection
         // writable — it will simply ask for an unlock before the first write.
         if (readOnlyOffer) {
-            AlertDialog(
-                onDismissRequest = viewModel::dismissReadOnlyOffer,
-                title = { Text(stringResource(R.string.policy_read_only_offer_title)) },
-                text = { Text(stringResource(R.string.policy_read_only_offer_body)) },
-                confirmButton = {
-                    TextButton(onClick = viewModel::acceptReadOnlyOffer) {
-                        Text(stringResource(R.string.policy_read_only_offer_accept))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::dismissReadOnlyOffer) {
-                        Text(stringResource(R.string.policy_read_only_offer_decline))
-                    }
-                },
-            )
+            BasicAlertDialog(onDismissRequest = viewModel::dismissReadOnlyOffer) {
+                ReadOnlyOfferCard(
+                    onAccept = viewModel::acceptReadOnlyOffer,
+                    onDecline = viewModel::dismissReadOnlyOffer,
+                )
+            }
         }
     }
 }
@@ -750,10 +741,8 @@ private fun FileSection(
             form.fileSize != null && form.fileCopiedAt != null -> Text(
                 stringResource(
                     R.string.sqlite_file_details,
-                    formatByteSize(form.fileSize),
-                    DateFormat.getDateTimeInstance(
-                        DateFormat.MEDIUM, DateFormat.SHORT, LocalConfiguration.current.locales[0],
-                    ).format(Date(form.fileCopiedAt)),
+                    LocaleFormat.byteSize(form.fileSize, appLocale()),
+                    LocaleFormat.dateTime(form.fileCopiedAt, appLocale()),
                 ),
                 style = MonoStyles.cell.copy(fontSize = 12.sp),
                 color = semantic.textSecondary,
@@ -830,6 +819,22 @@ private fun FileSection(
                 },
             )
         }
+    }
+}
+
+/** The offer to make a production connection read-only; declining leaves it writable. */
+@Composable
+fun ReadOnlyOfferCard(onAccept: () -> Unit, onDecline: () -> Unit) {
+    DialogCard {
+        DialogHeading(title = stringResource(R.string.policy_read_only_offer_title))
+        Text(stringResource(R.string.policy_read_only_offer_body), style = MaterialTheme.typography.bodyMedium)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.policy_read_only_offer_decline),
+            onCancel = onDecline,
+            actionLabel = stringResource(R.string.policy_read_only_offer_accept),
+            onAction = onAccept,
+            enabled = true,
+        )
     }
 }
 

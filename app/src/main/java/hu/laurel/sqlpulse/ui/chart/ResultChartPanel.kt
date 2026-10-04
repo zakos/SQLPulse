@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.chart
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -128,14 +130,15 @@ private fun ChartHeadline(data: ChartData) {
     val semantic = LocalSemanticColors.current
     val series = data.series.firstOrNull() ?: return
     val last = series.points.lastOrNull() ?: return
+    val locale = appLocale()
     Text(series.label, style = MaterialTheme.typography.titleSmall)
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
         Text(
-            text = format(last.value),
+            text = format(last.value, locale),
             style = MaterialTheme.typography.headlineSmall.copy(fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
         )
         Text(
-            text = stringResource(R.string.chart_headline_hint, last.label, format(data.maximum)),
+            text = stringResource(R.string.chart_headline_hint, last.label, format(data.maximum, locale)),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             color = semantic.textSecondary,
             modifier = Modifier.padding(bottom = 4.dp),
@@ -291,6 +294,7 @@ private fun ChartCanvas(data: ChartData, showBand: Boolean, modifier: Modifier =
     val style = TextStyle(fontSize = AXIS_TEXT_SP.sp, color = text)
     val outlierColor = LocalSemanticColors.current.danger
     val ground = MaterialTheme.colorScheme.surface
+    val locale = appLocale()
 
     Canvas(modifier = modifier) {
         if (data.isEmpty) return@Canvas
@@ -298,8 +302,8 @@ private fun ChartCanvas(data: ChartData, showBand: Boolean, modifier: Modifier =
         val bottom = data.minimum
         val span = (top - bottom).takeIf { it > 0 } ?: 1.0
 
-        val topLabel = measurer.measure(format(top), style)
-        val bottomLabel = measurer.measure(format(bottom), style)
+        val topLabel = measurer.measure(format(top, locale), style)
+        val bottomLabel = measurer.measure(format(bottom, locale), style)
         val gutter = maxOf(topLabel.size.width, bottomLabel.size.width).toFloat() + AXIS_GAP
         val footer = topLabel.size.height.toFloat() + AXIS_GAP
         val plot = Size(size.width - gutter, size.height - footer)
@@ -327,10 +331,10 @@ private fun ChartCanvas(data: ChartData, showBand: Boolean, modifier: Modifier =
             strokeWidth = 1.dp.toPx(),
         )
 
-        drawText(textMeasurer = measurer, text = format(top), topLeft = Offset(0f, 0f), style = style)
+        drawText(textMeasurer = measurer, text = format(top, locale), topLeft = Offset(0f, 0f), style = style)
         drawText(
             textMeasurer = measurer,
-            text = format(bottom),
+            text = format(bottom, locale),
             topLeft = Offset(0f, plot.height - bottomLabel.size.height),
             style = style,
         )
@@ -460,15 +464,7 @@ private fun DrawScope.drawOutlierMarker(color: Color, centre: Offset, radius: Fl
  * Thousands become "12,3k" and millions "1,2M": the exact figure is in the grid one tap away, and
  * an axis wide enough for every digit leaves no width for the chart.
  */
-private fun format(value: Double): String {
-    val magnitude = kotlin.math.abs(value)
-    return when {
-        magnitude >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
-        magnitude >= 1_000 -> String.format("%.1fk", value / 1_000)
-        magnitude >= 10 || value == value.toLong().toDouble() -> value.toLong().toString()
-        else -> String.format("%.2f", value)
-    }
-}
+private fun format(value: Double, locale: java.util.Locale): String = LocaleFormat.axis(value, locale)
 
 @Composable
 private fun seriesPalette(): List<Color> = listOf(

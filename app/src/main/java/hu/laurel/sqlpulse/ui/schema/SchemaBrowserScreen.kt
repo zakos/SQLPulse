@@ -1,6 +1,7 @@
 package hu.laurel.sqlpulse.ui.schema
 
-import android.icu.text.CompactDecimalFormat
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -90,7 +91,6 @@ import hu.laurel.sqlpulse.data.schema.SchemaCacheRepository
 import hu.laurel.sqlpulse.data.schema.SchemaRoutine
 import hu.laurel.sqlpulse.data.schema.SchemaTable
 import hu.laurel.sqlpulse.data.schema.TableKind
-import hu.laurel.sqlpulse.data.schema.formatByteSize
 import hu.laurel.sqlpulse.data.sql.SqlSessionState
 import hu.laurel.sqlpulse.ui.components.ConnectionTitle
 import hu.laurel.sqlpulse.ui.components.EmptyState
@@ -102,8 +102,6 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
-import java.text.DateFormat
-import java.text.NumberFormat
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
@@ -445,8 +443,7 @@ private fun SchemaCacheMarker(
         CacheAgeUnit.HOURS -> pluralStringResource(R.plurals.cache_taken_hours, age.count, age.count)
         CacheAgeUnit.DAYS -> pluralStringResource(R.plurals.cache_taken_days, age.count, age.count)
     }
-    val taken = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-        .format(Date(capturedAt))
+    val taken = LocaleFormat.dateTime(capturedAt, appLocale())
 
     Surface(
         modifier = Modifier
@@ -711,7 +708,7 @@ private fun TableRow(table: SchemaTable, onClick: () -> Unit) {
                 text = if (view) {
                     stringResource(R.string.schema_view)
                 } else {
-                    table.approximateRows?.let { "~" + compactCount(it) }.orEmpty()
+                    table.approximateRows?.let { "~" + LocaleFormat.compactCount(it, appLocale()) }.orEmpty()
                 },
                 style = MonoStyles.cellNumber.copy(fontSize = 12.sp),
                 color = if (view) semantic.textSecondary else semantic.cellNumber,
@@ -719,7 +716,7 @@ private fun TableRow(table: SchemaTable, onClick: () -> Unit) {
             // Size only for real tables: a view has none.
             table.totalBytes?.takeIf { !view }?.let {
                 Text(
-                    formatByteSize(it),
+                    LocaleFormat.byteSize(it, appLocale()),
                     style = MonoStyles.cellNumber.copy(fontSize = 11.sp),
                     color = semantic.textSecondary,
                 )
@@ -761,14 +758,3 @@ private fun SessionPlaceholder(session: SqlSessionState, onBack: () -> Unit) {
 
 /** Wide enough for a database name, narrow enough to leave the tables the room. */
 private val DATABASE_COLUMN_WIDTH = 200.dp
-
-/**
- * A row count as the list shows it: exact with grouping below a hundred thousand, then shortened
- * the way the locale shortens ("1,2 M"). The tilde in front says it is InnoDB's estimate.
- */
-private fun compactCount(count: Long): String =
-    if (count < 100_000) {
-        NumberFormat.getIntegerInstance().format(count)
-    } else {
-        CompactDecimalFormat.getInstance(Locale.getDefault(), CompactDecimalFormat.CompactStyle.SHORT).format(count)
-    }

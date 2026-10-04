@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dialog_close">Close</string>
+    <string name="host_key_changed_headline">The server\'s key changed — possible interception</string>
+    <string name="host_key_changed_explanation">The server is identifying itself differently than last time. That happens when it is rebuilt or replaced — and it is also what someone intercepting the connection looks like. The connection stays blocked: unblock it in the connection editor only once you know which of the two it is.</string>
+    <string name="host_key_stored_label">Stored fingerprint</string>
+    <string name="host_key_offered_label">Fingerprint offered now</string>
+</resources>

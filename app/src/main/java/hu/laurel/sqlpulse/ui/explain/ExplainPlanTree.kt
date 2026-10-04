@@ -1,5 +1,8 @@
 package hu.laurel.sqlpulse.ui.explain
 
+import java.util.Locale
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -156,7 +159,7 @@ fun ExplainPlanTree(
         )
         plan.totalCost?.let { cost ->
             Text(
-                text = stringResource(R.string.plan_total_cost, cost.asCost()),
+                text = stringResource(R.string.plan_total_cost, cost.asCost(appLocale())),
                 style = MaterialTheme.typography.bodySmall,
                 color = semantic.textSecondary,
             )
@@ -223,7 +226,7 @@ private fun MissingIndexes(hints: List<MissingIndexHint>) {
                     append(" ").append(stringResource(R.string.plan_missing_index_include, hint.includeColumns.joinToString(", ")))
                 }
                 hint.impactPercent?.let {
-                    append(" — ").append(stringResource(R.string.plan_missing_index_impact, "%.0f".format(it)))
+                    append(" — ").append(stringResource(R.string.plan_missing_index_impact, LocaleFormat.decimal(it, 0, appLocale())))
                 }
             }
             Text(text = line, style = MonoStyles.cell, color = semantic.textSecondary)
@@ -303,7 +306,7 @@ private fun PlanNodeRows(
             val share = node.cost?.let { own -> plan.totalCost?.takeIf { it > 0 }?.let { total -> (own / total).coerceIn(0.0, 1.0) } }
             share?.let {
                 Text(
-                    text = "%.0f%%".format(it * 100),
+                    text = LocaleFormat.percent(it, appLocale()),
                     style = MonoStyles.cell.copy(fontSize = 12.sp),
                     color = if (isHeaviest) semantic.danger else semantic.textSecondary,
                     modifier = Modifier.padding(start = Spacing.s),
@@ -330,7 +333,7 @@ private fun PlanNodeRows(
             }
         }
 
-        val facts = node.facts()
+        val facts = node.facts(appLocale())
         if (facts.isNotEmpty()) {
             // Wraps over lines: six short facts side by side each got a sliver of the width, and
             // broke into a column of one word per line.
@@ -395,21 +398,21 @@ private fun PlanNodeRows(
 }
 
 /** The numbers worth putting on the row itself, in the order they answer "is this step the one". */
-private fun ExplainPlanNode.facts(): List<Pair<Int, String>> = buildList {
+private fun ExplainPlanNode.facts(locale: Locale): List<Pair<Int, String>> = buildList {
     accessType?.let { add(R.string.plan_label_access to it) }
     when {
         usedKey != null -> add(R.string.plan_label_key to usedKey)
         kind == ExplainNodeKind.TABLE -> add(R.string.plan_label_no_key to "")
     }
-    rowsExamined?.let { add(R.string.plan_label_rows_examined to it.grouped()) }
-    rowsProduced?.let { add(R.string.plan_label_rows_produced to it.grouped()) }
-    filteredPercent?.let { add(R.string.plan_label_filtered to "${it.asCost()}%") }
-    cost?.let { add(R.string.plan_label_cost to it.asCost()) }
+    rowsExamined?.let { add(R.string.plan_label_rows_examined to it.grouped(locale)) }
+    rowsProduced?.let { add(R.string.plan_label_rows_produced to it.grouped(locale)) }
+    filteredPercent?.let { add(R.string.plan_label_filtered to "${it.asCost(locale)}%") }
+    cost?.let { add(R.string.plan_label_cost to it.asCost(locale)) }
 }
 
-private fun Long.grouped(): String = "%,d".format(this)
+private fun Long.grouped(locale: Locale): String = LocaleFormat.integer(this, locale)
 
-private fun Double.asCost(): String = "%,.2f".format(this)
+private fun Double.asCost(locale: Locale): String = LocaleFormat.decimal(this, 2, locale)
 
 @StringRes
 private fun ExplainNodeKind.labelRes(): Int = when (this) {
