@@ -200,7 +200,7 @@ data class QueryEditorUiState(
     val error: String? get() = active.error
     val errorDetail: String? get() = active.errorDetail
     val pendingParameters: List<String> get() = active.pendingParameters
-    val suggestions: List<String> get() = active.suggestions
+    val suggestions: List<CompletionItem> get() = active.suggestions
     val database: String? get() = active.database
     val switchedTo: String? get() = active.switchedTo
     val resultSort: ColumnSort? get() = active.resultSort
@@ -681,11 +681,19 @@ class QueryEditorViewModel @Inject constructor(
      * give `FROM HIVASOK`, never `FROM hiv HIVASOK`. Where the word starts is the completion's own
      * answer, so a qualified `a.col` replaces only the part after the dot.
      */
-    override fun complete(suggestion: String) {
+    override fun complete(item: CompletionItem) {
         val tab = _uiState.value.active
         val at = tab.selectionStart.coerceIn(0, tab.sql.length)
         val start = SqlCompletion.contextAt(tab.sql, at, dialect).prefixStart.coerceIn(0, at)
-        replaceRange(start, at, suggestion, EditKind.COMPLETION)
+        val body = item.snippetBody
+        if (item.kind == CompletionKind.SNIPPET && body != null) {
+            // The typed word is the snippet's trigger: drop it, then insert like the snippet menu
+            // does, so the first placeholder ends up selected.
+            val result = SnippetEngine.insert(tab.sql.removeRange(start, at), start, start, body)
+            applyEdit(result.text, result.selectionStart, result.selectionEnd, EditKind.SNIPPET)
+            return
+        }
+        replaceRange(start, at, item.text, EditKind.COMPLETION)
     }
 
     /** Replaces a range of the editor's text and leaves the cursor after what was inserted. */
@@ -747,7 +755,7 @@ class QueryEditorViewModel @Inject constructor(
     // --- Completion -------------------------------------------------------------------------
 
     /**
-     * Rebuilds the suggestion chips for wherever the cursor now is.
+     * Rebuilds the completion list for wherever the cursor now is.
      *
      * The strategy, in full: table names are loaded once per database and nothing else is loaded
      * in advance, so the size of the schema no longer decides what completion costs. Columns are
@@ -772,30 +780,32 @@ class QueryEditorViewModel @Inject constructor(
 
         val database = tab.database
         completionJob = viewModelScope.launch {
-            val candidates = mutableListOf<String>()
+            val candidates = mutableListOf<CompletionItem>()
             if (database != null && context.columnTables.isNotEmpty()) {
                 candidates += columnsOf(database, context.columnTables)
             }
-            if (context.wantTables) candidates += tableNames
-            candidates += context.keywords
+            if (context.wantTables) candidates += tableNames.map { CompletionItem(it, CompletionKind.TABLE) }
+            candidates += context.keywords.map { CompletionItem(it, CompletionRanking.kindOfKeyword(it)) }
+            // Snippets only on a typed prefix: offered on an empty word they would crowd out the
+            // clause's own keywords, and a snippet is something one asks for by name.
+            if (context.prefix.isNotEmpty() && context.qualifier == null) {
+                candidates += snippets.value.map {
+                    CompletionItem(it.name, CompletionKind.SNIPPET, detail = it.body.lineSequence().first().trim(), snippetBody = it.body)
+                }
+            }
 
-            val suggestions = candidates
-                .asSequence()
-                .filter { context.prefix.isEmpty() || it.startsWith(context.prefix, ignoreCase = true) }
-                // A suggestion identical to what is already typed completes nothing.
-                .filterNot { it.equals(context.prefix, ignoreCase = true) }
-                .distinct()
-                .take(MAX_SUGGESTIONS)
-                .toList()
-            updateTab(id) { it.copy(suggestions = suggestions) }
+            updateTab(id) { it.copy(suggestions = CompletionRanking.rank(candidates, context.prefix)) }
         }
     }
 
     /** Columns of the named tables, one cached lookup each; a table that cannot be read adds none. */
-    private suspend fun columnsOf(database: String, tables: List<String>): List<String> =
+    private suspend fun columnsOf(database: String, tables: List<String>): List<CompletionItem> =
         tables.take(COLUMN_TABLES_PER_STATEMENT).flatMap { table ->
-            runCatching { schema.structure(database, table).columns.map { it.name } }
-                .getOrDefault(emptyList())
+            runCatching {
+                schema.structure(database, table).columns.map {
+                    CompletionItem(it.name, CompletionKind.COLUMN, detail = "${it.typeName} · $table")
+                }
+            }.getOrDefault(emptyList())
         }
 
     private fun loadTableNames(database: String?) {
@@ -1471,7 +1481,6 @@ class QueryEditorViewModel @Inject constructor(
 
         /** Three tables on a phone card is already a lot to read before pressing the button. */
         const val MAX_PREVIEWED_STATEMENTS = 3
-        const val MAX_SUGGESTIONS = 8
 
         /** Long enough that a word's worth of typing is one write, short enough to never notice. */
         const val DRAFT_DEBOUNCE_MS = 500L

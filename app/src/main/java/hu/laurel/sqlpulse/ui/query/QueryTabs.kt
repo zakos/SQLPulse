@@ -64,7 +64,7 @@ data class QueryTab(
     val chartSpec: ChartSpec? = null,
     val panel: QueryPanel = QueryPanel.RESULT,
     val editorCollapsed: Boolean = false,
-    val suggestions: List<String> = emptyList(),
+    val suggestions: List<CompletionItem> = emptyList(),
     /**
      * The text as it stood when it was last saved as, or loaded from, a favourite.
      *

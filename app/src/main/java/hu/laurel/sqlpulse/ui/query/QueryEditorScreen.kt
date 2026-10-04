@@ -88,6 +88,16 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.text.TextLayoutResult
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -222,6 +232,15 @@ fun QueryEditorContent(
     // An external keyboard is the reason this screen exists on a tablet at all, so the things
     // done most often have the shortcuts they have everywhere else. The handler sits above the
     // text field and sees the key first, which is why Ctrl+Enter runs instead of typing a newline.
+    //
+    // The completion list's own state lives here too, because its keys (arrows, Enter, Tab, Esc)
+    // are handled by this same handler: they are the list's only while it is on screen.
+    var completionRow by remember { mutableIntStateOf(0) }
+    var completionDismissed by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var editorFocused by remember { mutableStateOf(false) }
+    val completionOpen = state.suggestions.isNotEmpty() && !state.editorCollapsed && editorFocused &&
+        completionDismissed != (state.sql to state.selectionStart)
+    LaunchedEffect(state.suggestions) { completionRow = 0 }
     val onKey: (KeyEvent) -> Boolean = handler@{ event ->
         if (event.type != KeyEventType.KeyDown) return@handler false
         val shortcut = QueryShortcuts.of(
@@ -231,8 +250,29 @@ fun QueryEditorContent(
                 shift = event.isShiftPressed,
                 alt = event.isAltPressed,
             ),
+            completionOpen = completionOpen,
         )
         when (shortcut) {
+            QueryShortcut.COMPLETION_NEXT -> {
+                completionRow = CompletionRanking.move(completionRow, 1, state.suggestions.size)
+                true
+            }
+
+            QueryShortcut.COMPLETION_PREVIOUS -> {
+                completionRow = CompletionRanking.move(completionRow, -1, state.suggestions.size)
+                true
+            }
+
+            QueryShortcut.COMPLETION_ACCEPT -> {
+                state.suggestions.getOrNull(completionRow)?.let(viewModel::complete)
+                true
+            }
+
+            QueryShortcut.COMPLETION_CLOSE -> {
+                completionDismissed = state.sql to state.selectionStart
+                true
+            }
+
             QueryShortcut.RUN -> {
                 if (state.sql.isNotBlank() && !state.running) viewModel.run()
                 true
@@ -426,25 +466,15 @@ fun QueryEditorContent(
                             field = value
                             viewModel.onEditorChanged(value.text, value.selection.min, value.selection.max)
                         },
+                        completion = if (completionOpen) state.suggestions else emptyList(),
+                        completionRow = completionRow,
+                        onCompletionPick = viewModel::complete,
+                        onCompletionDismiss = { completionDismissed = state.sql to state.selectionStart },
+                        onFocusChange = { editorFocused = it },
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 160.dp, max = if (wide) 420.dp else 300.dp),
                     )
-                }
-
-                if (state.suggestions.isNotEmpty() && !state.editorCollapsed) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = Spacing.l),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-                    ) {
-                        items(state.suggestions) { suggestion ->
-                            AssistChip(
-                                // Completing replaces the half-typed word rather than adding to it.
-                                onClick = { viewModel.complete(suggestion) },
-                                label = { Text(suggestion, style = MonoStyles.cell) },
-                            )
-                        }
-                    }
                 }
 
                 // The key row: characters that are three taps deep on a phone keyboard.
@@ -1599,6 +1629,9 @@ private fun Key.shortcutName(): String = when (this) {
     Key.Z -> "Z"
     Key.Y -> "Y"
     Key.Escape -> "ESCAPE"
+    Key.DirectionDown -> "ARROWDOWN"
+    Key.DirectionUp -> "ARROWUP"
+    Key.Tab -> "TAB"
     else -> ""
 }
 
@@ -1773,18 +1806,38 @@ private fun SqlEditorField(
     value: TextFieldValue,
     syntax: SqlSyntax,
     onValueChange: (TextFieldValue) -> Unit,
+    completion: List<CompletionItem>,
+    completionRow: Int,
+    onCompletionPick: (CompletionItem) -> Unit,
+    onCompletionDismiss: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val semantic = LocalSemanticColors.current
+    // Window coordinates of the editor and of the text inside it, plus the last text layout: the
+    // cursor's rectangle is in the layout's own coordinates and needs both to become a position.
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var fieldOrigin by remember { mutableStateOf(Offset.Zero) }
+    var editorRect by remember { mutableStateOf<Rect?>(null) }
+    val windowWidth = LocalContext.current.resources.displayMetrics.widthPixels
+    val verticalScroll = rememberScrollState()
+    val horizontalScroll = rememberScrollState()
+    // Scrolling the editor moves the line the list hangs from, so the list gives way instead of
+    // trailing behind; the next keystroke brings it back.
+    val dismiss by rememberUpdatedState(onCompletionDismiss)
+    LaunchedEffect(verticalScroll, horizontalScroll) {
+        snapshotFlow { verticalScroll.isScrollInProgress || horizontalScroll.isScrollInProgress }
+            .collect { if (it) dismiss() }
+    }
     val textStyle = MonoStyles.editor.copy(
         fontSize = 14.sp,
         lineHeight = 23.sp,
         color = MaterialTheme.colorScheme.onSurface,
     )
     val lines = value.text.count { it == '\n' } + 1
-    BoxWithConstraints(modifier = modifier) {
+    BoxWithConstraints(modifier = modifier.onGloballyPositioned { editorRect = it.boundsInWindow() }) {
         val width = maxWidth
-        Row(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        Row(modifier = Modifier.fillMaxWidth().verticalScroll(verticalScroll)) {
             Column(
                 modifier = Modifier
                     .width(40.dp)
@@ -1805,6 +1858,7 @@ private fun SqlEditorField(
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
+                onTextLayout = { layout = it },
                 textStyle = textStyle,
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 visualTransformation = SqlVisualTransformation(
@@ -1818,12 +1872,44 @@ private fun SqlEditorField(
                     syntax = syntax,
                 ),
                 modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
+                    .horizontalScroll(horizontalScroll)
                     // At least as wide as the room left of the gutter, so a tap anywhere on an
                     // empty line still lands in the field.
                     .widthIn(min = width - 40.dp)
-                    .padding(top = Spacing.m, bottom = Spacing.m, end = Spacing.m),
+                    .padding(top = Spacing.m, bottom = Spacing.m, end = Spacing.m)
+                    .onFocusChanged { onFocusChange(it.isFocused) }
+                    .onGloballyPositioned { fieldOrigin = it.positionInWindow() },
             )
         }
+        val rect = editorRect
+        val textLayout = layout
+        if (completion.isNotEmpty() && rect != null && textLayout != null && value.text.length == textLayout.layoutInput.text.length) {
+            val caret = textLayout.getCursorRect(value.selection.start.coerceIn(0, value.text.length))
+            val top = fieldOrigin.y + caret.top
+            // A cursor scrolled out of the editor has no line to hang the list from.
+            if (top >= rect.top && fieldOrigin.y + caret.bottom <= rect.bottom) {
+                CompletionPopup(
+                    items = completion,
+                    selected = completionRow,
+                    prefix = completionPrefix(value),
+                    anchor = CompletionAnchor(
+                        cursorX = (fieldOrigin.x + caret.left).roundToInt(),
+                        cursorTop = top.roundToInt(),
+                        cursorBottom = (fieldOrigin.y + caret.bottom).roundToInt(),
+                        editorBottom = rect.bottom.roundToInt(),
+                        windowWidth = windowWidth,
+                    ),
+                    onPick = onCompletionPick,
+                )
+            }
+        }
     }
+}
+
+/** The word the cursor is touching, for the bold part of each row. */
+private fun completionPrefix(value: TextFieldValue): String {
+    val at = value.selection.start.coerceIn(0, value.text.length)
+    var start = at
+    while (start > 0 && (value.text[start - 1].isLetterOrDigit() || value.text[start - 1] == '_')) start--
+    return value.text.substring(start, at)
 }

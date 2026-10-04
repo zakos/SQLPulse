@@ -64,4 +64,21 @@ class QueryShortcutsTest {
         assertNull(QueryShortcuts.of(KeyPress("Q", ctrl = true)))
         assertNull(QueryShortcuts.of(KeyPress("S", ctrl = true, shift = true)))
     }
+
+    @Test
+    fun `completion keys belong to the list only while it is open`() {
+        assertNull(QueryShortcuts.of(KeyPress("ARROWDOWN")))
+        assertNull(QueryShortcuts.of(KeyPress("ENTER")))
+        assertEquals(QueryShortcut.COMPLETION_NEXT, QueryShortcuts.of(KeyPress("ARROWDOWN"), completionOpen = true))
+        assertEquals(QueryShortcut.COMPLETION_PREVIOUS, QueryShortcuts.of(KeyPress("ARROWUP"), completionOpen = true))
+        assertEquals(QueryShortcut.COMPLETION_ACCEPT, QueryShortcuts.of(KeyPress("ENTER"), completionOpen = true))
+        assertEquals(QueryShortcut.COMPLETION_ACCEPT, QueryShortcuts.of(KeyPress("TAB"), completionOpen = true))
+        assertEquals(QueryShortcut.COMPLETION_CLOSE, QueryShortcuts.of(KeyPress("ESCAPE"), completionOpen = true))
+        assertEquals(QueryShortcut.DISMISS, QueryShortcuts.of(KeyPress("ESCAPE")))
+    }
+
+    @Test
+    fun `ctrl enter still runs with the list open`() {
+        assertEquals(QueryShortcut.RUN, QueryShortcuts.of(KeyPress("ENTER", ctrl = true), completionOpen = true))
+    }
 }
