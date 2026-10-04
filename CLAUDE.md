@@ -113,11 +113,13 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - Integrációs tesztek: `integration/` csomag (MySQL/MariaDB, `postgres/`, `sqlserver/`, `sqlite/`) —
   **csak helyben** futnak (env nélkül kihagyják magukat), CI-ban nem.
 - Instrumentált UI tesztek: `app/src/androidTest/` (CI nincs hozzá, csak kézzel/emulátoron)
-- Workflow: **csak `.github/workflows/build.yml`**, és az is **csak akkor fut, ha egy `main`-re
-  nyitott PR-t összefésülnek** (`pull_request: closed` + `merged == true`; a merge commitot
-  buildeli): unit teszt + lint + aláírt release APK/AAB + debug APK artifact. A verziószám a
-  `BUILD_COMMIT_SHA`-ból jön (a `GITHUB_SHA` PR-eseménynél nem a main commitja). 2026-10-03: a felhasználó kérésére a check/integration/security/instrumentation
-  workflow-k törölve — más CI ne kerüljön vissza.
+- Workflow: **csak `.github/workflows/android.yml`** (a pathora repó mintájára, 2026-10-04). Fut:
+  `main`-re nyitott PR összefésülésekor (`pull_request: closed` + `merged == true`, a merge commitot
+  buildeli) és kézi indításra. Lépések: unit teszt + lint + aláírt release APK/AAB → artifact; a
+  `publish` job kicseréli a gördülő **`nightly`** pre-release-t, és **`v<appVersion>`** stabil
+  kiadást hoz létre, ha az `appVersion` (`app/build.gradle.kts`, egy soros string, sed olvassa) még
+  nincs tagelve. Kiadási jegyzet: `.github/scripts/release-notes.sh` (commitok az előző `v*` óta).
+  versionCode = CI futásszám. Aláíró titkok hiányában a build hibával áll meg. Más CI ne kerüljön vissza.
 - Helyi build is megy (Android SDK: `/opt/android-sdk`), a Maven tükörrel — ld. „Látványterv a kódban”.
 - **Integrációs tesztek helyben** (PostgreSQL: `apt-get install postgresql`, saját klaszter pl. 5433;
   SQL Server: `dockerd` háttérben, `mcr.microsoft.com/mssql/server:2022-latest`; env:
@@ -258,6 +260,9 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   terv-eltérések: felugró kiegészítő lista, CSV kézi oszlop-párosítás (`CsvMapping`), „teljes
   találat” export (`FullExporter`, streamelve, 1M sor/200 MB plafon; MariaDB fetchSize hiba javítva).
   1705 teszt zöld (MySQL 8, MariaDB, PG 16, SQL Server 2022, SQLite integrációval) + lint.
+
+- 2026-10-04: GitHub-szintű README (ikon, jelvények, képernyőkép-sávok `docs/images/`, angol +
+  magyar rész), CI a pathora mintájára: `android.yml` nightly + stabil kiadással; `appVersion = "0.2.0"`.
 
 ## Javasolt következő fejlesztések (2026-10-02)
 

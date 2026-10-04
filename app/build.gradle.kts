@@ -19,9 +19,13 @@ plugins {
  */
 val buildNumber = (System.getenv("VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER"))
     ?.toIntOrNull() ?: 1
-// CI passes the merge commit explicitly: on a pull_request event GITHUB_SHA is GitHub's own
-// test-merge ref, not the commit that landed on main.
-val commitSha = (System.getenv("BUILD_COMMIT_SHA") ?: System.getenv("GITHUB_SHA"))?.take(7)
+
+/**
+ * The version people see. CI publishes a stable GitHub release `v<appVersion>` the first time a
+ * pull request that changes this number is merged into main; every other merge only refreshes the
+ * rolling "nightly" pre-release. Keep it a plain string on one line: the workflow reads it with sed.
+ */
+val appVersion = "0.2.0"
 
 /**
  * Signing material, taken from the environment.
@@ -137,7 +141,7 @@ android {
         minSdk = 28
         targetSdk = 35
         versionCode = buildNumber
-        versionName = listOfNotNull("0.1.$buildNumber", commitSha).joinToString("+")
+        versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("en", "hu")
