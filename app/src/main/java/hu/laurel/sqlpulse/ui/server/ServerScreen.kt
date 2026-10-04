@@ -29,7 +29,8 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,7 +67,12 @@ import hu.laurel.sqlpulse.data.schema.PresentedFact
 import hu.laurel.sqlpulse.data.schema.ServerFactView
 import hu.laurel.sqlpulse.data.sql.CellValue
 import hu.laurel.sqlpulse.data.sql.ResultTable
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
+import hu.laurel.sqlpulse.ui.components.DialogNote
 import hu.laurel.sqlpulse.ui.components.EmptyState
+import hu.laurel.sqlpulse.ui.components.MonoBlock
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.diagnostics.DiagnosticsDialog
 import hu.laurel.sqlpulse.ui.grid.CellSelection
@@ -345,28 +351,15 @@ fun ServerScreenContent(
     }
 
     state.grants?.let { grants ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissGrants,
-            title = { Text(grants.account) },
-            text = {
-                Text(
-                    // Exactly as the server words them: a GRANT line is what gets pasted
-                    // somewhere else, and rewording it would make that useless.
-                    text = grants.lines.joinToString("\n\n").ifBlank {
-                        stringResource(R.string.server_no_grants)
-                    },
-                    style = MonoStyles.cell,
-                    modifier = Modifier
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::dismissGrants) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissGrants) {
+            GrantsCard(
+                account = grants.account,
+                // Exactly as the server words them: a GRANT line is what gets pasted
+                // somewhere else, and rewording it would make that useless.
+                text = grants.lines.joinToString("\n\n").ifBlank { stringResource(R.string.server_no_grants) },
+                onClose = viewModel::dismissGrants,
+            )
+        }
     }
 
     if (showDiagnostics) {
@@ -375,53 +368,87 @@ fun ServerScreenContent(
 
     killTarget?.let { (id, info) ->
         val actions = state.capabilities.killActions
-        val canCancel = KillAction.CANCEL in actions
-        val canTerminate = KillAction.TERMINATE in actions
-        AlertDialog(
-            onDismissRequest = { killTarget = null },
-            // Where only the whole session can be ended (SQL Server) the title says so.
-            title = {
-                Text(stringResource(if (canCancel) R.string.server_kill_title else R.string.server_terminate_title, id))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
-                    Text(info, style = MonoStyles.cell)
-                    // The harder option stays a deliberate second choice, below the gentle one.
-                    if (canCancel && canTerminate) {
-                        Text(
-                            stringResource(R.string.server_terminate_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = semantic.textSecondary,
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.terminate(id)
-                                killTarget = null
-                            },
-                            shape = Shapes.button,
-                            border = BorderStroke(1.dp, semantic.danger.copy(alpha = 0.4f)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = semantic.danger),
-                        ) { Text(stringResource(R.string.server_terminate)) }
-                    } else if (canTerminate) {
-                        Text(
-                            stringResource(R.string.server_terminate_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = semantic.textSecondary,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.kill(id)
-                        killTarget = null
-                    },
-                ) { Text(stringResource(if (canCancel) R.string.server_kill else R.string.server_terminate)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { killTarget = null }) { Text(stringResource(R.string.cancel)) }
-            },
+        BasicAlertDialog(onDismissRequest = { killTarget = null }) {
+            KillCard(
+                id = id,
+                info = info,
+                canCancel = KillAction.CANCEL in actions,
+                canTerminate = KillAction.TERMINATE in actions,
+                onKill = {
+                    viewModel.kill(id)
+                    killTarget = null
+                },
+                onTerminate = {
+                    viewModel.terminate(id)
+                    killTarget = null
+                },
+                onDismiss = { killTarget = null },
+            )
+        }
+    }
+}
+
+/** An account's grants as the server prints them, in a block that scrolls when it is long. */
+@Composable
+fun GrantsCard(account: String, text: String, onClose: () -> Unit) {
+    DialogCard {
+        DialogHeading(title = account)
+        MonoBlock(
+            text,
+            style = MonoStyles.cell,
+            modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.dialog_close),
+            onCancel = onClose,
+            actionLabel = "",
+            onAction = onClose,
+            enabled = true,
+            showAction = false,
+        )
+    }
+}
+
+/**
+ * Ending someone's statement or session. Red because it cannot be undone from here; where only
+ * the whole session can be ended (SQL Server) the title and the button say so, and where both
+ * exist the harder option stays a deliberate second choice below the gentle one.
+ */
+@Composable
+fun KillCard(
+    id: Long,
+    info: String,
+    canCancel: Boolean,
+    canTerminate: Boolean,
+    onKill: () -> Unit,
+    onTerminate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val semantic = LocalSemanticColors.current
+    DialogCard(danger = true) {
+        DialogHeading(
+            title = stringResource(if (canCancel) R.string.server_kill_title else R.string.server_terminate_title, id),
+            danger = true,
+        )
+        MonoBlock(info, style = MonoStyles.cell)
+        if (canTerminate) {
+            DialogNote(stringResource(R.string.server_terminate_note), Icons.Default.Warning, semantic.warning)
+        }
+        if (canCancel && canTerminate) {
+            OutlinedButton(
+                onClick = onTerminate,
+                shape = Shapes.button,
+                border = BorderStroke(1.dp, semantic.danger.copy(alpha = 0.4f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = semantic.danger),
+            ) { Text(stringResource(R.string.server_terminate)) }
+        }
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(if (canCancel) R.string.server_kill else R.string.server_terminate),
+            onAction = onKill,
+            enabled = true,
+            danger = true,
         )
     }
 }

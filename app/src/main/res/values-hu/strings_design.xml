@@ -32,7 +32,6 @@
     <string name="tls_verify_identity_short">Teljes</string>
     <string name="structure_foreign_key">Idegen kulcs</string>
     <string name="structure_generated">Generált oszlop</string>
-    <string name="structure_default">alap: %1$s</string>
     <string name="confirm_transaction_note">Egy tranzakcióban fut. Ha nem pontosan 1 sor változik, visszagörgetjük.</string>
     <string name="confirm_optimistic_note">Az eredeti érték is a feltételben: ha közben más átírta, nem írjuk felül.</string>
     <string name="confirm_name_mismatch">Még nem egyezik.</string>

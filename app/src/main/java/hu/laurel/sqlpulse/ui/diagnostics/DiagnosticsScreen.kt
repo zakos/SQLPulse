@@ -17,7 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
+import hu.laurel.sqlpulse.ui.components.DialogButtons
+import hu.laurel.sqlpulse.ui.components.DialogCard
+import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -56,6 +59,7 @@ import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
  * What is on screen is exactly the string that goes to the clipboard: the text is rendered once,
  * in the data layer, so nobody can be shown a redacted report and copy an unredacted one.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsDialog(
     onDismiss: () -> Unit,
@@ -65,31 +69,48 @@ fun DiagnosticsDialog(
     val context = LocalContext.current
     val text = state.report?.asText()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.diag_title)) },
-        text = {
-            DiagnosticsBody(
-                text = text,
-                loading = state.loading,
-                connected = state.connected,
-                copied = state.copied,
-                modifier = Modifier.heightIn(max = 420.dp),
-            )
-        },
-        confirmButton = {
-            Button(
-                enabled = text != null,
-                onClick = {
-                    text?.let { context.copyToClipboard(it) }
-                    viewModel.markCopied()
-                },
-            ) { Text(stringResource(R.string.diag_copy)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.diag_close)) }
-        },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        DiagnosticsCard(
+            text = text,
+            loading = state.loading,
+            connected = state.connected,
+            copied = state.copied,
+            onCopy = {
+                text?.let { context.copyToClipboard(it) }
+                viewModel.markCopied()
+            },
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** The report dialog's card, apart from its window, so a screenshot can draw it. */
+@Composable
+fun DiagnosticsCard(
+    text: String?,
+    loading: Boolean,
+    connected: Boolean,
+    copied: Boolean,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DialogCard {
+        DialogHeading(title = stringResource(R.string.diag_title))
+        DiagnosticsBody(
+            text = text,
+            loading = loading,
+            connected = connected,
+            copied = copied,
+            modifier = Modifier.heightIn(max = 420.dp),
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.diag_close),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.diag_copy),
+            onAction = onCopy,
+            enabled = text != null,
+        )
+    }
 }
 
 /** The same report with a top bar, for wherever a full destination suits better than a dialog. */

@@ -1,5 +1,7 @@
 package hu.laurel.sqlpulse.ui.schema
 
+import hu.laurel.sqlpulse.ui.appLocale
+import hu.laurel.sqlpulse.data.format.LocaleFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -32,7 +34,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,7 +112,6 @@ import hu.laurel.sqlpulse.ui.theme.MonoStyles
 import hu.laurel.sqlpulse.ui.theme.Shapes
 import hu.laurel.sqlpulse.ui.theme.Spacing
 import hu.laurel.sqlpulse.ui.theme.sqlPulseTopBarColors
-import java.text.NumberFormat
 
 /** Table page (§7.3): Data, Structure and DDL, with row editing and export on the Data tab. */
 @Composable
@@ -514,34 +514,41 @@ fun TableDetailScreenContent(
     }
 
     state.conflict?.let { conflict ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissConflict,
-            title = { Text(stringResource(R.string.conflict_title)) },
-            text = {
-                Text(
-                    if (conflict.rowExists) {
-                        stringResource(
-                            R.string.conflict_body,
-                            conflict.currentValue ?: "NULL",
-                        )
-                    } else {
-                        stringResource(R.string.conflict_row_gone)
-                    },
-                )
+        BasicAlertDialog(onDismissRequest = viewModel::dismissConflict) {
+            ConflictCard(
+                rowExists = conflict.rowExists,
+                currentValue = conflict.currentValue,
+                onOverwrite = viewModel::overwriteConflict,
+                onDismiss = viewModel::dismissConflict,
+            )
+        }
+    }
+}
+
+/**
+ * Someone else changed the cell between opening the editor and saving. Overwriting is offered only
+ * while there is still a row to write to, and is red because it discards the other person's value.
+ */
+@Composable
+fun ConflictCard(rowExists: Boolean, currentValue: String?, onOverwrite: () -> Unit, onDismiss: () -> Unit) {
+    DialogCard(danger = rowExists) {
+        DialogHeading(title = stringResource(R.string.conflict_title), danger = rowExists)
+        Text(
+            if (rowExists) {
+                stringResource(R.string.conflict_body, currentValue ?: "NULL")
+            } else {
+                stringResource(R.string.conflict_row_gone)
             },
-            confirmButton = {
-                // Only offered while there is still a row to write to.
-                if (conflict.rowExists) {
-                    Button(onClick = viewModel::overwriteConflict) {
-                        Text(stringResource(R.string.conflict_overwrite))
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissConflict) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.conflict_overwrite),
+            onAction = onOverwrite,
+            enabled = true,
+            danger = true,
+            showAction = rowExists,
         )
     }
 }
@@ -903,7 +910,7 @@ fun ImportPlanCard(
             subtitle = stringResource(R.string.import_file_summary, fileColumns).uppercase(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            ImportStat(NumberFormat.getIntegerInstance().format(plan.rowCount), stringResource(R.string.import_stat_rows), Modifier.weight(1f))
+            ImportStat(LocaleFormat.integer(plan.rowCount.toLong(), appLocale()), stringResource(R.string.import_stat_rows), Modifier.weight(1f))
             ImportStat("${plan.match.matched.size} / $fileColumns", stringResource(R.string.import_stat_columns), Modifier.weight(1f))
         }
         Column(
@@ -940,7 +947,7 @@ fun ImportPlanCard(
         DialogButtons(
             cancelLabel = stringResource(R.string.cancel),
             onCancel = onDismiss,
-            actionLabel = stringResource(R.string.import_run_rows, NumberFormat.getIntegerInstance().format(plan.rowCount)),
+            actionLabel = stringResource(R.string.import_run_rows, LocaleFormat.integer(plan.rowCount.toLong(), appLocale())),
             onAction = onConfirm,
             enabled = plan.match.canImport && plan.rowCount > 0,
             actionIcon = Icons.Default.Upload,

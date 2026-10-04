@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -71,6 +70,7 @@ import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
+import hu.laurel.sqlpulse.ui.components.MonoBlock
 import hu.laurel.sqlpulse.ui.copyToClipboard
 import hu.laurel.sqlpulse.ui.theme.LocalSemanticColors
 import hu.laurel.sqlpulse.ui.theme.MonoStyles
@@ -201,27 +201,17 @@ fun KeyStoreScreenContent(
     }
 
     deleteTarget?.let { key ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text(stringResource(R.string.key_delete_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    Text(stringResource(R.string.key_delete_body, key.name))
-                    Text(key.fingerprint, style = MonoStyles.fingerprint)
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.delete(key)
-                        deleteTarget = null
-                    },
-                ) { Text(stringResource(R.string.key_delete)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
+        BasicAlertDialog(onDismissRequest = { deleteTarget = null }) {
+            KeyDeleteCard(
+                name = key.name,
+                fingerprint = key.fingerprint,
+                onConfirm = {
+                    viewModel.delete(key)
+                    deleteTarget = null
+                },
+                onDismiss = { deleteTarget = null },
+            )
+        }
     }
 
     importState.addedPublicKey?.let { publicKey ->
@@ -417,6 +407,7 @@ fun KeyImportCard(
  * one, which is why it can be shown here. The wording says so, because "here is your public key"
  * right after an import reads as if something had been generated.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PublicKeyDialog(
     publicKey: String,
@@ -424,37 +415,49 @@ private fun PublicKeyDialog(
     onCopy: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                stringResource(
-                    if (generated) R.string.key_generated_title else R.string.key_imported_title,
-                ),
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                Text(
-                    stringResource(
-                        if (generated) {
-                            R.string.key_add_to_authorized_keys
-                        } else {
-                            R.string.key_imported_body
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(publicKey, style = MonoStyles.cell)
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onCopy(); onDismiss() }) {
-                Text(stringResource(R.string.key_public_copy))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        PublicKeyCard(publicKey = publicKey, generated = generated, onCopy = { onCopy(); onDismiss() }, onDismiss = onDismiss)
+    }
+}
+
+/** The question before a key leaves the store: which key, by its fingerprint, and that it cannot be undone. */
+@Composable
+fun KeyDeleteCard(name: String, fingerprint: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    DialogCard(danger = true) {
+        DialogHeading(title = stringResource(R.string.key_delete_title), subtitle = name, danger = true)
+        Text(stringResource(R.string.key_delete_body, name), style = MaterialTheme.typography.bodyMedium)
+        MonoBlock(fingerprint)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.key_delete),
+            onAction = onConfirm,
+            enabled = true,
+            danger = true,
+        )
+    }
+}
+
+/** The public half of a key, as a block that can be read and copied. */
+@Composable
+fun PublicKeyCard(publicKey: String, generated: Boolean, onCopy: () -> Unit, onDismiss: () -> Unit) {
+    DialogCard {
+        DialogHeading(
+            title = stringResource(if (generated) R.string.key_generated_title else R.string.key_imported_title),
+        )
+        Text(
+            stringResource(if (generated) R.string.key_add_to_authorized_keys else R.string.key_imported_body),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        MonoBlock(publicKey, style = MonoStyles.cell)
+        DialogButtons(
+            cancelLabel = stringResource(R.string.cancel),
+            onCancel = onDismiss,
+            actionLabel = stringResource(R.string.key_public_copy),
+            onAction = onCopy,
+            enabled = true,
+        )
+    }
 }
 
 /** Clipboard hygiene (§6): a pasted private key is wiped from the clipboard immediately. */

@@ -32,7 +32,6 @@
     <string name="tls_verify_identity_short">Full</string>
     <string name="structure_foreign_key">Foreign key</string>
     <string name="structure_generated">Generated column</string>
-    <string name="structure_default">default %1$s</string>
     <string name="confirm_transaction_note">It runs in one transaction. If anything other than exactly 1 row changes, it is rolled back.</string>
     <string name="confirm_optimistic_note">The old value is part of the condition: if somebody changed it meanwhile, it is not overwritten.</string>
     <string name="confirm_name_mismatch">Does not match yet.</string>

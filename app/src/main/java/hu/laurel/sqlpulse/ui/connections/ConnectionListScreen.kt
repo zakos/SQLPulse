@@ -2,6 +2,7 @@ package hu.laurel.sqlpulse.ui.connections
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -28,7 +29,6 @@ import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,7 +61,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import hu.laurel.sqlpulse.R
-import hu.laurel.sqlpulse.data.schema.formatByteSize
+import hu.laurel.sqlpulse.data.format.LocaleFormat
+import hu.laurel.sqlpulse.ui.appLocale
 import hu.laurel.sqlpulse.data.sql.dialect.DatabaseEngine
 import hu.laurel.sqlpulse.data.connection.ConnectionEnvironment
 import hu.laurel.sqlpulse.data.connection.ProductionPolicy
@@ -78,6 +79,7 @@ import hu.laurel.sqlpulse.ui.components.DialogHeading
 import hu.laurel.sqlpulse.ui.components.EmptyState
 import hu.laurel.sqlpulse.ui.components.HairlineCard
 import hu.laurel.sqlpulse.ui.components.InfoBadge
+import hu.laurel.sqlpulse.ui.components.MonoBlock
 import hu.laurel.sqlpulse.ui.components.StatusDot
 import hu.laurel.sqlpulse.ui.components.StepIndicator
 import hu.laurel.sqlpulse.ui.theme.ConnectionColor
@@ -710,47 +712,69 @@ private fun fileLine(name: String, size: Long?): String =
     if (size == null) {
         stringResource(R.string.sqlite_card_missing, name)
     } else {
-        stringResource(R.string.sqlite_card_size, name, formatByteSize(size))
+        stringResource(R.string.sqlite_card_size, name, LocaleFormat.byteSize(size, appLocale()))
     }
 
+/** The host-key decision as a window; the card itself is [HostKeyCard]. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostKeyDialog(prompt: HostKeyPrompt, onAccept: () -> Unit, onReject: () -> Unit) {
+    BasicAlertDialog(onDismissRequest = onReject) {
+        HostKeyCard(prompt = prompt, onAccept = onAccept, onReject = onReject)
+    }
+}
+
+/**
+ * First-seen and changed keys are deliberately different cards: the first asks for a check of the
+ * fingerprint, the second is a red, blocking warning with no way to accept — a changed key is the
+ * one case where a quick tap must never be the path of least resistance (§5).
+ */
+@Composable
+fun HostKeyCard(prompt: HostKeyPrompt, onAccept: () -> Unit, onReject: () -> Unit) {
+    val semantic = LocalSemanticColors.current
     val changed = prompt.storedFingerprint != null
-    AlertDialog(
-        onDismissRequest = onReject,
-        title = {
+    DialogCard(danger = changed) {
+        DialogHeading(
+            title = stringResource(if (changed) R.string.host_key_changed_title else R.string.host_key_new_title),
+            subtitle = "${prompt.host}:${prompt.port}",
+            danger = changed,
+        )
+        if (changed) {
             Text(
-                stringResource(
-                    if (changed) R.string.host_key_changed_title else R.string.host_key_new_title,
-                ),
+                stringResource(R.string.host_key_changed_headline),
+                style = MaterialTheme.typography.titleSmall,
+                color = semantic.danger,
             )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                if (changed) {
-                    Text(
-                        stringResource(
-                            R.string.host_key_changed_body,
-                            prompt.storedFingerprint.orEmpty(),
-                            prompt.offeredFingerprint,
-                        ),
-                    )
-                } else {
-                    Text(stringResource(R.string.host_key_new_body, "${prompt.host}:${prompt.port}"))
-                    Text("${prompt.keyType} ${prompt.offeredFingerprint}", style = MonoStyles.fingerprint)
-                }
-            }
-        },
-        confirmButton = {
-            // A changed key is blocked outright: the only way past it is the connection editor (§5).
-            if (!changed) {
-                TextButton(onClick = onAccept) { Text(stringResource(R.string.host_key_accept)) }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onReject) { Text(stringResource(R.string.host_key_reject)) }
-        },
-    )
+            FingerprintBlock(stringResource(R.string.host_key_stored_label), prompt.storedFingerprint.orEmpty(), semantic.textSecondary)
+            FingerprintBlock(
+                stringResource(R.string.host_key_offered_label),
+                "${prompt.keyType} ${prompt.offeredFingerprint}",
+                semantic.danger,
+            )
+            Text(stringResource(R.string.host_key_changed_explanation), style = MaterialTheme.typography.bodyMedium)
+        } else {
+            Text(stringResource(R.string.host_key_new_body, "${prompt.host}:${prompt.port}"), style = MaterialTheme.typography.bodyMedium)
+            FingerprintBlock(stringResource(R.string.host_key_offered_label), "${prompt.keyType} ${prompt.offeredFingerprint}", semantic.success)
+        }
+        // A changed key is blocked outright: the only way past it is the connection editor (§5).
+        DialogButtons(
+            cancelLabel = stringResource(R.string.host_key_reject),
+            onCancel = onReject,
+            actionLabel = stringResource(R.string.host_key_accept),
+            onAction = onAccept,
+            enabled = true,
+            showAction = !changed,
+        )
+    }
+}
+
+/** A labelled fingerprint in mono, outlined in a colour so the two can be compared by eye. */
+@Composable
+private fun FingerprintBlock(label: String, value: String, edge: androidx.compose.ui.graphics.Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = LocalSemanticColors.current.textSecondary)
+        MonoBlock(value, edge = edge.copy(alpha = 0.6f))
+    }
 }
 
 private fun TunnelState?.label(): Int = when (this) {
