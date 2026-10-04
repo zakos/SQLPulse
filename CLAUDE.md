@@ -147,7 +147,9 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
   (pl. „Keep more than one query open at a time”).
 - Kódkommentek angolul, a „miért”-et magyarázzák.
 - Licenc: **Apache-2.0**, © 2026 Zimmermann Ákos (`LICENSE`, `NOTICE`). Új futásidejű függőség →
-  `THIRD_PARTY_NOTICES.md` frissítése (licenc ellenőrzése; GPL csak FOSS-kivétellel).
+  `THIRD_PARTY_NOTICES.md` + `data/licenses/ThirdPartyLicenses.kt` + licencszöveg az
+  `assets/licenses/`-be (a `ThirdPartyLicensesTest` elbukik, ha egy függőségnek nincs bejegyzése).
+  Az appban: Beállítások → Licencek (vagy a verziósorra koppintva).
 
 ## Látványterv a kódban
 
@@ -266,7 +268,8 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - 2026-10-04: GitHub-szintű README (ikon, jelvények, képernyőkép-sávok `docs/images/`, angol +
   magyar rész), CI a pathora mintájára: `android.yml` nightly + stabil kiadással; `appVersion = "0.2.0"`.
 
-- 2026-10-04: Licenc: Apache-2.0 a felhasználó nevével; `NOTICE`, `THIRD_PARTY_NOTICES.md`, README-jelvény.
+- 2026-10-04: Licenc: Apache-2.0, © Zimmermann Ákos; `NOTICE`, `THIRD_PARTY_NOTICES.md`, README-jelvény;
+  appon belüli Licencek képernyő (`ui/licenses/`). PR: https://github.com/zakos/SQLPulse/pull/5
 
 ## Javasolt következő fejlesztések (2026-10-02)
 

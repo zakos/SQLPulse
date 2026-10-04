@@ -20,7 +20,7 @@ Espresso, coroutines-test) are not shipped and are not listed.
 | MySQL Connector/J | 5.1.49 | GPL-2.0 with the Universal FOSS Exception |
 | PostgreSQL JDBC Driver (pgjdbc) | 42.7.13 | BSD-2-Clause |
 | Microsoft JDBC Driver for SQL Server (`mssql-jdbc`) | 13.6.0.jre8 | MIT |
-| SQLite JDBC (`org.xerial:sqlite-jdbc`), including SQLite | 3.53.4.0 | Apache-2.0 (SQLite itself: public domain) |
+| SQLite JDBC (`org.xerial:sqlite-jdbc`), including SQLite | 3.53.4.0 | Apache-2.0; parts BSD-2-Clause (© 2006 David Crawshaw); SQLite itself: public domain |
 
 ## Fonts
 
