@@ -296,7 +296,7 @@ docs/                specification, roadmap and design notes (Hungarian)
 
 ## License
 
-Copyright 2026 Zimmermann Akos.
+Copyright 2026 Zimmermann Ákos.
 
 Licensed under the [Apache License, Version 2.0](LICENSE). Third-party components bundled in the
 app keep their own licenses — see [`NOTICE`](NOTICE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
@@ -331,5 +331,5 @@ Részletes magyar dokumentáció: [`docs/specification.md`](docs/specification.m
 [`docs/roadmap.md`](docs/roadmap.md) (mi kész, mi jön), [`docs/tobb-motor-terv.md`](docs/tobb-motor-terv.md)
 (több adatbázismotor), [`CLAUDE.md`](CLAUDE.md) (a repó térképe a fejlesztőknek).
 
-**Licenc:** Apache License 2.0, © 2026 Zimmermann Akos. A beépített külső könyvtárak a saját
+**Licenc:** Apache License 2.0, © 2026 Zimmermann Ákos. A beépített külső könyvtárak a saját
 licencük alatt vannak: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

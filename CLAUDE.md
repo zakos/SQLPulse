@@ -146,7 +146,7 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - Commit üzenetek stílusa: rövid, angol, „mit csinál az app” megfogalmazás
   (pl. „Keep more than one query open at a time”).
 - Kódkommentek angolul, a „miért”-et magyarázzák.
-- Licenc: **Apache-2.0**, © 2026 Zimmermann Akos (`LICENSE`, `NOTICE`). Új futásidejű függőség →
+- Licenc: **Apache-2.0**, © 2026 Zimmermann Ákos (`LICENSE`, `NOTICE`). Új futásidejű függőség →
   `THIRD_PARTY_NOTICES.md` frissítése (licenc ellenőrzése; GPL csak FOSS-kivétellel).
 
 ## Látványterv a kódban
