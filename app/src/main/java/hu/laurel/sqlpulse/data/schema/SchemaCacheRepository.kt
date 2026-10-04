@@ -1,11 +1,15 @@
 package hu.laurel.sqlpulse.data.schema
 
 import androidx.room.withTransaction
+import hu.laurel.sqlpulse.data.db.CachedCheckEntity
 import hu.laurel.sqlpulse.data.db.CachedColumnEntity
 import hu.laurel.sqlpulse.data.db.CachedDatabaseEntity
 import hu.laurel.sqlpulse.data.db.CachedForeignKeyEntity
 import hu.laurel.sqlpulse.data.db.CachedIndexEntity
+import hu.laurel.sqlpulse.data.db.CachedObjectCaptureEntity
 import hu.laurel.sqlpulse.data.db.CachedTableEntity
+import hu.laurel.sqlpulse.data.db.CachedTriggerEntity
+import hu.laurel.sqlpulse.data.db.CachedViewEntity
 import hu.laurel.sqlpulse.data.db.SchemaCacheDao
 import hu.laurel.sqlpulse.data.db.SqlPulseDatabase
 import hu.laurel.sqlpulse.data.sql.SqlSessionManager
@@ -138,6 +142,7 @@ class SchemaCacheRepository @Inject constructor(
                     indexes = cache.indexes(connectionId, database, table).map { row -> row.toCached() },
                     foreignKeys = cache.foreignKeys(connectionId, database, table)
                         .map { row -> row.toCached() },
+                    checks = cache.checks(connectionId, database, table).map { row -> row.toCached() },
                 ).toTableStructure(),
                 it,
             )
@@ -145,7 +150,72 @@ class SchemaCacheRepository @Inject constructor(
         return SchemaCache.view(live = null, cached = snapshot, now = now(), policy = policy)
     }
 
+    /**
+     * A database's views (with their text) and triggers (with their bodies), for the schema
+     * comparison: live when there is a session — and written to the cache on the way — otherwise
+     * what was stored. They are read per database, one statement each, because the comparison
+     * needs all of them and a round trip per view would be hundreds over a tunnel.
+     *
+     * A capture is only rewritten when it is stale or [userAsked], like the lists above. The
+     * live read can fail (a server that refuses `information_schema.TRIGGERS`); the failure is
+     * the caller's to handle, and the stored capture is left as it was.
+     */
+    suspend fun objects(
+        connectionId: Long,
+        database: String,
+        userAsked: Boolean = false,
+    ): SchemaView<DatabaseObjects> {
+        if (online) {
+            val capturedAt = cache.objectsCapturedAt(connectionId, database)
+            val views = schema.viewDefinitions(database)
+            val triggers = schema.triggerDefinitions(database)
+            val live = DatabaseObjects(
+                views = views,
+                triggers = triggers.map { CachedTrigger(it.name, it.table, it.timing, it.event, it.body.orEmpty()) },
+            )
+            if (SchemaCache.shouldCapture(capturedAt, now(), userAsked, policy)) {
+                captureObjects(connectionId, database, live)
+            }
+            return SchemaView.Live(live)
+        }
+        val capturedAt = cache.objectsCapturedAt(connectionId, database)
+        val snapshot = capturedAt?.let {
+            SchemaSnapshot(
+                DatabaseObjects(
+                    views = cache.views(connectionId, database).associate { row -> row.name to row.definition },
+                    triggers = cache.triggers(connectionId, database).map { row ->
+                        CachedTrigger(row.name, row.tableName, row.timing, row.event, row.body)
+                    },
+                ),
+                it,
+            )
+        }
+        return SchemaCache.view(live = null, cached = snapshot, now = now(), policy = policy)
+    }
+
     // ------------------------------------------------------------- capturing
+
+    /**
+     * Replaces a database's views and triggers as a set, in one transaction, and moves the
+     * capture marker only with them: an object the server dropped must not linger, and a marker
+     * that moved without the rows would claim a read that never landed.
+     */
+    private suspend fun captureObjects(connectionId: Long, db: String, objects: DatabaseObjects) {
+        val capturedAt = now()
+        room.withTransaction {
+            cache.deleteViews(connectionId, db)
+            cache.deleteTriggers(connectionId, db)
+            cache.upsertViews(
+                objects.views.map { (name, definition) -> CachedViewEntity(connectionId, db, name, definition) },
+            )
+            cache.upsertTriggers(
+                objects.triggers.map {
+                    CachedTriggerEntity(connectionId, db, it.table, it.name, it.timing, it.event, it.body)
+                },
+            )
+            cache.upsertObjectCapture(CachedObjectCaptureEntity(connectionId, db, capturedAt))
+        }
+    }
 
     /**
      * Writes a database list back, as a difference rather than a rewrite.
@@ -178,7 +248,8 @@ class SchemaCacheRepository @Inject constructor(
         // The structure timestamps belong to the rows that already exist: a table whose columns
         // were captured yesterday has not had them re-read just because its row was rewritten.
         val structureTimes = stored.associate { it.name to it.structureCapturedAt }
-        val rows = tables.map { it.toEntity(connectionId, capturedAt, structureTimes[it.name]) }
+        val checkTimes = stored.associate { it.name to it.checksCapturedAt }
+        val rows = tables.map { it.toEntity(connectionId, capturedAt, structureTimes[it.name], checkTimes[it.name]) }
         room.withTransaction {
             cache.upsertTables(rows)
             if (merge.removedKeys.isNotEmpty()) {
@@ -189,6 +260,7 @@ class SchemaCacheRepository @Inject constructor(
                     cache.deleteColumns(connectionId, db, table)
                     cache.deleteIndexes(connectionId, db, table)
                     cache.deleteForeignKeys(connectionId, db, table)
+                    cache.deleteChecks(connectionId, db, table)
                 }
             }
         }
@@ -213,6 +285,7 @@ class SchemaCacheRepository @Inject constructor(
             cache.deleteColumns(connectionId, db, table)
             cache.deleteIndexes(connectionId, db, table)
             cache.deleteForeignKeys(connectionId, db, table)
+            cache.deleteChecks(connectionId, db, table)
             cache.upsertColumns(
                 structure.columns.mapIndexed { position, column ->
                     CachedColumnEntity(
@@ -254,6 +327,20 @@ class SchemaCacheRepository @Inject constructor(
                         referencedDatabase = key.referencedDatabase,
                         referencedTable = key.referencedTable,
                         referencedColumn = key.referencedColumn,
+                        onDelete = key.onDelete,
+                        onUpdate = key.onUpdate,
+                    )
+                },
+            )
+            cache.upsertChecks(
+                structure.checks.map { check ->
+                    CachedCheckEntity(
+                        connectionId = connectionId,
+                        database = db,
+                        tableName = table,
+                        name = check.name,
+                        expression = check.expression,
+                        enforced = check.enforced,
                     )
                 },
             )
@@ -274,6 +361,10 @@ class SchemaCacheRepository @Inject constructor(
             cache.deleteAllColumns(connectionId)
             cache.deleteAllIndexes(connectionId)
             cache.deleteAllForeignKeys(connectionId)
+            cache.deleteAllChecks(connectionId)
+            cache.deleteAllViews(connectionId)
+            cache.deleteAllTriggers(connectionId)
+            cache.deleteAllObjectCaptures(connectionId)
             cache.deleteAllTables(connectionId)
             cache.deleteAllDatabases(connectionId)
         }
@@ -297,6 +388,7 @@ class SchemaCacheRepository @Inject constructor(
         connectionId: Long,
         capturedAt: Long,
         structureCapturedAt: Long?,
+        checksCapturedAt: Long?,
     ): CachedTableEntity = CachedTableEntity(
         connectionId = connectionId,
         database = database,
@@ -310,6 +402,7 @@ class SchemaCacheRepository @Inject constructor(
         indexBytes = indexBytes,
         capturedAt = capturedAt,
         structureCapturedAt = structureCapturedAt,
+        checksCapturedAt = checksCapturedAt,
     )
 
     private fun CachedTableEntity.toCached(): CachedTable = CachedTable(
@@ -367,7 +460,12 @@ class SchemaCacheRepository @Inject constructor(
         referencedDatabase = referencedDatabase,
         referencedTable = referencedTable,
         referencedColumn = referencedColumn,
+        onDelete = onDelete,
+        onUpdate = onUpdate,
     )
+
+    private fun CachedCheckEntity.toCached(): CachedCheck =
+        CachedCheck(name = name, expression = expression, enforced = enforced)
 
     private fun CachedStructure.toTableStructure(): TableStructure = TableStructure(
         columns = columns.sortedBy { it.position }.map {
@@ -391,7 +489,18 @@ class SchemaCacheRepository @Inject constructor(
                 referencedDatabase = it.referencedDatabase,
                 referencedTable = it.referencedTable,
                 referencedColumn = it.referencedColumn,
+                onDelete = it.onDelete,
+                onUpdate = it.onUpdate,
             )
+        },
+        checks = checks.orEmpty().map {
+            CheckConstraint(name = it.name, expression = it.expression, enforced = it.enforced)
         },
     )
 }
+
+/** The views (name to text) and triggers of one database, as the comparison reads them. */
+data class DatabaseObjects(
+    val views: Map<String, String>,
+    val triggers: List<CachedTrigger>,
+)

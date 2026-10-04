@@ -40,8 +40,14 @@ data class SchemaTrigger(
     val table: String,
     /** INSERT, UPDATE or DELETE. */
     val event: String,
-    /** BEFORE or AFTER. */
+    /** BEFORE, AFTER or INSTEAD OF. */
     val timing: String,
+    /**
+     * What the trigger does, as the engine prints it: the body for MySQL and SQL Server, the
+     * whole CREATE statement for SQLite, the trigger definition plus its function for PostgreSQL.
+     * Null in the plain list, which does not need it: only the schema comparison reads bodies.
+     */
+    val body: String? = null,
 )
 
 data class SchemaEvent(

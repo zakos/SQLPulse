@@ -1,11 +1,13 @@
 package hu.laurel.sqlpulse.ui.screenshots
 
 import hu.laurel.sqlpulse.data.db.ConnectionEntity
+import hu.laurel.sqlpulse.data.schema.CachedCheck
 import hu.laurel.sqlpulse.data.schema.CachedColumn
 import hu.laurel.sqlpulse.data.schema.CachedForeignKey
 import hu.laurel.sqlpulse.data.schema.CachedIndex
 import hu.laurel.sqlpulse.data.schema.CachedStructure
 import hu.laurel.sqlpulse.data.schema.CachedTable
+import hu.laurel.sqlpulse.data.schema.CachedTrigger
 import hu.laurel.sqlpulse.data.schema.SchemaCapture
 import hu.laurel.sqlpulse.data.schema.SchemaDiff
 import hu.laurel.sqlpulse.data.schema.SchemaDiffOptions
@@ -33,6 +35,42 @@ class SchemaDiffShots {
     fun full() {
         paparazzi.unsafeUpdateConfig(deviceConfig = DesignPhone.copy(screenHeight = 3600))
         paparazzi.screen { draw(state()) }
+    }
+
+    /** One changed table open on its foreign key rules and CHECK constraints, then a changed view. */
+    @Test
+    fun checksAndRules() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = DesignPhone.copy(screenHeight = 3100))
+        paparazzi.screen { draw(only("orders")) }
+    }
+
+    @Test
+    fun viewDefinition() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = DesignPhone.copy(screenHeight = 1700))
+        paparazzi.screen { draw(only("v_daily_sales")) }
+    }
+
+    /** Triggers never read on side B: the comparison says so instead of calling it a match. */
+    @Test
+    fun triggersNotRead() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = DesignPhone.copy(screenHeight = 1500))
+        paparazzi.screen {
+            val base = state()
+            val b = base.b.capture!!
+            val noTriggers = b.copy(side = b.side.copy(triggers = null))
+            draw(
+                base.copy(
+                    b = base.b.copy(capture = noTriggers),
+                    result = SchemaDiff.compare(base.a.capture!!.side, noTriggers.side, base.options)
+                        .let { it.copy(tables = emptyList()) },
+                ),
+            )
+        }
+    }
+
+    private fun only(name: String): SchemaDiffUiState {
+        val base = state()
+        return base.copy(result = base.result!!.copy(tables = base.result!!.tables.filter { it.name == name }))
     }
 
     @Test
@@ -66,8 +104,8 @@ class SchemaDiffShots {
     // ------------------------------------------------------------------ fixture
 
     private fun state(): SchemaDiffUiState {
-        val dev = capture("shop_dev", devTables, NOW - 2 * MINUTE)
-        val prod = capture("shop", prodTables, NOW - 3 * DAY)
+        val dev = capture("shop_dev", devTables, NOW - 2 * MINUTE, devViews, devTriggers)
+        val prod = capture("shop", prodTables, NOW - 3 * DAY, prodViews, prodTriggers)
         val options = SchemaDiffOptions()
         return SchemaDiffUiState(
             connections = listOf(
@@ -85,15 +123,29 @@ class SchemaDiffShots {
 
     private data class T(val table: CachedTable, val structure: CachedStructure?)
 
-    private fun capture(database: String, tables: List<T>, takenAt: Long?): SchemaCapture {
+    private fun capture(
+        database: String,
+        tables: List<T>,
+        takenAt: Long?,
+        views: Map<String, String> = emptyMap(),
+        triggers: List<CachedTrigger>? = null,
+    ): SchemaCapture {
         val moved = tables.map { it.copy(table = it.table.copy(database = database)) }
         val structures = moved.mapNotNull { t ->
             t.structure?.let { s ->
-                t.table.name to s.copy(foreignKeys = s.foreignKeys.map { it.copy(referencedDatabase = database) })
+                t.table.name to s.copy(
+                    foreignKeys = s.foreignKeys.map { it.copy(referencedDatabase = database) },
+                    // A captured structure always says whether it has CHECK constraints.
+                    checks = s.checks ?: emptyList(),
+                )
             }
         }.toMap()
         return SchemaCapture(
-            side = SchemaDiffSide(database, moved.map { it.table }, structures),
+            side = SchemaDiffSide(
+                database, moved.map { it.table }, structures,
+                viewDefinitions = views.mapValues { it.value.replace("@DB@", database) },
+                triggers = triggers,
+            ),
             tablesCapturedAt = takenAt,
             structuresCaptured = structures.size,
             oldestStructureAt = takenAt?.let { it - if (database == "shop") 9 * DAY else 0 },
@@ -131,7 +183,11 @@ class SchemaDiffShots {
                     col("discount_code", "varchar(32)", nullable = true),
                 ),
                 listOf(pk(), CachedIndex("ix_customer", false, listOf("customer_id"), 1), CachedIndex("ix_status", false, listOf("status", "created_at"), 2)),
-                listOf(CachedForeignKey("fk_orders_customer", "customer_id", "", "customers", "id")),
+                listOf(CachedForeignKey("fk_orders_customer", "customer_id", "", "customers", "id", onDelete = "CASCADE", onUpdate = "RESTRICT")),
+                checks = listOf(
+                    CachedCheck("chk_total_positive", "(`total` >= 0)"),
+                    CachedCheck("chk_status_known", "(`status` in ('new','paid','sent','cancelled'))"),
+                ),
             ),
         ),
         T(table("order_items"), CachedStructure(cols(col("id", "int unsigned"), col("order_id", "int unsigned"), col("qty", "int")), listOf(pk()), emptyList())),
@@ -164,13 +220,37 @@ class SchemaDiffShots {
                     col("status", "enum('new','paid','sent')", default = "'new'"),
                 ),
                 listOf(pk(), CachedIndex("customer_id", false, listOf("customer_id"), 1)),
-                listOf(CachedForeignKey("orders_ibfk_1", "customer_id", "", "customers", "id")),
+                listOf(CachedForeignKey("orders_ibfk_1", "customer_id", "", "customers", "id", onDelete = "RESTRICT", onUpdate = "RESTRICT")),
+                checks = listOf(CachedCheck("chk_status_known", "`status` in ('new','paid','sent','cancelled')")),
             ),
         ),
         T(table("order_items"), CachedStructure(cols(col("id", "int(10) unsigned"), col("order_id", "int(10) unsigned"), col("qty", "int(11)")), listOf(pk()), emptyList())),
         T(table("legacy_export"), null),
         T(table("v_daily_sales", TableKind.VIEW), CachedStructure(cols(col("day", "date"), col("total", "decimal(34,2)", nullable = true)), emptyList(), emptyList())),
         T(table("invoices"), CachedStructure(cols(col("id", "int(10) unsigned")), listOf(pk()), emptyList())),
+    )
+
+    private val devViews = mapOf(
+        "v_daily_sales" to "CREATE ALGORITHM=UNDEFINED DEFINER=`dev`@`%` SQL SECURITY DEFINER VIEW `@DB@`.`v_daily_sales` AS " +
+            "select cast(`@DB@`.`orders`.`created_at` as date) AS `day`,sum(`@DB@`.`orders`.`total`) AS `total` " +
+            "from `@DB@`.`orders` where `@DB@`.`orders`.`status` <> 'cancelled' group by cast(`@DB@`.`orders`.`created_at` as date)",
+    )
+
+    private val prodViews = mapOf(
+        "v_daily_sales" to "CREATE ALGORITHM=UNDEFINED DEFINER=`deploy`@`10.0.0.%` SQL SECURITY DEFINER VIEW `@DB@`.`v_daily_sales` AS " +
+            "select cast(`@DB@`.`orders`.`created_at` as date) AS `day`,sum(`@DB@`.`orders`.`total`) AS `total` " +
+            "from `@DB@`.`orders` group by cast(`@DB@`.`orders`.`created_at` as date)",
+    )
+
+    private val devTriggers = listOf(
+        CachedTrigger("trg_orders_bi", "orders", "BEFORE", "INSERT", "SET NEW.created_at = UTC_TIMESTAMP()"),
+        CachedTrigger("trg_items_ai", "order_items", "AFTER", "INSERT", "UPDATE orders SET total = total + NEW.qty WHERE id = NEW.order_id"),
+        CachedTrigger("trg_customers_bu", "customers", "BEFORE", "UPDATE", "SET NEW.email = LOWER(NEW.email)"),
+    )
+
+    private val prodTriggers = listOf(
+        CachedTrigger("trg_orders_bi", "orders", "BEFORE", "INSERT", "SET NEW.created_at = NOW()"),
+        CachedTrigger("trg_customers_bu", "customers", "BEFORE", "UPDATE", "SET NEW.email=LOWER(NEW.email)"),
     )
 
     private fun connection(id: Long, name: String, environment: String, color: String, database: String) = ConnectionEntity(

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="schemadiff2_limits">Compared: tables, columns (type, NULL, default, extra, order), indexes, foreign keys with their ON DELETE / ON UPDATE rules, CHECK constraints, view definitions and triggers. Routines, events and column collations are not compared. Differences are only listed; nothing is changed on either server.</string>
+    <string name="schemadiff2_section_checks">CHECK constraints</string>
+    <string name="schemadiff2_section_triggers">Triggers</string>
+    <string name="schemadiff2_triggers_gap_a">Triggers were never read on side A, so they are not compared. Use “Read everything from the server” on that side.</string>
+    <string name="schemadiff2_triggers_gap_b">Triggers were never read on side B, so they are not compared. Use “Read everything from the server” on that side.</string>
+    <string name="schemadiff2_triggers_gap_both">Triggers were never read on either side, so they are not compared. Use “Read everything from the server” on a connected side.</string>
+    <string name="schemadiff2_field_on_delete">on delete</string>
+    <string name="schemadiff2_field_on_update">on update</string>
+    <string name="schemadiff2_field_expression">condition</string>
+    <string name="schemadiff2_field_enforced">enforced</string>
+    <string name="schemadiff2_field_timing">timing</string>
+    <string name="schemadiff2_field_event">event</string>
+    <string name="schemadiff2_field_table">table</string>
+</resources>

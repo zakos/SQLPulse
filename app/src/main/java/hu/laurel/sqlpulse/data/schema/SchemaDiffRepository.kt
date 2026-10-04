@@ -26,6 +26,8 @@ data class SchemaCapture(
     val structuresCaptured: Int,
     /** The oldest of those structure captures: the comparison is only as fresh as this. */
     val oldestStructureAt: Long?,
+    /** When this database's views and triggers were read; null when they never were. */
+    val objectsCapturedAt: Long? = null,
 ) {
     val tableCount: Int get() = side.tables.size
     val complete: Boolean get() = structuresCaptured == tableCount
@@ -86,6 +88,8 @@ class SchemaDiffRepository @Inject constructor(
         val columns = cache.columnsOfDatabase(connectionId, database).groupBy { it.tableName }
         val indexes = cache.indexesOfDatabase(connectionId, database).groupBy { it.tableName }
         val keys = cache.foreignKeysOfDatabase(connectionId, database).groupBy { it.tableName }
+        val checks = cache.checksOfDatabase(connectionId, database).groupBy { it.tableName }
+        val checksKnown = tableRows.filter { it.checksCapturedAt != null }.map { it.name }.toSet()
         // Only a table with a structure timestamp counts as captured: a table with no columns
         // stored and no timestamp was never opened, which is not the same as having no columns.
         val structures = captured.associateWith { table ->
@@ -106,7 +110,17 @@ class SchemaDiffRepository @Inject constructor(
                     CachedIndex(it.name, it.isUnique, SchemaCache.splitColumns(it.columns), it.position)
                 },
                 foreignKeys = keys[table].orEmpty().map {
-                    CachedForeignKey(it.constraintName, it.column, it.referencedDatabase, it.referencedTable, it.referencedColumn)
+                    CachedForeignKey(
+                        it.constraintName, it.column, it.referencedDatabase, it.referencedTable, it.referencedColumn,
+                        onDelete = it.onDelete, onUpdate = it.onUpdate,
+                    )
+                },
+                // A structure captured before CHECK constraints were kept has none recorded, which
+                // is not the same as having none: null keeps the comparison from guessing.
+                checks = if (table in checksKnown) {
+                    checks[table].orEmpty().map { CachedCheck(it.name, it.expression, it.enforced) }
+                } else {
+                    null
                 },
             )
         }
@@ -123,8 +137,27 @@ class SchemaDiffRepository @Inject constructor(
                 indexBytes = it.indexBytes,
             )
         }
+        val objectsAt = cache.objectsCapturedAt(connectionId, database)
+        val views = if (objectsAt != null) {
+            cache.views(connectionId, database).associate { it.name to it.definition }
+        } else {
+            emptyMap()
+        }
+        val triggers = if (objectsAt != null) {
+            cache.triggers(connectionId, database).map { CachedTrigger(it.name, it.tableName, it.timing, it.event, it.body) }
+        } else {
+            null
+        }
         return SchemaCapture(
-            side = SchemaDiffSide(database = database, tables = tables, structures = structures, engine = engine),
+            side = SchemaDiffSide(
+                database = database,
+                tables = tables,
+                structures = structures,
+                viewDefinitions = views,
+                triggers = triggers,
+                engine = engine,
+            ),
+            objectsCapturedAt = objectsAt,
             tablesCapturedAt = tableRows.maxOfOrNull { it.capturedAt },
             structuresCaptured = structures.size,
             oldestStructureAt = tableRows.mapNotNull { it.structureCapturedAt }.minOrNull(),
@@ -156,6 +189,16 @@ class SchemaDiffRepository @Inject constructor(
             schemaCache.structure(connectionId, database, table.name, userAsked = true)
         }
         onProgress(targets.size, targets.size)
+        // The views' text and the triggers come with one statement each. A server that refuses
+        // them (no privilege, an engine quirk) must not throw away the structures just read: the
+        // comparison then says those objects were not captured, which is the truth.
+        try {
+            schemaCache.objects(connectionId, database, userAsked = true)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // Left as it was.
+        }
         return load(connectionId, database, engine)
     }
 

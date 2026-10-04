@@ -105,6 +105,28 @@ class SqlServerFeaturesIntegrationTest : EngineFeaturesBase() {
         )
     }
 
+    override fun objectsFixture(backend: EngineBackend) {
+        for ((side, variant) in listOf(backend.a to "a", backend.b to "b")) {
+            val a = variant == "a"
+            backend.execute(
+                side,
+                "CREATE TABLE ${t(side, "parent")} (id int NOT NULL PRIMARY KEY)",
+                "CREATE TABLE ${t(side, "child")} (id int NOT NULL PRIMARY KEY, parent_id int NULL, qty int NULL, price int NULL, note nvarchar(20) NULL, " +
+                    "CONSTRAINT child_parent_fk FOREIGN KEY (parent_id) REFERENCES ${t(side, "parent")} (id) " +
+                    "ON DELETE ${if (a) "CASCADE" else "SET NULL"}, " +
+                    "CONSTRAINT qty_ok CHECK (qty ${if (a) ">" else ">="} 0), " +
+                    "CONSTRAINT price_ok CHECK (price >= 0))",
+                "CREATE VIEW ${t(side, "v_child")} AS SELECT id, qty FROM ${t(side, "child")} WHERE qty > ${if (a) 0 else 1}",
+                if (a) "CREATE VIEW ${t(side, "v_same")} AS SELECT id FROM ${t(side, "child")} WHERE price > 5"
+                else "CREATE VIEW ${t(side, "v_same")} AS\n  SELECT   [id]\n FROM ${SqlServerDialect.qualify(side.namespace, "child")}\n  WHERE [price]>5",
+                "CREATE TRIGGER ${t(side, "trg_child")} ON ${t(side, "child")} AFTER INSERT AS BEGIN SET NOCOUNT ON; " +
+                    "UPDATE c SET note = '${if (a) "a" else "b"}' FROM ${t(side, "child")} c JOIN inserted i ON i.id = c.id; END",
+                if (a) "CREATE TRIGGER ${t(side, "trg_same")} ON ${t(side, "child")} AFTER UPDATE AS BEGIN SET NOCOUNT ON; DECLARE @x int = 1; END"
+                else "CREATE TRIGGER ${t(side, "trg_same")} ON ${t(side, "child")} AFTER UPDATE AS\nBEGIN\n  SET NOCOUNT ON; -- quiet\n  DECLARE @x int=1;\nEND",
+            )
+        }
+    }
+
     override fun storageFixture(side: EngineSide, backend: EngineBackend) {
         val big = t(side, "big")
         val counter = t(side, "counter")

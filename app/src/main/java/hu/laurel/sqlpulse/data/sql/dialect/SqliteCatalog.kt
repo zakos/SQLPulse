@@ -1,5 +1,6 @@
 package hu.laurel.sqlpulse.data.sql.dialect
 
+import hu.laurel.sqlpulse.data.schema.CheckConstraint
 import hu.laurel.sqlpulse.data.schema.ForeignKey
 import hu.laurel.sqlpulse.data.schema.GraphEdge
 import hu.laurel.sqlpulse.data.schema.KeyColumnUsage
@@ -240,6 +241,40 @@ object SqliteCatalog : SchemaCatalog {
                 timing = timing,
             )
         }
+
+    /** The whole CREATE TRIGGER text: SQLite keeps nothing else, and that is the body. */
+    override fun triggerDefinitions(connection: Connection, namespace: String): List<SchemaTrigger> =
+        connection.query(
+            "SELECT name, tbl_name, sql FROM ${schema(namespace)} WHERE type = 'trigger' ORDER BY tbl_name, name",
+        ) { rows ->
+            val sql = rows.getString("sql").orEmpty()
+            val (timing, event) = triggerShape(sql)
+            SchemaTrigger(
+                name = rows.getString("name"),
+                table = rows.getString("tbl_name"),
+                event = event,
+                timing = timing,
+                body = sql,
+            )
+        }
+
+    override fun viewDefinitions(connection: Connection, namespace: String): Map<String, String> =
+        connection.query(
+            "SELECT name, sql FROM ${schema(namespace)} WHERE type = 'view' AND sql IS NOT NULL ORDER BY name",
+        ) { rows -> rows.getString("name") to rows.getString("sql") }.toMap()
+
+    /**
+     * SQLite has no catalog of CHECK constraints: the only record is the CREATE TABLE text, so
+     * the expressions are read out of it ([SqliteChecks]). A parse that finds nothing reports no
+     * constraints, which is the same answer a table without any gets.
+     */
+    override fun checkConstraints(connection: Connection, namespace: String, table: String): List<CheckConstraint> {
+        val sql = connection.query(
+            "SELECT sql FROM ${schema(namespace)} WHERE type = 'table' AND name = ?",
+            table,
+        ) { rows -> rows.getString("sql").orEmpty() }.firstOrNull().orEmpty()
+        return SqliteChecks.parse(sql)
+    }
 
     /**
      * The primary key columns of [table] in key order, which `pk` numbers (1 for the first

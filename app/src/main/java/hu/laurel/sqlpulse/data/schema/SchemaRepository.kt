@@ -134,6 +134,14 @@ class SchemaRepository @Inject constructor(
     suspend fun triggers(database: String): List<SchemaTrigger> =
         catalog { connection, catalog -> catalog.triggers(connection, database) }
 
+    /** Every view's text, in one statement, for the schema comparison. */
+    suspend fun viewDefinitions(database: String): Map<String, String> =
+        catalog { connection, catalog -> catalog.viewDefinitions(connection, database) }
+
+    /** Every trigger with its body, in one statement, for the schema comparison. */
+    suspend fun triggerDefinitions(database: String): List<SchemaTrigger> =
+        catalog { connection, catalog -> catalog.triggerDefinitions(connection, database) }
+
     /**
      * Scheduled events. A server with the event scheduler switched off still lists them, which is
      * worth seeing: an event that never runs looks exactly like one that does.
