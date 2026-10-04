@@ -15,6 +15,7 @@
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
   <img alt="Engines" src="https://img.shields.io/badge/MySQL%20%7C%20MariaDB%20%7C%20PostgreSQL%20%7C%20SQL%20Server%20%7C%20SQLite-336791">
   <img alt="Languages" src="https://img.shields.io/badge/UI-English%20%7C%20Magyar-blue">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
 </p>
 
 ---
@@ -47,6 +48,7 @@ are locked for writing until you unlock them, and everything that was written is
 - [Architecture](#architecture)
 - [Project layout](#project-layout)
 - [Contributing](#contributing)
+- [License](#license)
 - [Magyarul](#magyarul)
 
 ## Highlights
@@ -292,6 +294,13 @@ docs/                specification, roadmap and design notes (Hungarian)
 - Screens keep a `…Content(…, controller)` variant so the Paparazzi tests can draw them; re-record and look at the images when a screen changes.
 - Code comments explain *why*. Commit subjects say what the app does ("Keep more than one query open at a time").
 
+## License
+
+Copyright 2026 Zimmermann Akos.
+
+Licensed under the [Apache License, Version 2.0](LICENSE). Third-party components bundled in the
+app keep their own licenses — see [`NOTICE`](NOTICE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
 ## Magyarul
 
 **SQLPulse** — óvatos SQL-kliens Androidra, arra a pillanatra, amikor telefonról kell ránézni az
@@ -321,3 +330,6 @@ verziószám kerül a `main`-be (`appVersion` az `app/build.gradle.kts`-ben). An
 Részletes magyar dokumentáció: [`docs/specification.md`](docs/specification.md) (specifikáció),
 [`docs/roadmap.md`](docs/roadmap.md) (mi kész, mi jön), [`docs/tobb-motor-terv.md`](docs/tobb-motor-terv.md)
 (több adatbázismotor), [`CLAUDE.md`](CLAUDE.md) (a repó térképe a fejlesztőknek).
+
+**Licenc:** Apache License 2.0, © 2026 Zimmermann Akos. A beépített külső könyvtárak a saját
+licencük alatt vannak: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

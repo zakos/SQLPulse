@@ -146,6 +146,8 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 - Commit üzenetek stílusa: rövid, angol, „mit csinál az app” megfogalmazás
   (pl. „Keep more than one query open at a time”).
 - Kódkommentek angolul, a „miért”-et magyarázzák.
+- Licenc: **Apache-2.0**, © 2026 Zimmermann Akos (`LICENSE`, `NOTICE`). Új futásidejű függőség →
+  `THIRD_PARTY_NOTICES.md` frissítése (licenc ellenőrzése; GPL csak FOSS-kivétellel).
 
 ## Látványterv a kódban
 
@@ -263,6 +265,8 @@ CONNECTIONS → EDITOR, KEYS, SERVER, PULSE, BACKUP, MAP, SETTINGS → WRITE_LOG
 
 - 2026-10-04: GitHub-szintű README (ikon, jelvények, képernyőkép-sávok `docs/images/`, angol +
   magyar rész), CI a pathora mintájára: `android.yml` nightly + stabil kiadással; `appVersion = "0.2.0"`.
+
+- 2026-10-04: Licenc: Apache-2.0 a felhasználó nevével; `NOTICE`, `THIRD_PARTY_NOTICES.md`, README-jelvény.
 
 ## Javasolt következő fejlesztések (2026-10-02)
 
